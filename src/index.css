@@ -1,0 +1,21 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    @apply bg-black text-ink;
+  }
+
+  body {
+    @apply min-h-[100dvh] font-sans text-base;
+  }
+
+  /* Large touch targets, no zoom on focus (iOS) */
+  input,
+  button,
+  select,
+  textarea {
+    font-size: 1rem;
+  }
+}
