@@ -286,7 +286,7 @@ export function Home() {
     };
   }, [totalWeight, units, cals100, prot100, carb100, fat100]);
 
-  function handleSave() {
+  async function handleSave() {
     setError(null);
     const n = name.trim();
     if (!n) {
@@ -312,21 +312,26 @@ export function Home() {
     const unitWeight = tw / u;
     const factor = unitWeight / 100;
 
-    addProduct({
-      name: n,
-      brand: brand.trim(),
-      cals100: c100,
-      prot100: Number.isFinite(p100) ? p100 : 0,
-      carb100: Number.isFinite(cb100) ? cb100 : 0,
-      fat100: Number.isFinite(f100) ? f100 : 0,
-      totalWeight: tw,
-      units: u,
-      unitWeight,
-      calsUnit: c100 * factor,
-      protUnit: (Number.isFinite(p100) ? p100 : 0) * factor,
-      carbUnit: (Number.isFinite(cb100) ? cb100 : 0) * factor,
-      fatUnit: (Number.isFinite(f100) ? f100 : 0) * factor,
-    });
+    try {
+      await addProduct({
+        name: n,
+        brand: brand.trim(),
+        cals100: c100,
+        prot100: Number.isFinite(p100) ? p100 : 0,
+        carb100: Number.isFinite(cb100) ? cb100 : 0,
+        fat100: Number.isFinite(f100) ? f100 : 0,
+        totalWeight: tw,
+        units: u,
+        unitWeight,
+        calsUnit: c100 * factor,
+        protUnit: (Number.isFinite(p100) ? p100 : 0) * factor,
+        carbUnit: (Number.isFinite(cb100) ? cb100 : 0) * factor,
+        fatUnit: (Number.isFinite(f100) ? f100 : 0) * factor,
+      });
+    } catch (err) {
+      console.error("Home save — full error:", err);
+      return;
+    }
 
     setName("");
     setBrand("");

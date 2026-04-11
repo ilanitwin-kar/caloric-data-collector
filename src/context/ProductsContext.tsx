@@ -2,26 +2,53 @@ import {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
   useState,
   type ReactNode,
 } from "react";
-import { get, ref, set, type DataSnapshot } from "firebase/database";
-import { db } from "../lib/firebase";
+import {
+  onValue,
+  push,
+  ref,
+  remove,
+  set,
+  type DataSnapshot,
+} from "firebase/database";
+import { db } from "../firebase";
 import type { Product } from "../types/product";
+import { useToast } from "./ToastContext";
+
+/** RTDB node for saved products (push ids + full Product payload). */
+export const HISTORY_NODE = "history";
 
 type ProductsContextValue = {
   products: Product[];
-  /** True only while a manual `loadProducts` request is in flight. */
+  /** True only until the first `onValue` snapshot is applied (initial sync). */
   loading: boolean;
   error: string | null;
-  /** True after at least one successful fetch from Firebase (including empty). */
+  /** True after the first successful realtime snapshot (including empty). */
   hasLoaded: boolean;
-  loadProducts: () => Promise<void>;
-  addProduct: (product: Omit<Product, "id" | "savedAt">) => void;
+  addProduct: (product: Omit<Product, "id" | "savedAt">) => Promise<void>;
+  deleteProduct: (id: string) => Promise<void>;
+  updateProduct: (product: Product) => Promise<void>;
+  duplicateProduct: (product: Product) => Promise<void>;
 };
 
 const ProductsContext = createContext<ProductsContextValue | null>(null);
+
+function logFirebaseError(context: string, e: unknown) {
+  console.error(context, e);
+  if (e instanceof Error) {
+    console.error("name:", e.name, "message:", e.message, "stack:", e.stack);
+  }
+  if (e && typeof e === "object" && "code" in e) {
+    console.error("Firebase error code:", String((e as { code: unknown }).code));
+  }
+  if (e && typeof e === "object" && "customData" in e) {
+    console.error("customData:", (e as { customData?: unknown }).customData);
+  }
+}
 
 function snapshotToProducts(snap: DataSnapshot): Product[] {
   const v = snap.val() as Record<string, Product> | null;
@@ -41,40 +68,126 @@ function snapshotToProducts(snap: DataSnapshot): Product[] {
 }
 
 export function ProductsProvider({ children }: { children: ReactNode }) {
+  const { showToast } = useToast();
   const [products, setProducts] = useState<Product[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [hasLoaded, setHasLoaded] = useState(false);
 
-  const loadProducts = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const r = ref(db, "products");
-      const snap = await get(r);
-      setProducts(snapshotToProducts(snap));
-      setHasLoaded(true);
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : "שגיאה בטעינת הנתונים";
-      setError(msg);
-    } finally {
-      setLoading(false);
-    }
+  useEffect(() => {
+    const r = ref(db, HISTORY_NODE);
+    let first = true;
+
+    const unsub = onValue(
+      r,
+      (snap) => {
+        const list = snapshotToProducts(snap);
+        setProducts(list);
+        setError(null);
+        if (first) {
+          first = false;
+          setLoading(false);
+          setHasLoaded(true);
+        }
+      },
+      (err) => {
+        logFirebaseError("onValue(history) listener error:", err);
+        setError(err.message);
+        setLoading(false);
+        if (first) {
+          first = false;
+        }
+      },
+    );
+
+    return () => unsub();
   }, []);
 
   const addProduct = useCallback(
-    (data: Omit<Product, "id" | "savedAt">) => {
-      const id = crypto.randomUUID();
-      const entry: Product = {
+    async (data: Omit<Product, "id" | "savedAt">) => {
+      const listRef = ref(db, HISTORY_NODE);
+      const newRef = push(listRef);
+      const pushKey = newRef.key;
+      if (!pushKey) {
+        const err = new Error("push() did not return a key");
+        logFirebaseError("Firebase push() failed — full error:", err);
+        showToast("שגיאה בשמירה לענן", "error");
+        throw err;
+      }
+
+      const productData: Product = {
         ...data,
-        id,
+        id: pushKey,
         savedAt: new Date().toISOString(),
       };
-      void set(ref(db, `products/${id}`), entry).catch((e: Error) => {
-        console.error("Firebase write failed:", e);
-      });
+
+      console.log("Saving to Firebase...", productData);
+
+      try {
+        await set(newRef, productData);
+        console.log("Save successful!");
+        showToast("המוצר נשמר בהצלחה", "success");
+      } catch (e) {
+        logFirebaseError("Firebase set() after push() failed — full error:", e);
+        showToast("שגיאה בשמירה לענן", "error");
+        throw e;
+      }
     },
-    [],
+    [showToast],
+  );
+
+  const deleteProduct = useCallback(
+    async (id: string) => {
+      try {
+        await remove(ref(db, `${HISTORY_NODE}/${id}`));
+        showToast("המוצר נמחק", "success");
+      } catch (e) {
+        logFirebaseError("Firebase remove() failed — full error:", e);
+        showToast("שגיאה במחיקה", "error");
+        throw e;
+      }
+    },
+    [showToast],
+  );
+
+  const updateProduct = useCallback(
+    async (product: Product) => {
+      try {
+        await set(ref(db, `${HISTORY_NODE}/${product.id}`), product);
+        showToast("המוצר עודכן", "success");
+      } catch (e) {
+        logFirebaseError("Firebase set(update) failed — full error:", e);
+        showToast("שגיאה בעדכון", "error");
+        throw e;
+      }
+    },
+    [showToast],
+  );
+
+  const duplicateProduct = useCallback(
+    async (product: Product) => {
+      const listRef = ref(db, HISTORY_NODE);
+      const newRef = push(listRef);
+      const key = newRef.key;
+      if (!key) {
+        showToast("שגיאה בשכפול", "error");
+        return;
+      }
+      const copy: Product = {
+        ...product,
+        id: key,
+        savedAt: new Date().toISOString(),
+      };
+      try {
+        await set(newRef, copy);
+        showToast("המוצר שוכפל", "success");
+      } catch (e) {
+        logFirebaseError("Firebase duplicate set() failed — full error:", e);
+        showToast("שגיאה בשכפול", "error");
+        throw e;
+      }
+    },
+    [showToast],
   );
 
   const value = useMemo(
@@ -83,10 +196,21 @@ export function ProductsProvider({ children }: { children: ReactNode }) {
       loading,
       error,
       hasLoaded,
-      loadProducts,
       addProduct,
+      deleteProduct,
+      updateProduct,
+      duplicateProduct,
     }),
-    [products, loading, error, hasLoaded, loadProducts, addProduct],
+    [
+      products,
+      loading,
+      error,
+      hasLoaded,
+      addProduct,
+      deleteProduct,
+      updateProduct,
+      duplicateProduct,
+    ],
   );
 
   return (
