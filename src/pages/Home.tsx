@@ -7,7 +7,6 @@ import {
   type ChangeEvent,
   type InputHTMLAttributes,
 } from "react";
-import { Link } from "react-router-dom";
 import { Spinner } from "../components/Spinner";
 import { useProducts } from "../context/ProductsContext";
 import {
@@ -342,23 +341,15 @@ export function Home() {
 
   return (
     <div className="space-y-8 pb-4">
-      <header className="space-y-3 border-b border-white/10 pb-6">
-        <div className="flex flex-wrap items-start justify-between gap-2">
+      <div className="space-y-8">
+        <header className="space-y-3 border-b border-white/10 pb-6">
           <p className="font-display text-3xl font-semibold tracking-tight text-white md:text-4xl">
             איסוף נתונים
           </p>
-          <Link
-            to="/history"
-            className="text-sm font-medium text-white/80 underline decoration-white/30 underline-offset-4 transition hover:text-white"
-          >
-            היסטוריית מוצרים
-          </Link>
-        </div>
-        <p className="text-sm text-ink-muted">
-          ערכי תזונה ל-100 גרם, ואז משקל האריזה — הערכים ליחידה מתעדכנים בזמן אמת
-          (Firebase).
-        </p>
-      </header>
+          <p className="text-sm text-ink-muted">
+            סריקת ברקוד או תווית — ואז השלימי את הפרטים למטה לפני השמירה.
+          </p>
+        </header>
 
       <section className="space-y-3 rounded-2xl border border-white/10 bg-white/[0.03] p-4">
         <div className="flex items-baseline justify-between gap-2">
@@ -525,6 +516,12 @@ export function Home() {
           </div>
         ) : null}
       </section>
+      </div>
+
+      <section className="space-y-8 border-t border-white/10 pt-8" aria-label="השלמת פרטים ושמירה">
+        <h2 className="text-xs font-semibold text-ink-dim">
+          השלמת פרטים ושמירה
+        </h2>
 
       <section className="space-y-4">
         <h2 className="text-xs font-semibold text-ink-dim">
@@ -670,6 +667,7 @@ export function Home() {
       >
         שמור מוצר
       </button>
+      </section>
     </div>
   );
 }

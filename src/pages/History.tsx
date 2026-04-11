@@ -17,12 +17,12 @@ function formatSavedAt(iso: string): string {
 
 function savedCountLabel(n: number): string {
   if (n === 0) return "";
-  if (n === 1) return "מוצר אחד במאגר.";
-  return `${n} מוצרים במאגר.`;
+  if (n === 1) return "מוצר אחד ברשימה.";
+  return `${n} מוצרים ברשימה.`;
 }
 
 export function History() {
-  const { products, loading, error } = useProducts();
+  const { products, loading, error, hasLoaded, loadProducts } = useProducts();
 
   function handleExport() {
     const csv = productsToCsv(products);
@@ -31,39 +31,59 @@ export function History() {
   }
 
   return (
-    <div className="space-y-8 pb-4">
-      <header className="space-y-1 border-b border-white/10 pb-6">
+    <div className="space-y-6 pb-4">
+      <header className="space-y-4 border-b border-white/10 pb-6">
         <p className="font-display text-3xl font-semibold tracking-tight text-white md:text-4xl">
           היסטוריה
         </p>
+
         {loading && (
           <div className="flex items-center gap-2 text-sm text-ink-muted">
             <Spinner className="!h-5 !w-5" />
             טוען מהענן…
           </div>
         )}
-        {error && (
-          <p className="text-sm text-red-300">{error}</p>
+
+        {error && <p className="text-sm text-red-300">{error}</p>}
+
+        {!loading && !error && hasLoaded && products.length > 0 && (
+          <p className="text-sm text-ink-muted">{savedCountLabel(products.length)}</p>
         )}
-        {!loading && (
-          <p className="text-sm text-ink-muted">
-            {products.length === 0
-              ? "המוצרים יופיעו כאן (סנכרון Firebase)."
-              : savedCountLabel(products.length)}
-          </p>
-        )}
+
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <button
+            type="button"
+            onClick={() => void loadProducts()}
+            disabled={loading}
+            className="min-h-[52px] w-full rounded-2xl bg-white px-4 text-lg font-semibold text-black shadow-lg shadow-white/10 transition enabled:active:scale-[0.99] enabled:hover:bg-neutral-200 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            טען נתונים מהענן
+          </button>
+          <button
+            type="button"
+            onClick={handleExport}
+            disabled={products.length === 0 || loading}
+            className="min-h-[52px] w-full rounded-2xl border border-white/25 bg-white/[0.06] text-lg font-semibold text-white transition enabled:active:scale-[0.99] enabled:hover:border-white/35 enabled:hover:bg-white/[0.09] disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            ייצוא ל-CSV
+          </button>
+        </div>
       </header>
 
-      <button
-        type="button"
-        onClick={handleExport}
-        disabled={products.length === 0}
-        className="min-h-[52px] w-full rounded-2xl border border-white/25 bg-white/[0.06] text-lg font-semibold text-white transition enabled:active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-40"
-      >
-        ייצוא ל-CSV
-      </button>
-
       <ul className="space-y-3">
+        {!hasLoaded && !loading && !error ? (
+          <li className="rounded-2xl border border-dashed border-white/15 bg-white/[0.02] px-4 py-12 text-center text-sm leading-relaxed text-ink-muted">
+            הנתונים לא נטענים אוטומטית. לחצו על «טען נתונים מהענן» למעלה כדי
+            להציג את הרשימה.
+          </li>
+        ) : null}
+
+        {hasLoaded && !loading && !error && products.length === 0 ? (
+          <li className="rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-12 text-center text-sm text-ink-muted">
+            אין נתונים עדיין
+          </li>
+        ) : null}
+
         {products.map((p) => (
           <li
             key={p.id}

@@ -1,9 +1,6 @@
 import { BrowserRouter, Navigate, Outlet, Route, Routes } from "react-router-dom";
 import { BottomNav } from "./components/BottomNav";
-import { HealthLogProvider } from "./context/HealthLogContext";
 import { ProductsProvider } from "./context/ProductsContext";
-import { Charts } from "./pages/Charts";
-import { DailyProgress } from "./pages/DailyProgress";
 import { History } from "./pages/History";
 import { Home } from "./pages/Home";
 import { Settings } from "./pages/Settings";
@@ -22,20 +19,16 @@ function Shell() {
 export default function App() {
   return (
     <ProductsProvider>
-      <HealthLogProvider>
-        <BrowserRouter>
-          <Routes>
-            <Route element={<Shell />}>
-              <Route index element={<Home />} />
-              <Route path="history" element={<History />} />
-              <Route path="daily" element={<DailyProgress />} />
-              <Route path="charts" element={<Charts />} />
-              <Route path="settings" element={<Settings />} />
-              <Route path="*" element={<Navigate to="/" replace />} />
-            </Route>
-          </Routes>
-        </BrowserRouter>
-      </HealthLogProvider>
+      <BrowserRouter>
+        <Routes>
+          <Route element={<Shell />}>
+            <Route index element={<Home />} />
+            <Route path="history" element={<History />} />
+            <Route path="settings" element={<Settings />} />
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Route>
+        </Routes>
+      </BrowserRouter>
     </ProductsProvider>
   );
 }
