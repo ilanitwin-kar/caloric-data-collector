@@ -7,6 +7,8 @@ import {
   type ChangeEvent,
   type InputHTMLAttributes,
 } from "react";
+import { Link } from "react-router-dom";
+import { Spinner } from "../components/Spinner";
 import { useProducts } from "../context/ProductsContext";
 import {
   countParsedFields,
@@ -18,16 +20,6 @@ import { BarcodeScanner } from "../components/BarcodeScanner";
 import { fetchOpenFoodFactsProduct } from "../utils/openFoodFacts";
 import { playSuccessChime } from "../utils/successChime";
 import { fmt1, parseNum } from "../utils/number";
-
-function Spinner({ className }: { className?: string }) {
-  return (
-    <div
-      className={`inline-block h-9 w-9 shrink-0 animate-spin rounded-full border-2 border-white/25 border-t-white ${className ?? ""}`}
-      role="status"
-      aria-label="מעבד תמונה"
-    />
-  );
-}
 
 function BarcodeIcon({ className }: { className?: string }) {
   return (
@@ -350,12 +342,21 @@ export function Home() {
 
   return (
     <div className="space-y-8 pb-4">
-      <header className="space-y-1 border-b border-white/10 pb-6">
-        <p className="font-display text-3xl font-semibold tracking-tight text-white md:text-4xl">
-          איסוף נתונים
-        </p>
+      <header className="space-y-3 border-b border-white/10 pb-6">
+        <div className="flex flex-wrap items-start justify-between gap-2">
+          <p className="font-display text-3xl font-semibold tracking-tight text-white md:text-4xl">
+            איסוף נתונים
+          </p>
+          <Link
+            to="/history"
+            className="text-sm font-medium text-white/80 underline decoration-white/30 underline-offset-4 transition hover:text-white"
+          >
+            היסטוריית מוצרים
+          </Link>
+        </div>
         <p className="text-sm text-ink-muted">
-          ערכי תזונה ל-100 גרם, ואז משקל האריזה — הערכים ליחידה מתעדכנים בזמן אמת.
+          ערכי תזונה ל-100 גרם, ואז משקל האריזה — הערכים ליחידה מתעדכנים בזמן אמת
+          (Firebase).
         </p>
       </header>
 

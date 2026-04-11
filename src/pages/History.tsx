@@ -1,3 +1,4 @@
+import { Spinner } from "../components/Spinner";
 import { useProducts } from "../context/ProductsContext";
 import { downloadCsv, productsToCsv } from "../utils/csv";
 import { fmt1 } from "../utils/number";
@@ -16,12 +17,12 @@ function formatSavedAt(iso: string): string {
 
 function savedCountLabel(n: number): string {
   if (n === 0) return "";
-  if (n === 1) return "נשמר מקומית מוצר אחד.";
-  return `נשמרו מקומית ${n} מוצרים.`;
+  if (n === 1) return "מוצר אחד במאגר.";
+  return `${n} מוצרים במאגר.`;
 }
 
 export function History() {
-  const { products } = useProducts();
+  const { products, loading, error } = useProducts();
 
   function handleExport() {
     const csv = productsToCsv(products);
@@ -35,11 +36,22 @@ export function History() {
         <p className="font-display text-3xl font-semibold tracking-tight text-white md:text-4xl">
           היסטוריה
         </p>
-        <p className="text-sm text-ink-muted">
-          {products.length === 0
-            ? "המוצרים השמורים יופיעו כאן."
-            : savedCountLabel(products.length)}
-        </p>
+        {loading && (
+          <div className="flex items-center gap-2 text-sm text-ink-muted">
+            <Spinner className="!h-5 !w-5" />
+            טוען מהענן…
+          </div>
+        )}
+        {error && (
+          <p className="text-sm text-red-300">{error}</p>
+        )}
+        {!loading && (
+          <p className="text-sm text-ink-muted">
+            {products.length === 0
+              ? "המוצרים יופיעו כאן (סנכרון Firebase)."
+              : savedCountLabel(products.length)}
+          </p>
+        )}
       </header>
 
       <button

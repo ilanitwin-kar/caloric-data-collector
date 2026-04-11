@@ -7,28 +7,14 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { onValue, ref, set } from "firebase/database";
+import { db } from "../lib/firebase";
 import type { Product } from "../types/product";
-
-const STORAGE_KEY = "caloric-intelligence-products-v1";
-
-function loadProducts(): Product[] {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw) as unknown;
-    if (!Array.isArray(parsed)) return [];
-    return parsed as Product[];
-  } catch {
-    return [];
-  }
-}
-
-function persist(products: Product[]) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(products));
-}
 
 type ProductsContextValue = {
   products: Product[];
+  loading: boolean;
+  error: string | null;
   addProduct: (product: Omit<Product, "id" | "savedAt">) => void;
 };
 
@@ -36,30 +22,51 @@ const ProductsContext = createContext<ProductsContextValue | null>(null);
 
 export function ProductsProvider({ children }: { children: ReactNode }) {
   const [products, setProducts] = useState<Product[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    setProducts(loadProducts());
+    const r = ref(db, "products");
+    const unsub = onValue(
+      r,
+      (snap) => {
+        setError(null);
+        setLoading(false);
+        const v = snap.val() as Record<string, Product> | null;
+        if (!v) {
+          setProducts([]);
+          return;
+        }
+        const list = Object.values(v).sort(
+          (a, b) =>
+            new Date(b.savedAt).getTime() - new Date(a.savedAt).getTime(),
+        );
+        setProducts(list);
+      },
+      (err) => {
+        setLoading(false);
+        setError(err.message);
+      },
+    );
+    return () => unsub();
   }, []);
 
   const addProduct = useCallback(
     (data: Omit<Product, "id" | "savedAt">) => {
+      const id = crypto.randomUUID();
       const entry: Product = {
         ...data,
-        id: crypto.randomUUID(),
+        id,
         savedAt: new Date().toISOString(),
       };
-      setProducts((prev) => {
-        const next = [entry, ...prev];
-        persist(next);
-        return next;
-      });
+      void set(ref(db, `products/${id}`), entry);
     },
     [],
   );
 
   const value = useMemo(
-    () => ({ products, addProduct }),
-    [products, addProduct],
+    () => ({ products, loading, error, addProduct }),
+    [products, loading, error, addProduct],
   );
 
   return (
