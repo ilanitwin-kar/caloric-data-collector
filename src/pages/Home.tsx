@@ -221,8 +221,9 @@ export function Home() {
       setOffData(d);
       if (d.productName) setName(d.productName);
       if (d.brand) setBrand(d.brand);
-      if (d.quantityG !== undefined) {
-        setTotalWeight((prev) => (prev.trim() ? prev : String(Math.round(d.quantityG))));
+      const qg = d.quantityG;
+      if (typeof qg === "number") {
+        setTotalWeight((prev) => (prev.trim() ? prev : String(Math.round(qg))));
         setUnits((prev) => (prev.trim() ? prev : "1"));
       }
       if (d.cals100 !== undefined) setCals100(formatMacroValue(d.cals100));

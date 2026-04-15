@@ -175,11 +175,15 @@ function EditCatalogModal({
     factor && Number.isFinite(sod100) ? sod100 * factor : undefined;
 
   async function handleSave() {
-    const name = draft.name.trim();
+    const d = draft;
+    const p = product;
+    if (!d || !p) return;
+
+    const name = d.name.trim();
     if (!name) return;
 
-    const tw = parseNum(draft.totalWeightG);
-    const u = parseNum(draft.unitsPerPack);
+    const tw = parseNum(d.totalWeightG);
+    const u = parseNum(d.unitsPerPack);
     const totalWeightG = tw > 0 ? tw : undefined;
     const unitsPerPack = u > 0 ? u : undefined;
     const unitWeightNext =
@@ -189,11 +193,11 @@ function EditCatalogModal({
     const factorNext = unitWeightNext ? unitWeightNext / 100 : undefined;
 
     const next: CatalogProduct = {
-      ...product,
+      ...p,
       name,
-      brand: draft.brand.trim() || undefined,
+      brand: d.brand.trim() || undefined,
       package: {
-        ...product.package,
+        ...p.package,
         totalWeightG,
         unitsPerPack,
         unitWeightG: unitWeightNext,
@@ -238,9 +242,9 @@ function EditCatalogModal({
               : undefined,
         },
       },
-      ingredientsText: draft.ingredientsText.trim() || undefined,
-      allergensText: draft.allergensText.trim() || undefined,
-      categoriesText: draft.categoriesText.trim() || undefined,
+      ingredientsText: d.ingredientsText.trim() || undefined,
+      allergensText: d.allergensText.trim() || undefined,
+      categoriesText: d.categoriesText.trim() || undefined,
     };
 
     setSaving(true);
@@ -254,9 +258,11 @@ function EditCatalogModal({
 
   async function handleDelete() {
     if (!window.confirm("למחוק מהקטלוג?")) return;
+    const p = product;
+    if (!p) return;
     setBusyDelete(true);
     try {
-      await deleteProduct(product.gtin);
+      await deleteProduct(p.gtin);
       onClose();
     } finally {
       setBusyDelete(false);

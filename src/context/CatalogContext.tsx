@@ -76,6 +76,8 @@ export type CatalogProduct = {
   };
 };
 
+type CatalogSourceType = NonNullable<CatalogProduct["sources"]>[number]["type"];
+
 type CatalogContextValue = {
   catalog: CatalogProduct[];
   loading: boolean;
@@ -95,7 +97,7 @@ type CatalogContextValue = {
     allergensText?: string;
     categoriesText?: string;
     images?: CatalogProduct["images"];
-    sourceType: CatalogProduct["sources"][number]["type"];
+    sourceType: CatalogSourceType;
   }) => Promise<void>;
   updateProduct: (product: CatalogProduct) => Promise<void>;
   deleteProduct: (gtin: string) => Promise<void>;
@@ -176,7 +178,7 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
       allergensText?: string;
       categoriesText?: string;
       images?: CatalogProduct["images"];
-      sourceType: CatalogProduct["sources"][number]["type"];
+      sourceType: CatalogSourceType;
     }) => {
       if (!user) {
         showToast("צריך להתחבר כדי לשמור לקטלוג", "error");
