@@ -2,10 +2,11 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import { VitePWA } from "vite-plugin-pwa";
 
+const isGitHubPagesBuild = process.env.GITHUB_ACTIONS === "true";
+
 export default defineConfig({
-  // GitHub Pages serves under: /<repo>/
-  // Example: https://ilanitwin-kar.github.io/caloric-data-collector/
-  base: "/caloric-data-collector/",
+  // Netlify/custom domains use "/" while GitHub Pages needs "/<repo>/".
+  base: isGitHubPagesBuild ? "/caloric-data-collector/" : "/",
   plugins: [
     react(),
     VitePWA({
