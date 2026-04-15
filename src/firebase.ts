@@ -3,15 +3,23 @@ import { getAuth } from "firebase/auth";
 import { getDatabase } from "firebase/database";
 import { getStorage } from "firebase/storage";
 
-const databaseURL = "https://caloric-database-default-rtdb.firebaseio.com";
+function requireEnv(name: string): string {
+  const value = import.meta.env[name];
+  if (!value || !String(value).trim()) {
+    throw new Error(`Missing required environment variable: ${name}`);
+  }
+  return String(value);
+}
+
+const databaseURL = requireEnv("VITE_FIREBASE_DATABASE_URL");
 
 const firebaseConfig = {
-  apiKey: "AIzaSyBG1OAu4JYl1bEO3xN9xPBZiSlLuZMMv5k",
-  authDomain: "caloric-database.firebaseapp.com",
-  projectId: "caloric-database",
-  storageBucket: "caloric-database.firebasestorage.app",
-  messagingSenderId: "389379047394",
-  appId: "1:389379047394:web:1124642525b82ff32003bb",
+  apiKey: requireEnv("VITE_FIREBASE_API_KEY"),
+  authDomain: requireEnv("VITE_FIREBASE_AUTH_DOMAIN"),
+  projectId: requireEnv("VITE_FIREBASE_PROJECT_ID"),
+  storageBucket: requireEnv("VITE_FIREBASE_STORAGE_BUCKET"),
+  messagingSenderId: requireEnv("VITE_FIREBASE_MESSAGING_SENDER_ID"),
+  appId: requireEnv("VITE_FIREBASE_APP_ID"),
   databaseURL,
 };
 

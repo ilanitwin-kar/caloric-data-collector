@@ -1,20 +1,23 @@
 import { initializeApp } from "firebase/app";
 import { getDatabase } from "firebase/database";
 
-/**
- * Realtime Database URL (Console → Realtime Database → Data).
- * Regional instances must use this exact host; pass it to getDatabase() as well as firebaseConfig.databaseURL.
- */
-export const DATABASE_URL =
-  "https://caloric-database-default-rtdb.europe-west1.firebasedatabase.app" as const;
+function requireEnv(name: string): string {
+  const value = import.meta.env[name];
+  if (!value || !String(value).trim()) {
+    throw new Error(`Missing required environment variable: ${name}`);
+  }
+  return String(value);
+}
+
+export const DATABASE_URL = requireEnv("VITE_FIREBASE_DATABASE_URL");
 
 const firebaseConfig = {
-  apiKey: "AIzaSyBG1OAu4JYl1bEO3xN9xPBZiSlLuZMMv5k",
-  authDomain: "caloric-database.firebaseapp.com",
-  projectId: "caloric-database",
-  storageBucket: "caloric-database.firebasestorage.app",
-  messagingSenderId: "389379047394",
-  appId: "1:389379047394:web:1124642525b82ff32003bb",
+  apiKey: requireEnv("VITE_FIREBASE_API_KEY"),
+  authDomain: requireEnv("VITE_FIREBASE_AUTH_DOMAIN"),
+  projectId: requireEnv("VITE_FIREBASE_PROJECT_ID"),
+  storageBucket: requireEnv("VITE_FIREBASE_STORAGE_BUCKET"),
+  messagingSenderId: requireEnv("VITE_FIREBASE_MESSAGING_SENDER_ID"),
+  appId: requireEnv("VITE_FIREBASE_APP_ID"),
   databaseURL: DATABASE_URL,
 };
 
