@@ -9,7 +9,12 @@ export type Verified100Row = {
 };
 
 function normalizeHeader(s: string): string {
-  return s.trim().toLowerCase().replace(/\s+/g, " ");
+  return s
+    .trim()
+    .toLowerCase()
+    .replace(/[׳"״']/g, "")
+    .replace(/[(){}\[\],.:;!?/\\\-–—_]+/g, " ")
+    .replace(/\s+/g, " ");
 }
 
 function toNum(raw: string | undefined): number | undefined {
@@ -25,6 +30,40 @@ function splitTsvLine(line: string): string[] {
   return line.split(/\s{2,}/).map((x) => x.trim());
 }
 
+function splitDelimitedLine(line: string, delimiter: "," | ";"): string[] {
+  const out: string[] = [];
+  let cur = "";
+  let inQuotes = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (inQuotes) {
+      if (ch === '"') {
+        if (line[i + 1] === '"') {
+          cur += '"';
+          i++;
+        } else {
+          inQuotes = false;
+        }
+      } else {
+        cur += ch;
+      }
+      continue;
+    }
+    if (ch === '"') {
+      inQuotes = true;
+      continue;
+    }
+    if (ch === delimiter) {
+      out.push(cur);
+      cur = "";
+      continue;
+    }
+    cur += ch;
+  }
+  out.push(cur);
+  return out.map((x) => x.trim());
+}
+
 export function parseVerifiedTsv(text: string): Verified100Row[] {
   const lines = text
     .replace(/^\uFEFF/, "")
@@ -33,26 +72,46 @@ export function parseVerifiedTsv(text: string): Verified100Row[] {
     .filter((l) => l.trim().length > 0);
   if (lines.length < 2) return [];
 
-  const header = splitTsvLine(lines[0]).map(normalizeHeader);
-  const idx = (label: string) => header.indexOf(normalizeHeader(label));
-  const get = (cells: string[], label: string) => {
-    const i = idx(label);
+  const splitter =
+    lines[0].includes("\t")
+      ? splitTsvLine
+      : lines[0].includes(";")
+        ? (line: string) => splitDelimitedLine(line, ";")
+        : lines[0].includes(",")
+          ? (line: string) => splitDelimitedLine(line, ",")
+          : splitTsvLine;
+
+  const header = splitter(lines[0]).map(normalizeHeader);
+  const idx = (labels: string[]) =>
+    labels
+      .map((label) => header.indexOf(normalizeHeader(label)))
+      .find((i) => i >= 0) ?? -1;
+  const get = (cells: string[], labels: string[]) => {
+    const i = idx(labels);
     return i >= 0 ? cells[i] : undefined;
   };
 
+  const categoryLabels = ["קטגוריה", "קטגוריה ראשית"];
+  const brandLabels = ["מותג/חברה", "מותג", "חברה", "יצרן"];
+  const nameLabels = ["שם המוצר", "שם מוצר", "מוצר"];
+  const proteinLabels = ["חלבון", "חלבונים"];
+  const fatLabels = ["שומן", "שומנים"];
+  const carbsLabels = ["פחמימה", "פחמימות"];
+  const caloriesLabels = ["קלוריות", "אנרגיה"];
+
   const rows: Verified100Row[] = [];
   for (let i = 1; i < lines.length; i++) {
-    const cells = splitTsvLine(lines[i]);
-    const name = (get(cells, "שם המוצר") ?? "").trim();
+    const cells = splitter(lines[i]);
+    const name = (get(cells, nameLabels) ?? "").trim();
     if (!name) continue;
     rows.push({
-      category: (get(cells, "קטגוריה") ?? "").trim() || undefined,
-      brand: (get(cells, "מותג/חברה") ?? "").trim() || undefined,
+      category: (get(cells, categoryLabels) ?? "").trim() || undefined,
+      brand: (get(cells, brandLabels) ?? "").trim() || undefined,
       name,
-      protein100: toNum(get(cells, "חלבון")),
-      fat100: toNum(get(cells, "שומן")),
-      carbs100: toNum(get(cells, "פחמימה")),
-      calories100: toNum(get(cells, "קלוריות")),
+      protein100: toNum(get(cells, proteinLabels)),
+      fat100: toNum(get(cells, fatLabels)),
+      carbs100: toNum(get(cells, carbsLabels)),
+      calories100: toNum(get(cells, caloriesLabels)),
     });
   }
   return rows;

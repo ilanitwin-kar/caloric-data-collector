@@ -603,10 +603,10 @@ export function Catalog() {
               </p>
             </div>
             <label className="cursor-pointer rounded-xl border border-white/20 bg-white/[0.06] px-3 py-2 text-xs font-semibold text-white transition hover:border-white/30 hover:bg-white/[0.09]">
-              {importingVerified ? "מייבא…" : "ייבוא TSV (svc)"}
+              {importingVerified ? "מייבא…" : "ייבוא מאגר (TSV/CSV)"}
               <input
                 type="file"
-                accept=".tsv,.svc,text/tab-separated-values,text/plain"
+                accept=".tsv,.svc,.csv,text/csv,text/tab-separated-values,text/plain"
                 className="sr-only"
                 disabled={importingVerified}
                 onChange={(e) => {

@@ -36,6 +36,20 @@ type Verified100ContextValue = {
 
 const Ctx = createContext<Verified100ContextValue | null>(null);
 
+async function readFileTextWithFallback(file: File): Promise<string> {
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  const decoders = ["utf-8", "windows-1255", "utf-16le"] as const;
+  for (const enc of decoders) {
+    try {
+      const text = new TextDecoder(enc).decode(bytes);
+      if (text.trim().length > 0) return text;
+    } catch {
+      // Try next encoding.
+    }
+  }
+  return new TextDecoder("utf-8").decode(bytes);
+}
+
 function scoreMatch(item: Verified100Item, q: { name: string; brand?: string }): number {
   const nameQ = normalizeText(q.name);
   const brandQ = normalizeText(q.brand ?? "");
@@ -105,7 +119,7 @@ export function Verified100Provider({ children }: { children: ReactNode }) {
         showToast("צריך להתחבר כדי לייבא", "error");
         return;
       }
-      const text = await file.text();
+      const text = await readFileTextWithFallback(file);
       const rows = parseVerifiedTsv(text);
       if (rows.length === 0) {
         showToast("לא זוהו נתונים בקובץ", "error");
