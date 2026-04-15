@@ -36,6 +36,13 @@ type Verified100ContextValue = {
 
 const Ctx = createContext<Verified100ContextValue | null>(null);
 
+function cleanForRtdb<T>(value: T): T {
+  // RTDB rejects `undefined` anywhere in the payload.
+  // JSON stringify drops undefined object keys (and would turn undefined array items into null,
+  // but we don't use arrays in the payload). Keeps payload deterministic and safe for update().
+  return JSON.parse(JSON.stringify(value)) as T;
+}
+
 async function readFileTextWithFallback(file: File): Promise<string> {
   const bytes = new Uint8Array(await file.arrayBuffer());
   const decoders = ["utf-8", "windows-1255", "utf-16le"] as const;
@@ -119,29 +126,68 @@ export function Verified100Provider({ children }: { children: ReactNode }) {
         showToast("צריך להתחבר כדי לייבא", "error");
         return;
       }
-      const text = await readFileTextWithFallback(file);
-      const rows = parseVerifiedTsv(text);
-      if (rows.length === 0) {
-        showToast("לא זוהו נתונים בקובץ", "error");
-        return;
+      try {
+        showToast("מייבא מאגר מאומת…", "success");
+        const text = await readFileTextWithFallback(file);
+        const rows = parseVerifiedTsv(text);
+        if (rows.length === 0) {
+          showToast("לא זוהו נתונים בקובץ", "error");
+          return;
+        }
+
+        const now = new Date().toISOString();
+        // Keep chunks small to avoid RTDB payload limits (~16MB) and reduce chance of write rejection.
+        const chunkSize = 200;
+        let imported = 0;
+        const basePath = `users/${user.uid}/verified100/items`;
+        const baseRef = ref(db, basePath);
+
+        // Write in chunks so large files won't fail due to payload limits.
+        for (let i = 0; i < rows.length; i += chunkSize) {
+          const chunk = rows.slice(i, i + chunkSize);
+          const updates: Record<string, unknown> = {};
+          for (const row of chunk) {
+            const id = stableId(row.brand, row.name);
+            // Update relative to basePath; avoids "root update" edge-cases with rules.
+            // Do NOT spread `row` because RTDB rejects any `undefined` values.
+            const base: Verified100Item = {
+              id,
+              name: row.name,
+              createdAt: now,
+              updatedAt: now,
+            };
+            const item: Verified100Item = {
+              ...base,
+              ...(row.category ? { category: row.category } : {}),
+              ...(row.brand ? { brand: row.brand } : {}),
+              ...(typeof row.protein100 === "number" && Number.isFinite(row.protein100)
+                ? { protein100: row.protein100 }
+                : {}),
+              ...(typeof row.fat100 === "number" && Number.isFinite(row.fat100)
+                ? { fat100: row.fat100 }
+                : {}),
+              ...(typeof row.carbs100 === "number" && Number.isFinite(row.carbs100)
+                ? { carbs100: row.carbs100 }
+                : {}),
+              ...(typeof row.calories100 === "number" && Number.isFinite(row.calories100)
+                ? { calories100: row.calories100 }
+                : {}),
+            };
+
+            // Extra safety: strip any lingering undefineds.
+            const safeItem = cleanForRtdb(item);
+            updates[id] = safeItem;
+          }
+          await update(baseRef, updates);
+          imported += chunk.length;
+        }
+
+        showToast(`יובאו ${imported.toLocaleString("he-IL")} מוצרים מאומתים`, "success");
+      } catch (e) {
+        const message =
+          e instanceof Error && e.message ? e.message : "שגיאה לא ידועה בזמן ייבוא";
+        showToast(`ייבוא נכשל: ${message}`, "error");
       }
-
-      const now = new Date().toISOString();
-      const updates: Record<string, unknown> = {};
-
-      for (const row of rows) {
-        const id = stableId(row.brand, row.name);
-        updates[`users/${user.uid}/verified100/items/${id}`] = {
-          ...row,
-          id,
-          createdAt: now,
-          updatedAt: now,
-        } satisfies Verified100Item;
-      }
-
-      // Single update writes the whole import efficiently.
-      await update(ref(db), updates);
-      showToast(`יובאו ${rows.length.toLocaleString("he-IL")} מוצרים מאומתים`, "success");
     },
     [user, showToast],
   );

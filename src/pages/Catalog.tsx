@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useCatalog, type CatalogProduct } from "../context/CatalogContext";
 import { Spinner } from "../components/Spinner";
 import { normalizeBarcode } from "../utils/openFoodFacts";
@@ -474,12 +474,17 @@ function EditCatalogModal({
 }
 
 export function Catalog() {
-  const { catalog, loading, error, updateProduct } = useCatalog();
+  const { catalog, loading, error, bulkUpsert } = useCatalog();
   const { items: verifiedItems, importTsv, loading: verifiedLoading } = useVerified100();
   const [q, setQ] = useState("");
   const [editing, setEditing] = useState<CatalogProduct | null>(null);
   const [importing, setImporting] = useState(false);
   const [importingVerified, setImportingVerified] = useState(false);
+  const [importProgress, setImportProgress] = useState<{ done: number; total: number } | null>(
+    null,
+  );
+  const verifiedFileRef = useRef<HTMLInputElement | null>(null);
+  const [verifiedFileName, setVerifiedFileName] = useState<string | null>(null);
 
   const filtered = useMemo(
     () => catalog.filter((p) => matchProduct(p, q)),
@@ -491,9 +496,10 @@ export function Catalog() {
     const rows = parseCatalogCsv(text);
     if (rows.length === 0) return;
     setImporting(true);
+    setImportProgress({ done: 0, total: rows.length });
     try {
-      for (const row of rows) {
-        const nowIso = new Date().toISOString();
+      const nowIso = new Date().toISOString();
+      const products: CatalogProduct[] = rows.map((row) => {
         const totalW = row.totalWeightG && row.totalWeightG > 0 ? row.totalWeightG : undefined;
         const units = row.unitsPerPack && row.unitsPerPack > 0 ? row.unitsPerPack : undefined;
         const unitWeightG = totalW !== undefined && units !== undefined ? totalW / units : undefined;
@@ -536,10 +542,16 @@ export function Catalog() {
           sources: [{ type: "manual", at: nowIso }],
         };
 
-        await updateProduct(product);
-      }
+        return product;
+      });
+
+      await bulkUpsert(products, {
+        chunkSize: 250,
+        onProgress: (done, total) => setImportProgress({ done, total }),
+      });
     } finally {
       setImporting(false);
+      setTimeout(() => setImportProgress(null), 800);
     }
   }
 
@@ -576,7 +588,11 @@ export function Catalog() {
           </button>
 
           <label className="min-h-[48px] flex-1 cursor-pointer rounded-2xl border border-white/25 bg-white/[0.06] px-4 py-3 text-center text-sm font-semibold text-white transition hover:border-white/35 hover:bg-white/[0.09]">
-            {importing ? "מייבא…" : "ייבוא CSV"}
+            {importing
+              ? importProgress
+                ? `מייבא… ${importProgress.done.toLocaleString("he-IL")}/${importProgress.total.toLocaleString("he-IL")}`
+                : "מייבא…"
+              : "ייבוא CSV"}
             <input
               type="file"
               accept=".csv,text/csv"
@@ -601,23 +617,36 @@ export function Catalog() {
                   ? "טוען…"
                   : `${verifiedItems.length.toLocaleString("he-IL")} פריטים מאומתים זמינים`}
               </p>
+              {verifiedFileName ? (
+                <p className="mt-1 text-[11px] text-ink-dim" dir="ltr">
+                  {verifiedFileName}
+                </p>
+              ) : null}
             </div>
-            <label className="cursor-pointer rounded-xl border border-white/20 bg-white/[0.06] px-3 py-2 text-xs font-semibold text-white transition hover:border-white/30 hover:bg-white/[0.09]">
-              {importingVerified ? "מייבא…" : "ייבוא מאגר (TSV/CSV)"}
-              <input
-                type="file"
-                accept=".tsv,.svc,.csv,text/csv,text/tab-separated-values,text/plain"
-                className="sr-only"
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
                 disabled={importingVerified}
+                onClick={() => verifiedFileRef.current?.click()}
+                className="rounded-xl border border-white/20 bg-white/[0.06] px-3 py-2 text-xs font-semibold text-white transition disabled:opacity-50 hover:border-white/30 hover:bg-white/[0.09]"
+              >
+                {importingVerified ? "מייבא…" : "ייבוא מאגר (TSV/CSV)"}
+              </button>
+              <input
+                ref={verifiedFileRef}
+                type="file"
+                accept=".tsv,.csv,text/csv,text/tab-separated-values,text/plain"
+                className="sr-only"
                 onChange={(e) => {
                   const f = e.target.files?.[0];
                   e.target.value = "";
                   if (!f) return;
+                  setVerifiedFileName(f.name);
                   setImportingVerified(true);
                   void importTsv(f).finally(() => setImportingVerified(false));
                 }}
               />
-            </label>
+            </div>
           </div>
           <p className="mt-2 text-[11px] text-ink-dim">
             המאגר המאומת משמש למילוי אוטומטי של ערכי 100g בזמן סריקה/הקלדה, גם בלי ברקוד.

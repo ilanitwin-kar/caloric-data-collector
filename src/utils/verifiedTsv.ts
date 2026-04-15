@@ -91,13 +91,42 @@ export function parseVerifiedTsv(text: string): Verified100Row[] {
     return i >= 0 ? cells[i] : undefined;
   };
 
-  const categoryLabels = ["קטגוריה", "קטגוריה ראשית"];
-  const brandLabels = ["מותג/חברה", "מותג", "חברה", "יצרן"];
-  const nameLabels = ["שם המוצר", "שם מוצר", "מוצר"];
-  const proteinLabels = ["חלבון", "חלבונים"];
-  const fatLabels = ["שומן", "שומנים"];
-  const carbsLabels = ["פחמימה", "פחמימות"];
-  const caloriesLabels = ["קלוריות", "אנרגיה"];
+  // Support common Hebrew + English header variants (exports from Sheets/Excel/APIs).
+  const categoryLabels = ["קטגוריה", "קטגוריה ראשית", "category", "main category"];
+  const brandLabels = [
+    "מותג/חברה",
+    "מותג",
+    "חברה",
+    "יצרן",
+    "brand",
+    "manufacturer",
+    "company",
+    "producer",
+  ];
+  const nameLabels = [
+    "שם המוצר",
+    "שם מוצר",
+    "מוצר",
+    "תיאור",
+    "name",
+    "product name",
+    "item",
+    "description",
+    "title",
+  ];
+  const proteinLabels = ["חלבון", "חלבונים", "protein", "protein g", "protein_g"];
+  const fatLabels = ["שומן", "שומנים", "fat", "total fat", "fat g", "fat_g"];
+  const carbsLabels = [
+    "פחמימה",
+    "פחמימות",
+    "carb",
+    "carbs",
+    "carbohydrate",
+    "carbohydrates",
+    "carbs g",
+    "carbs_g",
+  ];
+  const caloriesLabels = ["קלוריות", "אנרגיה", "calories", "kcal", "energy", "energy kcal"];
 
   const rows: Verified100Row[] = [];
   for (let i = 1; i < lines.length; i++) {
