@@ -69,7 +69,7 @@ export default function App() {
         <Verified100Provider>
           <CatalogProvider>
             <ProductsProvider>
-              <BrowserRouter>
+              <BrowserRouter basename={import.meta.env.BASE_URL}>
                 <Routes>
                   <Route element={<Shell />}>
                     <Route index element={<Home />} />

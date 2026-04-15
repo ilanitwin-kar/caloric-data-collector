@@ -3,6 +3,9 @@ import react from "@vitejs/plugin-react";
 import { VitePWA } from "vite-plugin-pwa";
 
 export default defineConfig({
+  // GitHub Pages serves under: /<repo>/
+  // Example: https://ilanitwin-kar.github.io/caloric-data-collector/
+  base: "/caloric-data-collector/",
   plugins: [
     react(),
     VitePWA({
@@ -17,11 +20,12 @@ export default defineConfig({
         background_color: "#000000",
         display: "standalone",
         orientation: "portrait-primary",
-        start_url: "/",
-        scope: "/",
+        // Use relative URLs so PWA works under subpaths (GitHub Pages).
+        start_url: ".",
+        scope: ".",
         icons: [
           {
-            src: "/icon.svg",
+            src: "icon.svg",
             sizes: "any",
             type: "image/svg+xml",
             purpose: "any maskable",
