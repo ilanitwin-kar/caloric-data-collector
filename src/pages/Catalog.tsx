@@ -547,7 +547,7 @@ export function Catalog() {
 
       await bulkUpsert(products, {
         chunkSize: 250,
-        onProgress: (done, total) => setImportProgress({ done, total }),
+        onProgress: (done: number, total: number) => setImportProgress({ done, total }),
       });
     } finally {
       setImporting(false);

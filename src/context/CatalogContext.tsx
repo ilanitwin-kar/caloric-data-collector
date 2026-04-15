@@ -7,7 +7,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { onValue, ref, remove, set, type DataSnapshot } from "firebase/database";
+import { onValue, ref, remove, set, update, type DataSnapshot } from "firebase/database";
 import { db } from "../firebase";
 import { useAuth } from "./AuthContext";
 import { useToast } from "./ToastContext";
@@ -100,6 +100,7 @@ type CatalogContextValue = {
     sourceType: CatalogSourceType;
   }) => Promise<void>;
   updateProduct: (product: CatalogProduct) => Promise<void>;
+  bulkUpsert: (products: CatalogProduct[], opts?: { chunkSize?: number; onProgress?: (done: number, total: number) => void }) => Promise<void>;
   deleteProduct: (gtin: string) => Promise<void>;
 };
 
@@ -265,6 +266,42 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
     [user, showToast],
   );
 
+  const bulkUpsert = useCallback(
+    async (
+      products: CatalogProduct[],
+      opts?: { chunkSize?: number; onProgress?: (done: number, total: number) => void },
+    ) => {
+      if (!user) {
+        showToast("צריך להתחבר כדי לשמור לקטלוג", "error");
+        return;
+      }
+      const chunkSize = Math.max(1, Math.min(500, opts?.chunkSize ?? 250));
+      const basePath = `users/${user.uid}/catalog/products`;
+      const total = products.length;
+      let done = 0;
+
+      // Write in multi-location updates to reduce requests drastically.
+      // Chunking avoids exceeding RTDB payload limits (approx 16MB).
+      for (let i = 0; i < products.length; i += chunkSize) {
+        const chunk = products.slice(i, i + chunkSize);
+        const now = new Date().toISOString();
+        const updates: Record<string, CatalogProduct> = {};
+        for (const p of chunk) {
+          const gtin = normalizeBarcode(p.gtin);
+          if (gtin.length < 8) continue;
+          updates[`${basePath}/${gtin}`] = { ...p, gtin, updatedAt: now };
+        }
+        if (Object.keys(updates).length > 0) {
+          await update(ref(db), updates);
+        }
+        done = Math.min(total, i + chunk.length);
+        opts?.onProgress?.(done, total);
+      }
+      showToast("הייבוא הסתיים", "success");
+    },
+    [user, showToast],
+  );
+
   const deleteProduct = useCallback(
     async (gtin: string) => {
       if (!user) {
@@ -283,8 +320,8 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
   );
 
   const value = useMemo<CatalogContextValue>(
-    () => ({ catalog, loading, error, upsertByBarcode, updateProduct, deleteProduct }),
-    [catalog, loading, error, upsertByBarcode, updateProduct, deleteProduct],
+    () => ({ catalog, loading, error, upsertByBarcode, updateProduct, bulkUpsert, deleteProduct }),
+    [catalog, loading, error, upsertByBarcode, updateProduct, bulkUpsert, deleteProduct],
   );
 
   return <CatalogContext.Provider value={value}>{children}</CatalogContext.Provider>;
