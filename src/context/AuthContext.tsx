@@ -20,25 +20,46 @@ import { auth } from "../firebase";
 type AuthContextValue = {
   user: User | null;
   loading: boolean;
+  authError: string | null;
   signIn: () => Promise<void>;
   signOut: () => Promise<void>;
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
+function getAuthErrorMessage(error: unknown): string {
+  const code = typeof error === "object" && error && "code" in error ? String(error.code) : "";
+  if (code.includes("auth/unauthorized-domain")) {
+    return "הדומיין לא מאושר ב-Firebase. צריך להוסיף את דומיין האתר ב-Authorized domains.";
+  }
+  if (code.includes("auth/popup-closed-by-user")) {
+    return "חלון ההתחברות נסגר לפני סיום. אפשר לנסות שוב.";
+  }
+  if (code.includes("auth/popup-blocked")) {
+    return "הדפדפן חסם חלון התחברות. אפשר לאפשר חלונות קופצים או לנסות שוב.";
+  }
+  if (code.includes("auth/cancelled-popup-request")) {
+    return "בקשת התחברות קודמת בוטלה. אפשר לנסות שוב.";
+  }
+  return "ההתחברות נכשלה כרגע. נסי שוב בעוד רגע.";
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const [authError, setAuthError] = useState<string | null>(null);
   const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
 
   useEffect(() => {
     // Handle redirect-based sign-in (fallback for blocked/closed popups).
     void getRedirectResult(auth).catch((e) => {
       console.warn("getRedirectResult error:", e);
+      setAuthError(getAuthErrorMessage(e));
     });
 
     const unsub = onAuthStateChanged(auth, (u) => {
       setUser(u);
+      if (u) setAuthError(null);
       setLoading(false);
     });
     return () => unsub();
@@ -48,11 +69,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     () => ({
       user,
       loading,
+      authError,
       signIn: async () => {
         const provider = new GoogleAuthProvider();
+        setAuthError(null);
         // Mobile/PWA browsers are more reliable with redirect auth.
         if (isMobile) {
-          await signInWithRedirect(auth, provider);
+          await signInWithRedirect(auth, provider).catch((e) => {
+            setAuthError(getAuthErrorMessage(e));
+            throw e;
+          });
           return;
         }
         try {
@@ -60,14 +86,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         } catch (e) {
           // Common when popups are blocked or immediately closed by the browser.
           console.warn("signInWithPopup failed; falling back to redirect:", e);
-          await signInWithRedirect(auth, provider);
+          await signInWithRedirect(auth, provider).catch((redirectError) => {
+            setAuthError(getAuthErrorMessage(redirectError));
+            throw redirectError;
+          });
         }
       },
       signOut: async () => {
         await signOut(auth);
       },
     }),
-    [user, loading, isMobile],
+    [user, loading, authError, isMobile],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

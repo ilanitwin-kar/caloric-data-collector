@@ -11,7 +11,7 @@ import { Home } from "./pages/Home";
 import { Settings } from "./pages/Settings";
 
 function Shell() {
-  const { user, loading, signIn, signOut } = useAuth();
+  const { user, loading, authError, signIn, signOut } = useAuth();
   return (
     <div className="min-h-[100dvh] bg-black">
       <div className="mx-auto min-h-[100dvh] max-w-lg px-4 pb-28 pt-[max(1.25rem,env(safe-area-inset-top))]">
@@ -46,6 +46,11 @@ function Shell() {
             </button>
           ) : null}
         </div>
+        {authError && !user ? (
+          <div className="mb-4 rounded-xl border border-red-400/30 bg-red-500/10 px-3 py-2">
+            <p className="text-xs text-red-200">{authError}</p>
+          </div>
+        ) : null}
 
         {user ? (
           <Outlet />
