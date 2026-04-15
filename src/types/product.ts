@@ -1,5 +1,7 @@
 export interface Product {
   id: string;
+  /** Barcode (GTIN/EAN) if available. */
+  barcode?: string;
   name: string;
   brand: string;
   cals100: number;

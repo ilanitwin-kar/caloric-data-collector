@@ -17,6 +17,7 @@ import {
 } from "firebase/database";
 import { db } from "../firebase";
 import type { Product } from "../types/product";
+import { useAuth } from "./AuthContext";
 import { useToast } from "./ToastContext";
 
 /** RTDB node for saved products (push ids + full Product payload). */
@@ -69,13 +70,22 @@ function snapshotToProducts(snap: DataSnapshot): Product[] {
 
 export function ProductsProvider({ children }: { children: ReactNode }) {
   const { showToast } = useToast();
+  const { user } = useAuth();
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [hasLoaded, setHasLoaded] = useState(false);
 
   useEffect(() => {
-    const r = ref(db, HISTORY_NODE);
+    if (!user) {
+      setProducts([]);
+      setLoading(false);
+      setHasLoaded(false);
+      setError(null);
+      return;
+    }
+
+    const r = ref(db, `users/${user.uid}/${HISTORY_NODE}`);
     let first = true;
 
     const unsub = onValue(
@@ -101,11 +111,17 @@ export function ProductsProvider({ children }: { children: ReactNode }) {
     );
 
     return () => unsub();
-  }, []);
+  }, [user]);
 
   const addProduct = useCallback(
     async (data: Omit<Product, "id" | "savedAt">) => {
-      const listRef = ref(db, HISTORY_NODE);
+      if (!user) {
+        const err = new Error("Not authenticated");
+        showToast("צריך להתחבר כדי לשמור", "error");
+        throw err;
+      }
+
+      const listRef = ref(db, `users/${user.uid}/${HISTORY_NODE}`);
       const newRef = push(listRef);
       const pushKey = newRef.key;
       if (!pushKey) {
@@ -138,8 +154,12 @@ export function ProductsProvider({ children }: { children: ReactNode }) {
 
   const deleteProduct = useCallback(
     async (id: string) => {
+      if (!user) {
+        showToast("צריך להתחבר כדי למחוק", "error");
+        return;
+      }
       try {
-        await remove(ref(db, `${HISTORY_NODE}/${id}`));
+        await remove(ref(db, `users/${user.uid}/${HISTORY_NODE}/${id}`));
         showToast("המוצר נמחק", "success");
       } catch (e) {
         logFirebaseError("Firebase remove() failed — full error:", e);
@@ -152,8 +172,12 @@ export function ProductsProvider({ children }: { children: ReactNode }) {
 
   const updateProduct = useCallback(
     async (product: Product) => {
+      if (!user) {
+        showToast("צריך להתחבר כדי לעדכן", "error");
+        return;
+      }
       try {
-        await set(ref(db, `${HISTORY_NODE}/${product.id}`), product);
+        await set(ref(db, `users/${user.uid}/${HISTORY_NODE}/${product.id}`), product);
         showToast("המוצר עודכן", "success");
       } catch (e) {
         logFirebaseError("Firebase set(update) failed — full error:", e);
@@ -166,7 +190,11 @@ export function ProductsProvider({ children }: { children: ReactNode }) {
 
   const duplicateProduct = useCallback(
     async (product: Product) => {
-      const listRef = ref(db, HISTORY_NODE);
+      if (!user) {
+        showToast("צריך להתחבר כדי לשכפל", "error");
+        return;
+      }
+      const listRef = ref(db, `users/${user.uid}/${HISTORY_NODE}`);
       const newRef = push(listRef);
       const key = newRef.key;
       if (!key) {

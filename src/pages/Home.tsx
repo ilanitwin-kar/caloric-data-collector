@@ -9,6 +9,9 @@ import {
 } from "react";
 import { Spinner } from "../components/Spinner";
 import { useProducts } from "../context/ProductsContext";
+import { useCatalog } from "../context/CatalogContext";
+import { useAuth } from "../context/AuthContext";
+import { useVerified100 } from "../context/Verified100Context";
 import {
   countParsedFields,
   parseNutritionFromOcrText,
@@ -16,9 +19,13 @@ import {
   type ParsedMacros,
 } from "../utils/labelOcr";
 import { BarcodeScanner } from "../components/BarcodeScanner";
-import { fetchOpenFoodFactsProduct } from "../utils/openFoodFacts";
+import {
+  fetchOpenFoodFactsProduct,
+  type OpenFoodFactsProduct,
+} from "../utils/openFoodFacts";
 import { playSuccessChime } from "../utils/successChime";
 import { fmt1, parseNum } from "../utils/number";
+import { uploadCatalogImage } from "../utils/storageUpload";
 
 function BarcodeIcon({ className }: { className?: string }) {
   return (
@@ -71,13 +78,21 @@ function applyMacrosToFields(
     setCals100: (v: string) => void;
     setProt100: (v: string) => void;
     setCarb100: (v: string) => void;
+    setSugars100: (v: string) => void;
     setFat100: (v: string) => void;
+    setSatFat100: (v: string) => void;
+    setFiber100: (v: string) => void;
+    setSodiumMg100: (v: string) => void;
   },
 ) {
   if (p.cals100 !== undefined) setters.setCals100(formatMacroValue(p.cals100));
   if (p.prot100 !== undefined) setters.setProt100(formatMacroValue(p.prot100));
   if (p.carb100 !== undefined) setters.setCarb100(formatMacroValue(p.carb100));
+  if (p.sugars100 !== undefined) setters.setSugars100(formatMacroValue(p.sugars100));
   if (p.fat100 !== undefined) setters.setFat100(formatMacroValue(p.fat100));
+  if (p.satFat100 !== undefined) setters.setSatFat100(formatMacroValue(p.satFat100));
+  if (p.fiber100 !== undefined) setters.setFiber100(formatMacroValue(p.fiber100));
+  if (p.sodiumMg100 !== undefined) setters.setSodiumMg100(formatMacroValue(p.sodiumMg100));
 }
 
 function Field({
@@ -127,15 +142,31 @@ type OcrUiState =
 
 export function Home() {
   const { addProduct } = useProducts();
+  const { upsertByBarcode } = useCatalog();
+  const { user } = useAuth();
+  const { findBestMatch } = useVerified100();
   const [name, setName] = useState("");
   const [brand, setBrand] = useState("");
+  const [barcode, setBarcode] = useState("");
   const [cals100, setCals100] = useState("");
   const [prot100, setProt100] = useState("");
   const [carb100, setCarb100] = useState("");
+  const [sugars100, setSugars100] = useState("");
   const [fat100, setFat100] = useState("");
+  const [satFat100, setSatFat100] = useState("");
+  const [fiber100, setFiber100] = useState("");
+  const [sodiumMg100, setSodiumMg100] = useState("");
   const [totalWeight, setTotalWeight] = useState("");
   const [units, setUnits] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [verifiedCandidate, setVerifiedCandidate] = useState<null | {
+    name: string;
+    brand?: string;
+    calories100?: number;
+    protein100?: number;
+    carbs100?: number;
+    fat100?: number;
+  }>(null);
 
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const lastImageRef = useRef<File | null>(null);
@@ -149,6 +180,7 @@ export function Home() {
   const [offNotice, setOffNotice] = useState<
     null | "not_found" | "network" | "success"
   >(null);
+  const [offData, setOffData] = useState<OpenFoodFactsProduct | null>(null);
   const [highlightOcr, setHighlightOcr] = useState(false);
 
   const revokePreview = useCallback(() => {
@@ -165,6 +197,8 @@ export function Home() {
     setBarcodeScannerOpen(false);
     setOffLoading(true);
     setOffNotice(null);
+    setBarcode(code);
+    setOffData(null);
     try {
       const result = await fetchOpenFoodFactsProduct(code);
       if (!result.ok) {
@@ -184,8 +218,13 @@ export function Home() {
         return;
       }
       const d = result.data;
+      setOffData(d);
       if (d.productName) setName(d.productName);
       if (d.brand) setBrand(d.brand);
+      if (d.quantityG !== undefined) {
+        setTotalWeight((prev) => (prev.trim() ? prev : String(Math.round(d.quantityG))));
+        setUnits((prev) => (prev.trim() ? prev : "1"));
+      }
       if (d.cals100 !== undefined) setCals100(formatMacroValue(d.cals100));
       if (d.prot100 !== undefined) setProt100(formatMacroValue(d.prot100));
       if (d.carb100 !== undefined) setCarb100(formatMacroValue(d.carb100));
@@ -200,6 +239,43 @@ export function Home() {
     }
   }, []);
 
+  useEffect(() => {
+    const n = name.trim();
+    if (!n || n.length < 3) {
+      setVerifiedCandidate(null);
+      return;
+    }
+    const match = findBestMatch({ name: n, brand: brand.trim() || undefined });
+    if (!match) {
+      setVerifiedCandidate(null);
+      return;
+    }
+    setVerifiedCandidate({
+      name: match.name,
+      brand: match.brand,
+      calories100: match.calories100,
+      protein100: match.protein100,
+      carbs100: match.carbs100,
+      fat100: match.fat100,
+    });
+  }, [name, brand, findBestMatch]);
+
+  const applyVerified = useCallback(() => {
+    if (!verifiedCandidate) return;
+    if (verifiedCandidate.calories100 !== undefined) {
+      setCals100(formatMacroValue(verifiedCandidate.calories100));
+    }
+    if (verifiedCandidate.protein100 !== undefined) {
+      setProt100(formatMacroValue(verifiedCandidate.protein100));
+    }
+    if (verifiedCandidate.carbs100 !== undefined) {
+      setCarb100(formatMacroValue(verifiedCandidate.carbs100));
+    }
+    if (verifiedCandidate.fat100 !== undefined) {
+      setFat100(formatMacroValue(verifiedCandidate.fat100));
+    }
+  }, [verifiedCandidate]);
+
   const runOcrOnFile = useCallback(
     async (file: File) => {
       setOcrUi({ status: "loading" });
@@ -211,9 +287,13 @@ export function Home() {
           setCals100,
           setProt100,
           setCarb100,
+          setSugars100,
           setFat100,
+          setSatFat100,
+          setFiber100,
+          setSodiumMg100,
         });
-        if (n === 4) setOcrUi({ status: "success", filled: n });
+        if (n >= 4) setOcrUi({ status: "success", filled: n });
         else if (n > 0) setOcrUi({ status: "partial", filled: n });
         else setOcrUi({ status: "none" });
       } catch (e) {
@@ -307,13 +387,18 @@ export function Home() {
 
     const p100 = parseNum(prot100);
     const cb100 = parseNum(carb100);
+    const sug100 = parseNum(sugars100);
     const f100 = parseNum(fat100);
+    const sat100 = parseNum(satFat100);
+    const fib100 = parseNum(fiber100);
+    const sod100 = parseNum(sodiumMg100);
 
     const unitWeight = tw / u;
     const factor = unitWeight / 100;
 
     try {
       await addProduct({
+        barcode: barcode.trim() || undefined,
         name: n,
         brand: brand.trim(),
         cals100: c100,
@@ -328,17 +413,74 @@ export function Home() {
         carbUnit: (Number.isFinite(cb100) ? cb100 : 0) * factor,
         fatUnit: (Number.isFinite(f100) ? f100 : 0) * factor,
       });
+
+      if (barcode.trim()) {
+        const fromOff = offData;
+        const imgFile = lastImageRef.current;
+        const uploadedLabel =
+          user && imgFile
+            ? await uploadCatalogImage({
+                uid: user.uid,
+                gtin: barcode.trim(),
+                kind: "label",
+                file: imgFile,
+              })
+            : null;
+
+        await upsertByBarcode({
+          barcode: barcode.trim(),
+          name: n,
+          brand: brand.trim() || undefined,
+          per100: {
+            calories: c100,
+            proteinG: Number.isFinite(p100) ? p100 : undefined,
+            carbsG: Number.isFinite(cb100) ? cb100 : undefined,
+            sugarsG: Number.isFinite(sug100) ? sug100 : undefined,
+            fatG: Number.isFinite(f100) ? f100 : undefined,
+            satFatG: Number.isFinite(sat100) ? sat100 : undefined,
+            fiberG: Number.isFinite(fib100) ? fib100 : undefined,
+            sodiumMg: Number.isFinite(sod100) ? sod100 : undefined,
+          },
+          totalWeightG: tw,
+          unitsPerPack: u,
+          quantityText: fromOff?.quantityText,
+          quantityG: fromOff?.quantityG,
+          servingSizeText: fromOff?.servingSizeText,
+          servingG: fromOff?.servingG,
+          ingredientsText: fromOff?.ingredientsText,
+          allergensText: fromOff?.allergensText,
+          categoriesText: fromOff?.categoriesText,
+          images: fromOff
+            ? {
+                frontUrl: fromOff.imageFrontUrl,
+                nutritionUrl: fromOff.imageNutritionUrl,
+                ingredientsUrl: fromOff.imageIngredientsUrl,
+                labelUploadedUrl: uploadedLabel?.url ?? undefined,
+                labelUploadedPath: uploadedLabel?.path ?? undefined,
+              }
+            : uploadedLabel
+              ? { labelUploadedUrl: uploadedLabel.url, labelUploadedPath: uploadedLabel.path }
+              : undefined,
+          sourceType: offNotice === "success" ? "barcode_openfoodfacts" : previewUrl ? "ocr" : "manual",
+        });
+      }
     } catch (err) {
       console.error("Home save — full error:", err);
       return;
     }
 
+    setBarcode("");
+    setOffData(null);
     setName("");
     setBrand("");
     setCals100("");
     setProt100("");
     setCarb100("");
+    setSugars100("");
     setFat100("");
+    setSatFat100("");
+    setFiber100("");
+    setSodiumMg100("");
     setTotalWeight("");
     setUnits("");
     handleRemoveImage();
@@ -533,6 +675,14 @@ export function Home() {
           מוצר
         </h2>
         <Field
+          id="barcode"
+          label="ברקוד (מומלץ כדי לשמור לקטלוג)"
+          value={barcode}
+          onChange={setBarcode}
+          placeholder="לדוגמה: 7290000000000"
+          inputMode="numeric"
+        />
+        <Field
           id="product-name"
           label="שם המוצר"
           value={name}
@@ -547,6 +697,24 @@ export function Home() {
           placeholder="לא חובה"
         />
       </section>
+
+      {verifiedCandidate ? (
+        <section className="rounded-2xl border border-emerald-400/25 bg-emerald-500/10 p-4">
+          <p className="text-sm font-semibold text-white">נמצא מוצר מאומת דומה</p>
+          <p className="mt-1 text-xs text-ink-muted">
+            {verifiedCandidate.name}
+            {verifiedCandidate.brand ? ` · ${verifiedCandidate.brand}` : ""}
+            {" — "}מילוי ערכי 100g מאומתים?
+          </p>
+          <button
+            type="button"
+            onClick={applyVerified}
+            className="mt-3 min-h-[44px] w-full rounded-2xl bg-white text-sm font-semibold text-black transition active:scale-[0.99]"
+          >
+            החל ערכים מאומתים
+          </button>
+        </section>
+      ) : null}
 
       <section className="space-y-4">
         <h2 className="text-xs font-semibold text-ink-dim">
@@ -585,10 +753,38 @@ export function Home() {
             inputMode="decimal"
           />
           <Field
+            id="sugars100"
+            label="סוכרים (גרם)"
+            value={sugars100}
+            onChange={setSugars100}
+            inputMode="decimal"
+          />
+          <Field
             id="fat100"
             label="שומן (גרם)"
             value={fat100}
             onChange={setFat100}
+            inputMode="decimal"
+          />
+          <Field
+            id="satfat100"
+            label="שומן רווי (גרם)"
+            value={satFat100}
+            onChange={setSatFat100}
+            inputMode="decimal"
+          />
+          <Field
+            id="fiber100"
+            label="סיבים תזונתיים (גרם)"
+            value={fiber100}
+            onChange={setFiber100}
+            inputMode="decimal"
+          />
+          <Field
+            id="sodium100"
+            label="נתרן (מ״ג)"
+            value={sodiumMg100}
+            onChange={setSodiumMg100}
             inputMode="decimal"
           />
         </div>

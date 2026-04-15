@@ -16,6 +16,14 @@ function IconList({ className }: { className?: string }) {
   );
 }
 
+function IconGrid({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} aria-hidden>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 4.5h6.75v6.75H4.5V4.5ZM12.75 4.5H19.5v6.75h-6.75V4.5ZM4.5 12.75h6.75V19.5H4.5v-6.75ZM12.75 12.75H19.5V19.5h-6.75v-6.75Z" />
+    </svg>
+  );
+}
+
 function IconSettings({ className }: { className?: string }) {
   return (
     <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} aria-hidden>
@@ -45,6 +53,15 @@ export function BottomNav() {
         >
           <IconHome className="h-6 w-6" />
           בית
+        </NavLink>
+        <NavLink
+          to="/catalog"
+          className={({ isActive }) =>
+            `${tab} ${isActive ? "text-white" : "text-ink-muted hover:text-white/80"}`
+          }
+        >
+          <IconGrid className="h-6 w-6" />
+          קטלוג
         </NavLink>
         <NavLink
           to="/history"

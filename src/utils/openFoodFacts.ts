@@ -4,6 +4,18 @@ const OFF_PRODUCT_URL =
 export type OpenFoodFactsProduct = {
   productName: string;
   brand: string;
+  quantityText?: string;
+  /** Parsed from OFF quantity when possible (grams or milliliters-as-grams). */
+  quantityG?: number;
+  servingSizeText?: string;
+  /** Parsed grams/ml from serving size (best-effort). */
+  servingG?: number;
+  ingredientsText?: string;
+  allergensText?: string;
+  categoriesText?: string;
+  imageFrontUrl?: string;
+  imageNutritionUrl?: string;
+  imageIngredientsUrl?: string;
   cals100?: number;
   prot100?: number;
   carb100?: number;
@@ -24,6 +36,40 @@ function readNum(n: Record<string, unknown>, keys: string[]): number | undefined
       if (Number.isFinite(p)) return p;
     }
   }
+  return undefined;
+}
+
+function readStr(o: Record<string, unknown>, keys: string[]): string | undefined {
+  for (const k of keys) {
+    const v = o[k];
+    if (typeof v === "string") {
+      const s = v.trim();
+      if (s) return s;
+    }
+  }
+  return undefined;
+}
+
+function parseQuantityToGrams(raw?: string): number | undefined {
+  if (!raw) return undefined;
+  const s = raw
+    .replace(/\s+/g, " ")
+    .replace(",", ".")
+    .trim()
+    .toLowerCase();
+  if (!s) return undefined;
+
+  // Examples: "500 g", "1 kg", "330ml", "0.5 l"
+  const m = s.match(/(\d+(?:\.\d+)?)\s*(g|kg|ml|l)\b/);
+  if (!m) return undefined;
+  const n = parseFloat(m[1]);
+  if (!Number.isFinite(n) || n <= 0) return undefined;
+  const unit = m[2];
+  if (unit === "g") return n;
+  if (unit === "kg") return n * 1000;
+  // For our per-100g normalization we treat ml as grams (rough approximation).
+  if (unit === "ml") return n;
+  if (unit === "l") return n * 1000;
   return undefined;
 }
 
@@ -64,9 +110,41 @@ function nutrimentsFromProduct(product: Record<string, unknown>): OpenFoodFactsP
       .split(/[,;/]/)[0]
       ?.trim() ?? "";
 
+  const quantityText = readStr(product, ["quantity"]);
+  const quantityG = parseQuantityToGrams(quantityText);
+
+  const servingSizeText = readStr(product, ["serving_size"]);
+  const servingG = parseQuantityToGrams(servingSizeText);
+
+  const ingredientsText =
+    readStr(product, ["ingredients_text_he", "ingredients_text"]) ??
+    undefined;
+
+  const allergensText =
+    readStr(product, ["allergens", "allergens_from_ingredients", "allergens_from_user", "allergens_hierarchy", "allergens_tags"]) ??
+    undefined;
+
+  const categoriesText =
+    readStr(product, ["categories", "categories_hierarchy", "categories_tags"]) ??
+    undefined;
+
+  const imageFrontUrl = readStr(product, ["image_front_url", "image_url"]);
+  const imageNutritionUrl = readStr(product, ["image_nutrition_url"]);
+  const imageIngredientsUrl = readStr(product, ["image_ingredients_url"]);
+
   return {
     productName: nameRaw.trim(),
     brand,
+    quantityText,
+    quantityG,
+    servingSizeText,
+    servingG,
+    ingredientsText,
+    allergensText,
+    categoriesText,
+    imageFrontUrl,
+    imageNutritionUrl,
+    imageIngredientsUrl,
     cals100,
     prot100,
     carb100,

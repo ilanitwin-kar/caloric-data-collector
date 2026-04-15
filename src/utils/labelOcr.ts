@@ -3,7 +3,11 @@ export type ParsedMacros = {
   cals100?: number;
   prot100?: number;
   carb100?: number;
+  sugars100?: number;
   fat100?: number;
+  satFat100?: number;
+  fiber100?: number;
+  sodiumMg100?: number;
 };
 
 function stripBidi(s: string): string {
@@ -125,6 +129,18 @@ function extractCarbsFromLines(lines: string[]): number | undefined {
   return undefined;
 }
 
+function extractSugarsFromLines(lines: string[]): number | undefined {
+  for (const raw of lines) {
+    const line = stripBidi(raw);
+    if (!/סוכרים/i.test(line) && !/\bsugars?\b/i.test(line)) continue;
+    const n =
+      numberClosestToKeyword(line, /סוכרים|sugars?/i, 0, 100) ??
+      firstSmallNumberOnLine(line, 100);
+    if (n !== undefined && n <= 100) return n;
+  }
+  return undefined;
+}
+
 function firstSmallNumberOnLine(line: string, max: number): number | undefined {
   const matches = line.match(/\d+[.,]?\d*/g);
   if (!matches) return undefined;
@@ -148,6 +164,43 @@ function extractFatFromLines(lines: string[]): number | undefined {
   return undefined;
 }
 
+function extractSatFatFromLines(lines: string[]): number | undefined {
+  for (const raw of lines) {
+    const line = stripBidi(raw);
+    if (!/רווי|רווים/i.test(line) && !/saturat/i.test(line)) continue;
+    const n =
+      numberClosestToKeyword(line, /רווי(?:ם)?|saturat/i, 0, 100) ??
+      firstSmallNumberOnLine(line, 100);
+    if (n !== undefined && n <= 100) return n;
+  }
+  return undefined;
+}
+
+function extractFiberFromLines(lines: string[]): number | undefined {
+  for (const raw of lines) {
+    const line = stripBidi(raw);
+    if (!/סיבים/i.test(line) && !/\bfiber\b/i.test(line)) continue;
+    const n =
+      numberClosestToKeyword(line, /סיבים|fiber/i, 0, 100) ??
+      firstSmallNumberOnLine(line, 100);
+    if (n !== undefined && n <= 100) return n;
+  }
+  return undefined;
+}
+
+function extractSodiumMgFromLines(lines: string[]): number | undefined {
+  for (const raw of lines) {
+    const line = stripBidi(raw);
+    if (!/נתרן/i.test(line) && !/\bsodium\b/i.test(line)) continue;
+    // Often sodium appears as mg.
+    const n =
+      numberClosestToKeyword(line, /נתרן|sodium/i, 0, 50000) ??
+      firstSmallNumberOnLine(line, 50000);
+    if (n !== undefined) return n;
+  }
+  return undefined;
+}
+
 export function parseNutritionFromOcrText(raw: string): ParsedMacros {
   const lines = raw.split(/\r?\n/).map((l) => stripBidi(l).trim());
 
@@ -162,8 +215,20 @@ export function parseNutritionFromOcrText(raw: string): ParsedMacros {
   const c = extractCarbsFromLines(lines);
   if (c !== undefined) out.carb100 = c;
 
+  const sug = extractSugarsFromLines(lines);
+  if (sug !== undefined) out.sugars100 = sug;
+
   const f = extractFatFromLines(lines);
   if (f !== undefined) out.fat100 = f;
+
+  const sat = extractSatFatFromLines(lines);
+  if (sat !== undefined) out.satFat100 = sat;
+
+  const fib = extractFiberFromLines(lines);
+  if (fib !== undefined) out.fiber100 = fib;
+
+  const sod = extractSodiumMgFromLines(lines);
+  if (sod !== undefined) out.sodiumMg100 = sod;
 
   return out;
 }
@@ -173,7 +238,11 @@ export function countParsedFields(m: ParsedMacros): number {
   if (m.cals100 !== undefined) n += 1;
   if (m.prot100 !== undefined) n += 1;
   if (m.carb100 !== undefined) n += 1;
+  if (m.sugars100 !== undefined) n += 1;
   if (m.fat100 !== undefined) n += 1;
+  if (m.satFat100 !== undefined) n += 1;
+  if (m.fiber100 !== undefined) n += 1;
+  if (m.sodiumMg100 !== undefined) n += 1;
   return n;
 }
 
