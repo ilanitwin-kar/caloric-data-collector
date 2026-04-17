@@ -1,4 +1,5 @@
 import type { Product } from "../types/product";
+import { PORTION_CUP_G, PORTION_TBSP_G } from "./productExport";
 
 function escapeCsvCell(value: string): string {
   if (/[",\n\r]/.test(value)) {
@@ -30,10 +31,20 @@ export function productsToCsv(products: Product[]): string {
     "Fiber / 100g",
     "Sodium mg / 100g",
     "Sugar tsp / 100g",
+    `Cal / tbsp (~${PORTION_TBSP_G}g)`,
+    `Protein g / tbsp`,
+    `Carbs g / tbsp`,
+    `Fat g / tbsp`,
+    `Cal / cup (~${PORTION_CUP_G}g)`,
+    `Protein g / cup`,
+    `Carbs g / cup`,
+    `Fat g / cup`,
     "Saved (ISO)",
   ];
   const lines = [headers.join(",")];
   for (const p of products) {
+    const kTb = Math.round((p.cals100 * PORTION_TBSP_G) / 100);
+    const kCup = Math.round((p.cals100 * PORTION_CUP_G) / 100);
     lines.push(
       [
         escapeCsvCell(p.barcode ?? ""),
@@ -56,6 +67,14 @@ export function productsToCsv(products: Product[]): string {
         String(p.fiber100 ?? ""),
         String(p.sodiumMg100 ?? ""),
         String(p.sugarTeaspoons100 ?? ""),
+        String(kTb),
+        String(Math.round(((p.prot100 * PORTION_TBSP_G) / 100) * 1000) / 1000),
+        String(Math.round(((p.carb100 * PORTION_TBSP_G) / 100) * 1000) / 1000),
+        String(Math.round(((p.fat100 * PORTION_TBSP_G) / 100) * 1000) / 1000),
+        String(kCup),
+        String(Math.round(((p.prot100 * PORTION_CUP_G) / 100) * 1000) / 1000),
+        String(Math.round(((p.carb100 * PORTION_CUP_G) / 100) * 1000) / 1000),
+        String(Math.round(((p.fat100 * PORTION_CUP_G) / 100) * 1000) / 1000),
         escapeCsvCell(p.savedAt),
       ].join(","),
     );

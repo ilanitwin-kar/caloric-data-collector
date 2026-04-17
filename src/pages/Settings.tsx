@@ -1,11 +1,23 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Spinner } from "../components/Spinner";
 import { useVerified100 } from "../context/Verified100Context";
+import {
+  clearBodyWeightKg,
+  readBodyWeightKg,
+  writeBodyWeightKg,
+} from "../utils/bodyWeightStorage";
+import { STEPS_PER_MINUTE, WALKING_MET } from "../utils/walkingBurn";
 
 export function Settings() {
   const { items, loading, importTsv } = useVerified100();
   const [importing, setImporting] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+  const [bodyKgInput, setBodyKgInput] = useState("");
+
+  useEffect(() => {
+    const w = readBodyWeightKg();
+    setBodyKgInput(w !== null ? String(w) : "");
+  }, []);
 
   return (
     <div className="space-y-8 pb-4">
@@ -21,6 +33,37 @@ export function Settings() {
         </p>
         <p className="mt-2 text-sm text-ink-muted">Caloric Intelligence</p>
       </div>
+
+      <section className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+        <h2 className="text-sm font-semibold text-white">משקל גוף</h2>
+        <p className="mt-1 text-xs text-ink-muted">
+          לחישוב צעדי הליכה להוצאת קלוריות (לפי MET {WALKING_MET}, כ־{STEPS_PER_MINUTE} צעדים לדקה).
+        </p>
+        <div className="mt-3 flex flex-wrap items-end gap-2">
+          <label className="flex min-w-[8rem] flex-1 flex-col gap-1">
+            <span className="text-xs text-ink-dim">קילוגרם</span>
+            <input
+              type="number"
+              inputMode="decimal"
+              min={20}
+              max={400}
+              step="0.1"
+              value={bodyKgInput}
+              onChange={(e) => setBodyKgInput(e.target.value)}
+              onBlur={() => {
+                const n = parseFloat(bodyKgInput.replace(",", "."));
+                if (Number.isFinite(n) && n >= 20 && n <= 400) {
+                  writeBodyWeightKg(n);
+                } else if (bodyKgInput.trim() === "") {
+                  clearBodyWeightKg();
+                }
+              }}
+              placeholder="למשל 65"
+              className="min-h-[44px] rounded-xl border border-white/15 bg-black/40 px-3 text-sm text-white placeholder:text-ink-dim focus:border-white/35 focus:outline-none"
+            />
+          </label>
+        </div>
+      </section>
 
       <section className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
         <h2 className="text-sm font-semibold text-white">מאגר מאומת (100g)</h2>

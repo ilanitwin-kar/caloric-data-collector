@@ -28,7 +28,9 @@ import {
 } from "../utils/openFoodFacts";
 import type { Product } from "../types/product";
 import { playSuccessChime } from "../utils/successChime";
+import { useBodyWeightKg } from "../hooks/useBodyWeightKg";
 import { fmt1, parseNum } from "../utils/number";
+import { WALKING_MET, walkingStepsToBurnKcal } from "../utils/walkingBurn";
 
 function BarcodeIcon({ className }: { className?: string }) {
   return (
@@ -162,6 +164,7 @@ function pickLatestProductByBarcode(products: Product[], digits: string): Produc
 export function Home() {
   const { addProduct, products } = useProducts();
   const { findBestMatch } = useVerified100();
+  const bodyWeightKg = useBodyWeightKg();
   const [name, setName] = useState("");
   const [brand, setBrand] = useState("");
   const [barcode, setBarcode] = useState("");
@@ -344,9 +347,11 @@ export function Home() {
         setOffSearchError(
           res.reason === "timeout"
             ? "החיפוש ארך זמן רב — נסי שוב."
-            : res.reason === "parse"
-              ? "תגובה לא צפויה מהמאגר — נסי שוב."
-              : "לא ניתן לחפש במאגר כרגע.",
+            : res.reason === "blocked"
+              ? "חיפוש השם אינו זמין כרגע — נסי שוב מאוחר יותר או סרקי ברקוד."
+              : res.reason === "parse"
+                ? "תגובה לא צפויה מהמאגר — נסי שוב."
+                : "לא ניתן להתחבר למאגר — בדקי רשת ונסי שוב.",
         );
         return;
       }
@@ -380,7 +385,6 @@ export function Home() {
     });
   }, [name, brand, findBestMatch]);
 
-  // When we have a verified match, auto-fill macros + package hints (still editable).
   useEffect(() => {
     if (!verifiedCandidate) return;
     if (verifiedCandidate.calories100 !== undefined) {
@@ -563,6 +567,26 @@ export function Home() {
     };
   }, [portionGrams, cals100, prot100, carb100, fat100]);
 
+  const portionWalkSteps = useMemo(() => {
+    if (!portionPreview || !Number.isFinite(portionPreview.cals) || portionPreview.cals <= 0) {
+      return null;
+    }
+    if (bodyWeightKg === null) return null;
+    return walkingStepsToBurnKcal(portionPreview.cals, bodyWeightKg);
+  }, [portionPreview, bodyWeightKg]);
+
+  const unitWalkSteps = useMemo(() => {
+    if (
+      !derived.hasPackage ||
+      !Number.isFinite(derived.calsUnit) ||
+      derived.calsUnit <= 0
+    ) {
+      return null;
+    }
+    if (bodyWeightKg === null) return null;
+    return walkingStepsToBurnKcal(derived.calsUnit, bodyWeightKg);
+  }, [derived.hasPackage, derived.calsUnit, bodyWeightKg]);
+
   async function handleSave() {
     setError(null);
     const n = name.trim();
@@ -656,9 +680,7 @@ export function Home() {
             איסוף נתונים
           </p>
           <p className="text-sm text-ink-muted">
-            סורקים ברקוד → מתקבל עזר מהמאגר העולמי → מתקנים מול התווית → שומרים. מה שנשמר
-            אצלך הוא מה שהלקוחות יראו בעתיד (בסריקה חוזרת של אותו ברקוד נטען השמירה המקומית,
-            לא המאגר). מקור האמת: התווית.
+            סרקי ברקוד או חפשי לפי שם, השוו לתווית, והשלימי את הערכים לפני שמירה.
           </p>
         </header>
 
@@ -668,8 +690,8 @@ export function Home() {
           <span className="text-[10px] text-ink-dim">מאגר ציבורי עולמי</span>
         </div>
         <p className="text-xs text-ink-muted">
-          לחצו על «סרוק ברקוד» — נפתח מסך מלא עם המצלמה (כמו MyFitnessPal). אם המוצר כבר
-          שמור אצלך — ייטענו הנתונים מהתווית ששמרת; אחרת — עזר מהמאגר הציבורי.
+          «סרוק ברקוד» פותח מסך מלא עם המצלמה. אם כבר שמרת את המוצר — ייטענו הנתונים
+          השמורים; אחרת יוצעו נתונים מהמאגר הציבורי לבדיקה מול התווית.
         </p>
 
         {offNotice === "not_found" && (
@@ -690,8 +712,7 @@ export function Home() {
         )}
         {offNotice === "success" && (
           <p className="rounded-xl border border-white/25 bg-white/[0.08] px-4 py-3 text-sm text-white">
-            נטען מהמאגר הציבורי — זה רק עזר. ערכים צריכים להתאים לתווית; בדקי משקל
-            אריזה ויחידות ואת טבלת ה־100 גרם מול האריזה, או מלאי מסריקת תווית.
+            נטען מקובץ ציבורי — ודאי מול התווית: משקל אריזה, מספר יחידות וטבלת 100 גרם.
           </p>
         )}
 
@@ -725,8 +746,7 @@ export function Home() {
       <section className="space-y-3 rounded-2xl border border-white/10 bg-white/[0.03] p-4">
         <h2 className="text-xs font-semibold text-ink-dim">חיפוש במאגר (שם / מותג)</h2>
         <p className="text-xs text-ink-muted">
-          כמו אחרי סריקת ברקוד: אם המוצר כבר שמור אצלך — ייטען מהשמירה; אחרת — מהמאגר
-          הציבורי.
+          אותה לוגיקה כמו אחרי סריקת ברקוד: קודם מה שנשמר אצלך, אחרת מהמאגר.
         </p>
         <div className="flex flex-col gap-2 sm:flex-row">
           <input
@@ -785,11 +805,10 @@ export function Home() {
         id="label-scan-section"
         className="space-y-3 rounded-2xl border border-white/10 bg-white/[0.03] p-4"
       >
-        <h2 className="text-xs font-semibold text-ink-dim">סריקת תווית (OCR)</h2>
+        <h2 className="text-xs font-semibold text-ink-dim">סריקת תווית</h2>
         <p className="text-xs text-ink-muted">
-          צלמו את טבלת התזונה ל-100 גרם — בעברית או באנגלית (Calories, Protein, Total
-          Fat…). תאורה חזקה ללא הבהוב, מרחק קרוב, ורק הטבלה. ה-OCR מקומי (Tesseract) ולפעמים
-          טועה; אם לא מזהה כלום, פתחי למטה את «מה נקרא מהתמונה» כדי לראות אם בכלל יצא טקסט.
+          צלמו רק את טבלת התזונה ל-100 גרם — תאורה יציבה וקרוב לתווית. אם לא זוהה כלום,
+          אפשר לראות למטה את הטקסט שחולץ מהתמונה.
         </p>
         <input
           ref={cameraInputRef}
@@ -876,7 +895,7 @@ export function Home() {
               {ocrDebugText && ocrUi.status !== "loading" ? (
                 <details className="mt-2 rounded-xl border border-white/10 bg-black/25 px-3 py-2 text-xs text-ink-muted">
                   <summary className="cursor-pointer select-none text-ink-muted">
-                    מה נקרא מהתמונה (לניפוי באגים)
+                    טקסט שזוהה מהתמונה
                   </summary>
                   <pre
                     className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap rounded-lg bg-black/40 p-2 text-[11px] text-white/75"
@@ -1025,7 +1044,7 @@ export function Home() {
           />
           <Field
             id="sugar-tsp-100"
-            label="כפיות סוכר (ל־100g) — הערכה מסוכרים כשמופיע במאגר"
+            label="כפיות סוכר (ל־100 גרם)"
             value={sugarTsp100}
             onChange={setSugarTsp100}
             inputMode="decimal"
@@ -1064,11 +1083,11 @@ export function Home() {
         </h2>
         <div className="mb-4 border-b border-white/10 pb-4">
           <h3 className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-ink-dim">
-            תצוגת מנה (לפי בחירה)
+            מנה לתצוגה
           </h3>
           <p className="mb-3 text-xs text-ink-muted">
-            בנוסף לטבלת &quot;ליחידה בודדת&quot; למטה (לפי משקל כולל ÷ יחידות), אפשר לבחור כאן
-            מנה לתצוגה — 100 גרם, כף, כוס — בלי לשנות מה נשמר במוצר.
+            בחרי 100 גרם, כף, כוס או יחידה מהאריזה — התצוגה והצעדים מתעדכנים; השמירה נשארת
+            לפי השדות למעלה.
           </p>
           <div className="flex flex-wrap gap-2">
             {(
@@ -1130,6 +1149,25 @@ export function Home() {
                   {fmt1(portionPreview.fat)} גרם
                 </dd>
               </div>
+              {Number.isFinite(portionPreview.cals) && portionPreview.cals > 0 ? (
+                <div className="col-span-2 border-t border-white/10 pt-3">
+                  <dt className="text-ink-muted">הליכה — צעדים משוערים להוצאת המנה</dt>
+                  <dd className="mt-0.5 text-sm font-medium tabular-nums text-white">
+                    {bodyWeightKg !== null && portionWalkSteps !== null ? (
+                      <>
+                        כ־{portionWalkSteps.toLocaleString("he-IL")} צעדים
+                        <span className="mt-1 block text-[11px] font-normal text-ink-dim">
+                          MET {WALKING_MET}, משקל {bodyWeightKg} ק״ג (מ«הגדרות»)
+                        </span>
+                      </>
+                    ) : (
+                      <span className="font-normal text-ink-muted">
+                        הזיני משקל גוף ב«הגדרות» לחישוב צעדים.
+                      </span>
+                    )}
+                  </dd>
+                </div>
+              ) : null}
             </dl>
           ) : portionPreset === "unit" && !derived.hasPackage ? (
             <p className="mt-3 text-xs text-ink-dim">
@@ -1168,6 +1206,25 @@ export function Home() {
               {fmt1(derived.fatUnit)} גרם
             </dd>
           </div>
+          {derived.hasPackage && Number.isFinite(derived.calsUnit) && derived.calsUnit > 0 ? (
+            <div className="col-span-2 border-t border-white/10 pt-3">
+              <dt className="text-ink-muted">הליכה — צעדים ליחידה אחת</dt>
+              <dd className="mt-0.5 text-sm font-medium tabular-nums text-white">
+                {bodyWeightKg !== null && unitWalkSteps !== null ? (
+                  <>
+                    כ־{unitWalkSteps.toLocaleString("he-IL")} צעדים
+                    <span className="mt-1 block text-[11px] font-normal text-ink-dim">
+                      MET {WALKING_MET}, משקל {bodyWeightKg} ק״ג
+                    </span>
+                  </>
+                ) : (
+                  <span className="font-normal text-ink-muted">
+                    הזיני משקל גוף ב«הגדרות» לחישוב צעדים.
+                  </span>
+                )}
+              </dd>
+            </div>
+          ) : null}
         </dl>
         {!derived.hasPackage && (
           <p className="mt-3 text-xs text-ink-dim">

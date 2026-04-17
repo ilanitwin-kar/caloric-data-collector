@@ -1,16 +1,11 @@
 import { useEffect, useRef } from "react";
 
 type Props = {
-  /** כש-false — המצלמה נעצרת */
   isActive: boolean;
   onScan: (barcodeDigits: string) => void;
-  /** מסך מלא (כמו MyFitnessPal) — מסגרת גדולה וגובה וידאו גבוה */
   mode?: "compact" | "fullscreen";
 };
 
-/**
- * סורק ברקוד דרך המצלמה (EAN/UPC וכו׳).
- */
 export function BarcodeScanner({
   isActive,
   onScan,

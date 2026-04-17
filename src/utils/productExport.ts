@@ -1,5 +1,8 @@
 import type { Product } from "../types/product";
 
+export const PORTION_TBSP_G = 15;
+export const PORTION_CUP_G = 240;
+
 function numOrEmpty(n: number | undefined): number | string {
   if (n === undefined || !Number.isFinite(n)) return "";
   return n;
@@ -9,6 +12,16 @@ function perUnitFrom100(p: Product, v100: number | undefined): number | string {
   if (v100 === undefined || !Number.isFinite(v100)) return "";
   const f = p.unitWeight / 100;
   return Math.round(v100 * f * 1000) / 1000;
+}
+
+function perGramsFrom100(v100: number | undefined, grams: number): number | string {
+  if (v100 === undefined || !Number.isFinite(v100)) return "";
+  return Math.round((v100 * grams * 1000) / 100) / 1000;
+}
+
+function perGramsCals100(cals100: number | undefined, grams: number): number | string {
+  if (cals100 === undefined || !Number.isFinite(cals100)) return "";
+  return Math.round((cals100 * grams) / 100);
 }
 
 export function productsToSheetRows(products: Product[]): Record<string, string | number>[] {
@@ -39,6 +52,14 @@ export function productsToSheetRows(products: Product[]): Record<string, string 
     "סיבים ליחידה": perUnitFrom100(p, p.fiber100),
     "נתרן מג ליחידה": perUnitFrom100(p, p.sodiumMg100),
     "כפיות סוכר ליחידה": perUnitFrom100(p, p.sugarTeaspoons100),
+    [`קק"ל כף (~${PORTION_TBSP_G}ג)`]: perGramsCals100(p.cals100, PORTION_TBSP_G),
+    [`חלבון ג כף (~${PORTION_TBSP_G}ג)`]: perGramsFrom100(p.prot100, PORTION_TBSP_G),
+    [`פחמימות ג כף (~${PORTION_TBSP_G}ג)`]: perGramsFrom100(p.carb100, PORTION_TBSP_G),
+    [`שומן ג כף (~${PORTION_TBSP_G}ג)`]: perGramsFrom100(p.fat100, PORTION_TBSP_G),
+    [`קק"ל כוס (~${PORTION_CUP_G}ג)`]: perGramsCals100(p.cals100, PORTION_CUP_G),
+    [`חלבון ג כוס (~${PORTION_CUP_G}ג)`]: perGramsFrom100(p.prot100, PORTION_CUP_G),
+    [`פחמימות ג כוס (~${PORTION_CUP_G}ג)`]: perGramsFrom100(p.carb100, PORTION_CUP_G),
+    [`שומן ג כוס (~${PORTION_CUP_G}ג)`]: perGramsFrom100(p.fat100, PORTION_CUP_G),
     "נשמר (ISO)": p.savedAt,
   }));
 }
@@ -133,18 +154,42 @@ export async function productsToPdfBlob(products: Product[]): Promise<Blob> {
   }
 }
 
-export function productsToShareSummaryText(products: Product[]): string {
-  const lines: string[] = ["רשימת מוצרים (תקציר):", ""];
+function r1(n: number): string {
+  return String(Math.round(n * 10) / 10);
+}
+
+export function productsToShareSummaryText(products: Product[], maxChars = 10_000): string {
+  const lines: string[] = [
+    `המוצרים שלי — ${products.length} פריטים`,
+    "100ג · יחידה · כף (~15ג) · כוס (~240ג)",
+    "",
+  ];
   for (const p of products) {
-    const bc = p.barcode ? ` | ברקוד ${p.barcode}` : "";
+    const bc = p.barcode ?? "ללא ברקוד";
+    const kTb = perGramsCals100(p.cals100, PORTION_TBSP_G);
+    const kCup = perGramsCals100(p.cals100, PORTION_CUP_G);
+    const kTbS = kTb === "" ? "—" : String(kTb);
+    const kCupS = kCup === "" ? "—" : String(kCup);
+    lines.push(`• ${p.name} | ${p.brand} | ${bc}`);
     lines.push(
-      `• ${p.name}${bc} — ${p.cals100} קק"ל/100ג, אריזה ${p.totalWeight}ג, ${p.units} יח׳`,
+      `  100ג: ${p.cals100} קק"ל, ח ${r1(p.prot100)}ג, פ ${r1(p.carb100)}ג, ש ${r1(p.fat100)}ג`,
     );
+    lines.push(
+      `  יחידה (${r1(p.unitWeight)}ג): ${r1(p.calsUnit)} קק"ל, ח ${r1(p.protUnit)}ג, פ ${r1(p.carbUnit)}ג, ש ${r1(p.fatUnit)}ג`,
+    );
+    lines.push(
+      `  כף: ${kTbS} קק"ל, ח ${r1((p.prot100 * PORTION_TBSP_G) / 100)}ג, פ ${r1((p.carb100 * PORTION_TBSP_G) / 100)}ג, ש ${r1((p.fat100 * PORTION_TBSP_G) / 100)}ג`,
+    );
+    lines.push(
+      `  כוס: ${kCupS} קק"ל, ח ${r1((p.prot100 * PORTION_CUP_G) / 100)}ג, פ ${r1((p.carb100 * PORTION_CUP_G) / 100)}ג, ש ${r1((p.fat100 * PORTION_CUP_G) / 100)}ג`,
+    );
+    lines.push(`  אריזה: ${p.totalWeight}ג, ${p.units} יח׳`);
+    lines.push("");
   }
-  lines.push("", "לפרטים מלאים: ייצאו Excel או PDF מהאפליקציה.");
+  lines.push("נתונים מלאים: Excel / PDF / CSV מהאפליקציה.");
   let text = lines.join("\n");
-  if (text.length > 3800) {
-    text = `${text.slice(0, 3800)}\n…`;
+  if (text.length > maxChars) {
+    text = `${text.slice(0, Math.max(0, maxChars - 120))}\n\n…[נחתך — לטקסט מלא: אימייל עם פחות מוצרים או ייצוא קובץ]`;
   }
   return text;
 }
