@@ -9,10 +9,7 @@ import {
 } from "react";
 import { Spinner } from "../components/Spinner";
 import { useProducts } from "../context/ProductsContext";
-import { useCatalog } from "../context/CatalogContext";
-import { useAuth } from "../context/AuthContext";
 import { useVerified100 } from "../context/Verified100Context";
-import { auth } from "../firebase";
 import {
   countParsedFields,
   parseNutritionFromOcrText,
@@ -26,8 +23,6 @@ import {
 } from "../utils/openFoodFacts";
 import { playSuccessChime } from "../utils/successChime";
 import { fmt1, parseNum } from "../utils/number";
-import { uploadCatalogImage } from "../utils/storageUpload";
-import { normalizeText } from "../utils/verifiedTsv";
 
 function BarcodeIcon({ className }: { className?: string }) {
   return (
@@ -74,18 +69,6 @@ function formatMacroValue(n: number): string {
   return Number.isInteger(r) ? String(r) : r.toFixed(1);
 }
 
-function syntheticGtin12(brand: string | undefined, name: string): string {
-  const key = `${normalizeText(brand ?? "")}|${normalizeText(name)}`;
-  let h = 2166136261;
-  for (let i = 0; i < key.length; i++) {
-    h ^= key.charCodeAt(i);
-    h = Math.imul(h, 16777619);
-  }
-  const n = h >>> 0;
-  // 12 digits (no check digit) — stable internal key for items without a real barcode.
-  return String(n % 1_000_000_000_000).padStart(12, "0");
-}
-
 function applyMacrosToFields(
   p: ParsedMacros,
   setters: {
@@ -95,8 +78,10 @@ function applyMacrosToFields(
     setSugars100: (v: string) => void;
     setFat100: (v: string) => void;
     setSatFat100: (v: string) => void;
+    setTransFat100: (v: string) => void;
     setFiber100: (v: string) => void;
     setSodiumMg100: (v: string) => void;
+    setSugarTsp100: (v: string) => void;
   },
 ) {
   if (p.cals100 !== undefined) setters.setCals100(formatMacroValue(p.cals100));
@@ -105,8 +90,12 @@ function applyMacrosToFields(
   if (p.sugars100 !== undefined) setters.setSugars100(formatMacroValue(p.sugars100));
   if (p.fat100 !== undefined) setters.setFat100(formatMacroValue(p.fat100));
   if (p.satFat100 !== undefined) setters.setSatFat100(formatMacroValue(p.satFat100));
+  if (p.transFat100 !== undefined) setters.setTransFat100(formatMacroValue(p.transFat100));
   if (p.fiber100 !== undefined) setters.setFiber100(formatMacroValue(p.fiber100));
   if (p.sodiumMg100 !== undefined) setters.setSodiumMg100(formatMacroValue(p.sodiumMg100));
+  if (p.sugarTeaspoons100 !== undefined) {
+    setters.setSugarTsp100(formatMacroValue(p.sugarTeaspoons100));
+  }
 }
 
 function Field({
@@ -156,8 +145,6 @@ type OcrUiState =
 
 export function Home() {
   const { addProduct } = useProducts();
-  const { upsertByBarcode } = useCatalog();
-  const { user } = useAuth();
   const { findBestMatch } = useVerified100();
   const [name, setName] = useState("");
   const [brand, setBrand] = useState("");
@@ -168,8 +155,10 @@ export function Home() {
   const [sugars100, setSugars100] = useState("");
   const [fat100, setFat100] = useState("");
   const [satFat100, setSatFat100] = useState("");
+  const [transFat100, setTransFat100] = useState("");
   const [fiber100, setFiber100] = useState("");
   const [sodiumMg100, setSodiumMg100] = useState("");
+  const [sugarTsp100, setSugarTsp100] = useState("");
   const [totalWeight, setTotalWeight] = useState("");
   const [units, setUnits] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -186,6 +175,8 @@ export function Home() {
   const lastImageRef = useRef<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [ocrUi, setOcrUi] = useState<OcrUiState>({ status: "idle" });
+  /** טקסט גולמי מ־OCR — לבדיקה כשהמילוי האוטומטי לא מזהה כלום */
+  const [ocrDebugText, setOcrDebugText] = useState<string | null>(null);
 
   const ocrSectionRef = useRef<HTMLElement | null>(null);
   /** המצלמה לברקוד — דולקת רק אחרי לחיצה על «סרוק ברקוד» */
@@ -236,22 +227,28 @@ export function Home() {
       if (d.productName) setName(d.productName);
       if (d.brand) setBrand(d.brand);
       const qg = d.quantityG;
-      if (typeof qg === "number") {
+      const pu = d.packUnits;
+      if (typeof qg === "number" && qg > 0) {
         setTotalWeight((prev) => (prev.trim() ? prev : String(Math.round(qg))));
-        setUnits((prev) => (prev.trim() ? prev : "1"));
-      } else if (typeof d.servingG === "number" && d.servingG > 0) {
-        // Fallback: some products only expose serving size reliably.
-        setTotalWeight((prev) => (prev.trim() ? prev : String(Math.round(d.servingG!))));
-        setUnits((prev) => (prev.trim() ? prev : "1"));
+        setUnits((prev) => {
+          if (prev.trim()) return prev;
+          if (typeof pu === "number" && pu > 0) return String(Math.round(pu));
+          return "1";
+        });
       }
       if (d.cals100 !== undefined) setCals100(formatMacroValue(d.cals100));
       if (d.prot100 !== undefined) setProt100(formatMacroValue(d.prot100));
       if (d.carb100 !== undefined) setCarb100(formatMacroValue(d.carb100));
       if (d.fat100 !== undefined) setFat100(formatMacroValue(d.fat100));
-      if (d.sugars100 !== undefined) setSugars100(formatMacroValue(d.sugars100));
+      if (d.addedSugars100 !== undefined) setSugars100(formatMacroValue(d.addedSugars100));
+      else if (d.sugars100 !== undefined) setSugars100(formatMacroValue(d.sugars100));
       if (d.satFat100 !== undefined) setSatFat100(formatMacroValue(d.satFat100));
+      if (d.transFat100 !== undefined) setTransFat100(formatMacroValue(d.transFat100));
       if (d.fiber100 !== undefined) setFiber100(formatMacroValue(d.fiber100));
       if (d.sodiumMg100 !== undefined) setSodiumMg100(formatMacroValue(d.sodiumMg100));
+      if (d.sugarTeaspoons100 !== undefined) {
+        setSugarTsp100(formatMacroValue(d.sugarTeaspoons100));
+      }
       playSuccessChime();
       setOffNotice("success");
       window.setTimeout(() => {
@@ -300,11 +297,16 @@ export function Home() {
     }
 
     const qg = offData?.quantityG;
+    const pu = offData?.packUnits;
     if (typeof qg === "number" && qg > 0) {
       setTotalWeight((prev) => (prev.trim() ? prev : String(Math.round(qg))));
-      setUnits((prev) => (prev.trim() ? prev : "1"));
+      setUnits((prev) => {
+        if (prev.trim()) return prev;
+        if (typeof pu === "number" && pu > 0) return String(Math.round(pu));
+        return "1";
+      });
     }
-  }, [verifiedCandidate, offData?.quantityG]);
+  }, [verifiedCandidate, offData?.quantityG, offData?.packUnits]);
 
   const applyVerified = useCallback(() => {
     if (!verifiedCandidate) return;
@@ -325,8 +327,11 @@ export function Home() {
   const runOcrOnFile = useCallback(
     async (file: File) => {
       setOcrUi({ status: "loading" });
+      setOcrDebugText(null);
       try {
         const text = await runLabelOcr(file);
+        const trimmed = text.trim();
+        setOcrDebugText(trimmed.length > 0 ? trimmed : null);
         const parsed = parseNutritionFromOcrText(text);
         const n = countParsedFields(parsed);
         applyMacrosToFields(parsed, {
@@ -336,8 +341,10 @@ export function Home() {
           setSugars100,
           setFat100,
           setSatFat100,
+          setTransFat100,
           setFiber100,
           setSodiumMg100,
+          setSugarTsp100,
         });
         if (n >= 4) setOcrUi({ status: "success", filled: n });
         else if (n > 0) setOcrUi({ status: "partial", filled: n });
@@ -373,6 +380,7 @@ export function Home() {
   const handleRemoveImage = useCallback(() => {
     revokePreview();
     setOcrUi({ status: "idle" });
+    setOcrDebugText(null);
   }, [revokePreview]);
 
   const handleRescan = useCallback(() => {
@@ -436,8 +444,10 @@ export function Home() {
     const sug100 = parseNum(sugars100);
     const f100 = parseNum(fat100);
     const sat100 = parseNum(satFat100);
+    const trans100 = parseNum(transFat100);
     const fib100 = parseNum(fiber100);
     const sod100 = parseNum(sodiumMg100);
+    const tsp100 = parseNum(sugarTsp100);
 
     const unitWeight = tw / u;
     const factor = unitWeight / 100;
@@ -451,6 +461,12 @@ export function Home() {
         prot100: Number.isFinite(p100) ? p100 : 0,
         carb100: Number.isFinite(cb100) ? cb100 : 0,
         fat100: Number.isFinite(f100) ? f100 : 0,
+        sugars100: Number.isFinite(sug100) ? sug100 : undefined,
+        satFat100: Number.isFinite(sat100) ? sat100 : undefined,
+        transFat100: Number.isFinite(trans100) ? trans100 : undefined,
+        fiber100: Number.isFinite(fib100) ? fib100 : undefined,
+        sodiumMg100: Number.isFinite(sod100) ? sod100 : undefined,
+        sugarTeaspoons100: Number.isFinite(tsp100) ? tsp100 : undefined,
         totalWeight: tw,
         units: u,
         unitWeight,
@@ -458,59 +474,6 @@ export function Home() {
         protUnit: (Number.isFinite(p100) ? p100 : 0) * factor,
         carbUnit: (Number.isFinite(cb100) ? cb100 : 0) * factor,
         fatUnit: (Number.isFinite(f100) ? f100 : 0) * factor,
-      });
-
-      const uid = user?.uid ?? auth.currentUser?.uid;
-      const rawBarcode = barcode.trim();
-      const catalogBarcode = rawBarcode || syntheticGtin12(brand.trim() || undefined, n);
-
-      const fromOff = offData;
-      const imgFile = lastImageRef.current;
-      const uploadedLabel =
-        uid && imgFile
-          ? await uploadCatalogImage({
-              uid,
-              gtin: catalogBarcode,
-              kind: "label",
-              file: imgFile,
-            })
-          : null;
-
-      await upsertByBarcode({
-        barcode: catalogBarcode,
-        name: n,
-        brand: brand.trim() || undefined,
-        per100: {
-          calories: c100,
-          proteinG: Number.isFinite(p100) ? p100 : undefined,
-          carbsG: Number.isFinite(cb100) ? cb100 : undefined,
-          sugarsG: Number.isFinite(sug100) ? sug100 : undefined,
-          fatG: Number.isFinite(f100) ? f100 : undefined,
-          satFatG: Number.isFinite(sat100) ? sat100 : undefined,
-          fiberG: Number.isFinite(fib100) ? fib100 : undefined,
-          sodiumMg: Number.isFinite(sod100) ? sod100 : undefined,
-        },
-        totalWeightG: tw,
-        unitsPerPack: u,
-        quantityText: fromOff?.quantityText,
-        quantityG: fromOff?.quantityG,
-        servingSizeText: fromOff?.servingSizeText,
-        servingG: fromOff?.servingG,
-        ingredientsText: fromOff?.ingredientsText,
-        allergensText: fromOff?.allergensText,
-        categoriesText: fromOff?.categoriesText,
-        images: fromOff
-          ? {
-              frontUrl: fromOff.imageFrontUrl,
-              nutritionUrl: fromOff.imageNutritionUrl,
-              ingredientsUrl: fromOff.imageIngredientsUrl,
-              labelUploadedUrl: uploadedLabel?.url ?? undefined,
-              labelUploadedPath: uploadedLabel?.path ?? undefined,
-            }
-          : uploadedLabel
-            ? { labelUploadedUrl: uploadedLabel.url, labelUploadedPath: uploadedLabel.path }
-            : undefined,
-        sourceType: offNotice === "success" ? "barcode_openfoodfacts" : previewUrl ? "ocr" : "manual",
       });
     } catch (err) {
       console.error("Home save — full error:", err);
@@ -532,8 +495,10 @@ export function Home() {
     setSugars100("");
     setFat100("");
     setSatFat100("");
+    setTransFat100("");
     setFiber100("");
     setSodiumMg100("");
+    setSugarTsp100("");
     setTotalWeight("");
     setUnits("");
     handleRemoveImage();
@@ -623,12 +588,9 @@ export function Home() {
       >
         <h2 className="text-xs font-semibold text-ink-dim">סריקת תווית (OCR)</h2>
         <p className="text-xs text-ink-muted">
-          צלמו את טבלת התזונה ל-100 גרם. המערכת מחפשת מילות מפתח כמו{" "}
-          <span className="text-white/90">אנרגיה</span>,{" "}
-          <span className="text-white/90">חלבון</span>,{" "}
-          <span className="text-white/90">פחמימות</span>,{" "}
-          <span className="text-white/90">שומן</span> וממלאת את השדות לפי המספרים
-          לידן.
+          צלמו את טבלת התזונה ל-100 גרם — בעברית או באנגלית (Calories, Protein, Total
+          Fat…). תאורה חזקה ללא הבהוב, מרחק קרוב, ורק הטבלה. ה-OCR מקומי (Tesseract) ולפעמים
+          טועה; אם לא מזהה כלום, פתחי למטה את «מה נקרא מהתמונה» כדי לראות אם בכלל יצא טקסט.
         </p>
         <input
           ref={cameraInputRef}
@@ -712,6 +674,21 @@ export function Home() {
                   הסר תמונה
                 </button>
               </div>
+              {ocrDebugText && ocrUi.status !== "loading" ? (
+                <details className="mt-2 rounded-xl border border-white/10 bg-black/25 px-3 py-2 text-xs text-ink-muted">
+                  <summary className="cursor-pointer select-none text-ink-muted">
+                    מה נקרא מהתמונה (לניפוי באגים)
+                  </summary>
+                  <pre
+                    className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap rounded-lg bg-black/40 p-2 text-[11px] text-white/75"
+                    dir="ltr"
+                  >
+                    {ocrDebugText.length > 12000
+                      ? `${ocrDebugText.slice(0, 12000)}\n…`
+                      : ocrDebugText}
+                  </pre>
+                </details>
+              ) : null}
             </div>
           </div>
         ) : null}
@@ -807,7 +784,7 @@ export function Home() {
           />
           <Field
             id="sugars100"
-            label="סוכרים (גרם)"
+            label="סוכרים מוספים (גרם) — אם אין, זה יתמלא מסוכרים כלליים"
             value={sugars100}
             onChange={setSugars100}
             inputMode="decimal"
@@ -827,6 +804,13 @@ export function Home() {
             inputMode="decimal"
           />
           <Field
+            id="transfat100"
+            label="שומן טראנס (גרם)"
+            value={transFat100}
+            onChange={setTransFat100}
+            inputMode="decimal"
+          />
+          <Field
             id="fiber100"
             label="סיבים תזונתיים (גרם)"
             value={fiber100}
@@ -840,6 +824,13 @@ export function Home() {
             onChange={setSodiumMg100}
             inputMode="decimal"
           />
+          <Field
+            id="sugar-tsp-100"
+            label="כפיות סוכר (ל־100g) — הערכה מסוכרים כשמופיע במאגר"
+            value={sugarTsp100}
+            onChange={setSugarTsp100}
+            inputMode="decimal"
+          />
         </div>
       </section>
 
@@ -850,19 +841,22 @@ export function Home() {
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Field
             id="total-weight"
-            label="משקל כולל (גרם)"
+            label="משקל כולל של האריזה (גרם)"
             value={totalWeight}
             onChange={setTotalWeight}
             inputMode="decimal"
           />
           <Field
             id="units"
-            label="מספר יחידות"
+            label="יחידות באריזה (כמה פריטים בפנים)"
             value={units}
             onChange={setUnits}
             inputMode="numeric"
           />
         </div>
+        <p className="text-xs text-ink-dim">
+          &quot;משקל כולל&quot; הוא כל האריזה; &quot;יחידות באריזה&quot; מתייחס לרב־חבילה (למשל 6) ולא למשקל של יחידה בודדת.
+        </p>
       </section>
 
       <section className="rounded-2xl border border-white/10 bg-gradient-to-b from-white/[0.07] to-transparent p-5">

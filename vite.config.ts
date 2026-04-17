@@ -35,6 +35,8 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ["**/*.{js,css,html,ico,svg,woff2}"],
+        // Firebase Auth redirect + /__/ handlers must not be swallowed by the SPA fallback.
+        navigateFallbackDenylist: [/^\/__\//, /\/__\//],
       },
     }),
   ],

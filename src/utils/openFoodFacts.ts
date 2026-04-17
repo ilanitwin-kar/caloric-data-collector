@@ -7,6 +7,11 @@ export type OpenFoodFactsProduct = {
   quantityText?: string;
   /** Parsed from OFF quantity when possible (grams or milliliters-as-grams). */
   quantityG?: number;
+  /**
+   * Best-effort: number of retail units inside the package when parseable
+   * (e.g. quantity text like "6 x 40 g").
+   */
+  packUnits?: number;
   servingSizeText?: string;
   /** Parsed grams/ml from serving size (best-effort). */
   servingG?: number;
@@ -21,10 +26,18 @@ export type OpenFoodFactsProduct = {
   carb100?: number;
   fat100?: number;
   sugars100?: number;
+  /** Added sugars per 100g when available (preferred for "כפיות סוכר"). */
+  addedSugars100?: number;
   satFat100?: number;
+  transFat100?: number;
   fiber100?: number;
   /** Sodium in mg per 100g (best-effort; may be derived from salt). */
   sodiumMg100?: number;
+  /**
+   * Approximate teaspoons of added sugars per 100g (1 tsp ≈ 4.2g sucrose).
+   * Only filled when added sugars exist; otherwise may fall back to total sugars if added is missing.
+   */
+  sugarTeaspoons100?: number;
 };
 
 type OffResult =
@@ -139,19 +152,39 @@ function nutrimentsFromProduct(product: Record<string, unknown>): OpenFoodFactsP
   ]);
   const fat100 = readNum(nut, ["fat_100g", "fat_value"]);
   const sugars100 = readNum(nut, ["sugars_100g", "sugars_value"]);
+  const addedSugars100 = readNum(nut, [
+    "added-sugars_100g",
+    "added_sugars_100g",
+    "added-sugars_value",
+  ]);
   const satFat100 = readNum(nut, [
     "saturated-fat_100g",
     "saturated_fat_100g",
     "saturated-fat_value",
   ]);
+  const transFat100 = readNum(nut, [
+    "trans-fat_100g",
+    "trans_fat_100g",
+    "trans_fat_value",
+    "trans-fat_value",
+    "trans-fat",
+  ]);
   const fiber100 = readNum(nut, ["fiber_100g", "fiber_value"]);
 
   let sodiumMg100 = readNum(nut, ["sodium_100g", "sodium_value"]);
+  // Open Food Facts: sodium_100g is grams of sodium per 100g product → convert to mg.
+  if (sodiumMg100 !== undefined && sodiumMg100 > 0 && sodiumMg100 <= 10) {
+    sodiumMg100 = sodiumMg100 * 1000;
+  }
   // OFF often provides salt in g/100g; sodium ≈ salt * 1000 * 0.4
   if (sodiumMg100 === undefined) {
     const saltG = readNum(nut, ["salt_100g", "salt_value"]);
     if (saltG !== undefined) sodiumMg100 = saltG * 1000 * 0.4;
   }
+
+  const sugarBaseG = addedSugars100 ?? sugars100;
+  const sugarTeaspoons100 =
+    sugarBaseG !== undefined ? sugarBaseG / 4.2 : undefined;
 
   const nameRaw =
     (typeof product.product_name === "string" && product.product_name) ||
@@ -167,6 +200,35 @@ function nutrimentsFromProduct(product: Record<string, unknown>): OpenFoodFactsP
 
   const quantityText = readStr(product, ["quantity"]);
   let quantityG = parseQuantityToGrams(quantityText);
+  let packUnits: number | undefined = undefined;
+  if (quantityText) {
+    const mPack = quantityText
+      .replace(",", ".")
+      .replace(/×/g, "x")
+      .toLowerCase()
+      .match(
+        /(\d+(?:\.\d+)?)\s*x\s*(\d+(?:\.\d+)?)\s*(g|kg|ml|l)\b/i,
+      );
+    if (mPack) {
+      const count = parseFloat(mPack[1]);
+      const each = parseFloat(mPack[2]);
+      const unit = mPack[3];
+      if (Number.isFinite(count) && Number.isFinite(each) && count > 0 && each > 0) {
+        packUnits = count;
+        const eachG =
+          unit === "g"
+            ? each
+            : unit === "kg"
+              ? each * 1000
+              : unit === "ml"
+                ? each
+                : unit === "l"
+                  ? each * 1000
+                  : undefined;
+        if (eachG !== undefined) quantityG = count * eachG;
+      }
+    }
+  }
   if (quantityG === undefined) {
     const pq = readNum(product, ["product_quantity"]);
     const pqu = readStr(product, ["product_quantity_unit"]);
@@ -211,6 +273,7 @@ function nutrimentsFromProduct(product: Record<string, unknown>): OpenFoodFactsP
     brand,
     quantityText,
     quantityG,
+    packUnits,
     servingSizeText,
     servingG,
     ingredientsText,
@@ -224,9 +287,12 @@ function nutrimentsFromProduct(product: Record<string, unknown>): OpenFoodFactsP
     carb100,
     fat100,
     sugars100,
+    addedSugars100,
     satFat100,
+    transFat100,
     fiber100,
     sodiumMg100,
+    sugarTeaspoons100,
   };
 }
 

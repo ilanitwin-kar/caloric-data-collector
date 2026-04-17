@@ -30,7 +30,10 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 function getAuthErrorMessage(error: unknown): string {
   const code = typeof error === "object" && error && "code" in error ? String(error.code) : "";
   if (code.includes("auth/unauthorized-domain")) {
-    return "הדומיין לא מאושר ב-Firebase. צריך להוסיף את דומיין האתר ב-Authorized domains.";
+    return "הדומיין לא מאושר ב-Firebase. Authentication → Settings → Authorized domains — הוסיפי את כתובת האתר המדויקת (למשל xxx.netlify.app).";
+  }
+  if (code.includes("auth/web-storage-unsupported")) {
+    return "הדפדפן חוסם אחסון — נסי מצב פרטי אחר, או דפדפן אחר.";
   }
   if (code.includes("auth/popup-closed-by-user")) {
     return "חלון ההתחברות נסגר לפני סיום. אפשר לנסות שוב.";
@@ -51,18 +54,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
 
   useEffect(() => {
-    // Handle redirect-based sign-in (fallback for blocked/closed popups).
-    void getRedirectResult(auth).catch((e) => {
-      console.warn("getRedirectResult error:", e);
-      setAuthError(getAuthErrorMessage(e));
-    });
+    let cancelled = false;
 
     const unsub = onAuthStateChanged(auth, (u) => {
+      if (cancelled) return;
       setUser(u);
       if (u) setAuthError(null);
       setLoading(false);
     });
-    return () => unsub();
+
+    void (async () => {
+      try {
+        await getRedirectResult(auth);
+      } catch (e) {
+        console.warn("getRedirectResult:", e);
+        if (!cancelled) setAuthError(getAuthErrorMessage(e));
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      unsub();
+    };
   }, []);
 
   const value = useMemo<AuthContextValue>(

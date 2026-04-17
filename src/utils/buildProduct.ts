@@ -9,6 +9,12 @@ export function buildProductPayload(
     prot100: number;
     carb100: number;
     fat100: number;
+    sugars100?: number;
+    satFat100?: number;
+    transFat100?: number;
+    fiber100?: number;
+    sodiumMg100?: number;
+    sugarTeaspoons100?: number;
     totalWeight: number;
     units: number;
   },
@@ -32,6 +38,12 @@ export function buildProductPayload(
     prot100: p100,
     carb100: cb100,
     fat100: f100,
+    sugars100: base.sugars100,
+    satFat100: base.satFat100,
+    transFat100: base.transFat100,
+    fiber100: base.fiber100,
+    sodiumMg100: base.sodiumMg100,
+    sugarTeaspoons100: base.sugarTeaspoons100,
     totalWeight: tw,
     units: u,
     unitWeight,

@@ -7,28 +7,17 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import {
-  onValue,
-  push,
-  ref,
-  remove,
-  set,
-  type DataSnapshot,
-} from "firebase/database";
-import { db } from "../firebase";
 import type { Product } from "../types/product";
-import { useAuth } from "./AuthContext";
 import { useToast } from "./ToastContext";
 
-/** RTDB node for saved products (push ids + full Product payload). */
-export const HISTORY_NODE = "history";
+const STORAGE_KEY = "caloric-intelligence.products.v1";
 
 type ProductsContextValue = {
   products: Product[];
-  /** True only until the first `onValue` snapshot is applied (initial sync). */
+  /** Local read only (kept for UI parity). */
   loading: boolean;
   error: string | null;
-  /** True after the first successful realtime snapshot (including empty). */
+  /** True after first local load (including empty). */
   hasLoaded: boolean;
   addProduct: (product: Omit<Product, "id" | "savedAt">) => Promise<void>;
   deleteProduct: (id: string) => Promise<void>;
@@ -38,211 +27,127 @@ type ProductsContextValue = {
 
 const ProductsContext = createContext<ProductsContextValue | null>(null);
 
-function logFirebaseError(context: string, e: unknown) {
-  console.error(context, e);
-  if (e instanceof Error) {
-    console.error("name:", e.name, "message:", e.message, "stack:", e.stack);
-  }
-  if (e && typeof e === "object" && "code" in e) {
-    console.error("Firebase error code:", String((e as { code: unknown }).code));
-  }
-  if (e && typeof e === "object" && "customData" in e) {
-    console.error("customData:", (e as { customData?: unknown }).customData);
-  }
-}
-
-function snapshotToProducts(snap: DataSnapshot): Product[] {
-  const v = snap.val() as Record<string, Product> | null;
-  if (!v || typeof v !== "object") return [];
-  return Object.values(v)
-    .filter(
+function safeParseProducts(raw: string | null): Product[] {
+  if (!raw) return [];
+  try {
+    const v = JSON.parse(raw) as unknown;
+    if (!Array.isArray(v)) return [];
+    const out = v.filter(
       (row): row is Product =>
         row != null &&
         typeof row === "object" &&
-        typeof row.savedAt === "string" &&
-        typeof row.id === "string",
-    )
-    .sort(
-      (a, b) =>
-        new Date(b.savedAt).getTime() - new Date(a.savedAt).getTime(),
+        typeof (row as Product).id === "string" &&
+        typeof (row as Product).savedAt === "string",
     );
+    out.sort((a, b) => new Date(b.savedAt).getTime() - new Date(a.savedAt).getTime());
+    return out;
+  } catch {
+    return [];
+  }
+}
+
+function persistProducts(products: Product[]) {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(products));
+  } catch {
+    // If storage quota is exceeded or blocked, we keep working in-memory and show errors via context.
+  }
+}
+
+function newId(): string {
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+    return (crypto as Crypto).randomUUID();
+  }
+  return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
 export function ProductsProvider({ children }: { children: ReactNode }) {
   const { showToast } = useToast();
-  const { user } = useAuth();
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [hasLoaded, setHasLoaded] = useState(false);
-  const [stuckHint, setStuckHint] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!user) {
-      setProducts([]);
-      setLoading(false);
-      setHasLoaded(false);
-      setError(null);
-      setStuckHint(null);
-      return;
-    }
+    setLoading(true);
+    const list = safeParseProducts(localStorage.getItem(STORAGE_KEY));
+    setProducts(list);
+    setError(null);
+    setLoading(false);
+    setHasLoaded(true);
+  }, []);
 
-    const r = ref(db, `users/${user.uid}/${HISTORY_NODE}`);
-    let first = true;
-    let gotData = false;
-    setStuckHint(null);
-    const stuckTimer = window.setTimeout(() => {
-      if (!gotData) {
-        setStuckHint(
-          "הטעינה מהענן נמשכת יותר מדי זמן. בדקי חיבור לאינטרנט, רענני את העמוד, או נקי קאש של האפליקציה (PWA).",
-        );
-      }
-    }, 12000);
-
-    const unsub = onValue(
-      r,
-      (snap) => {
-        gotData = true;
-        window.clearTimeout(stuckTimer);
-        const list = snapshotToProducts(snap);
-        setProducts(list);
-        setError(null);
-        setStuckHint(null);
-        if (first) {
-          first = false;
-          setLoading(false);
-          setHasLoaded(true);
-        }
-      },
-      (err) => {
-        gotData = true;
-        window.clearTimeout(stuckTimer);
-        logFirebaseError("onValue(history) listener error:", err);
-        setError(err.message);
-        setStuckHint(null);
-        setLoading(false);
-        if (first) {
-          first = false;
-        }
-      },
-    );
-
-    return () => {
-      window.clearTimeout(stuckTimer);
-      unsub();
-    };
-  }, [user]);
+  // Persist whenever products change (after initial load).
+  useEffect(() => {
+    if (!hasLoaded) return;
+    persistProducts(products);
+  }, [products, hasLoaded]);
 
   const addProduct = useCallback(
     async (data: Omit<Product, "id" | "savedAt">) => {
-      if (!user) {
-        const err = new Error("Not authenticated");
-        showToast("צריך להתחבר כדי לשמור", "error");
-        throw err;
-      }
-
-      const listRef = ref(db, `users/${user.uid}/${HISTORY_NODE}`);
-      const newRef = push(listRef);
-      const pushKey = newRef.key;
-      if (!pushKey) {
-        const err = new Error("push() did not return a key");
-        logFirebaseError("Firebase push() failed — full error:", err);
-        showToast("שגיאה בשמירה לענן", "error");
-        throw err;
-      }
-
       const productData: Product = {
         ...data,
-        id: pushKey,
+        id: newId(),
         savedAt: new Date().toISOString(),
       };
-
-      console.log("Saving to Firebase...", productData);
-
-      try {
-        await set(newRef, productData);
-        console.log("Save successful!");
-        showToast("המוצר נשמר בהצלחה", "success");
-      } catch (e) {
-        logFirebaseError("Firebase set() after push() failed — full error:", e);
-        showToast("שגיאה בשמירה לענן", "error");
-        throw e;
-      }
+      setProducts((prev) => [productData, ...prev]);
+      showToast("המוצר נשמר מקומית", "success");
     },
-    [showToast, user],
+    [showToast],
   );
 
   const deleteProduct = useCallback(
     async (id: string) => {
-      if (!user) {
-        showToast("צריך להתחבר כדי למחוק", "error");
-        return;
-      }
       try {
-        await remove(ref(db, `users/${user.uid}/${HISTORY_NODE}/${id}`));
+        setProducts((prev) => prev.filter((p) => p.id !== id));
         showToast("המוצר נמחק", "success");
       } catch (e) {
-        logFirebaseError("Firebase remove() failed — full error:", e);
+        setError(e instanceof Error ? e.message : "שגיאה במחיקה");
         showToast("שגיאה במחיקה", "error");
         throw e;
       }
     },
-    [showToast, user],
+    [showToast],
   );
 
   const updateProduct = useCallback(
     async (product: Product) => {
-      if (!user) {
-        showToast("צריך להתחבר כדי לעדכן", "error");
-        return;
-      }
       try {
-        await set(ref(db, `users/${user.uid}/${HISTORY_NODE}/${product.id}`), product);
+        setProducts((prev) => prev.map((p) => (p.id === product.id ? product : p)));
         showToast("המוצר עודכן", "success");
       } catch (e) {
-        logFirebaseError("Firebase set(update) failed — full error:", e);
+        setError(e instanceof Error ? e.message : "שגיאה בעדכון");
         showToast("שגיאה בעדכון", "error");
         throw e;
       }
     },
-    [showToast, user],
+    [showToast],
   );
 
   const duplicateProduct = useCallback(
     async (product: Product) => {
-      if (!user) {
-        showToast("צריך להתחבר כדי לשכפל", "error");
-        return;
-      }
-      const listRef = ref(db, `users/${user.uid}/${HISTORY_NODE}`);
-      const newRef = push(listRef);
-      const key = newRef.key;
-      if (!key) {
-        showToast("שגיאה בשכפול", "error");
-        return;
-      }
       const copy: Product = {
         ...product,
-        id: key,
+        id: newId(),
         savedAt: new Date().toISOString(),
       };
       try {
-        await set(newRef, copy);
+        setProducts((prev) => [copy, ...prev]);
         showToast("המוצר שוכפל", "success");
       } catch (e) {
-        logFirebaseError("Firebase duplicate set() failed — full error:", e);
+        setError(e instanceof Error ? e.message : "שגיאה בשכפול");
         showToast("שגיאה בשכפול", "error");
         throw e;
       }
     },
-    [showToast, user],
+    [showToast],
   );
 
   const value = useMemo(
     () => ({
       products,
       loading,
-      error: error ?? stuckHint,
+      error,
       hasLoaded,
       addProduct,
       deleteProduct,
@@ -253,7 +158,6 @@ export function ProductsProvider({ children }: { children: ReactNode }) {
       products,
       loading,
       error,
-      stuckHint,
       hasLoaded,
       addProduct,
       deleteProduct,

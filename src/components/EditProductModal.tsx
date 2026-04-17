@@ -46,6 +46,12 @@ export function EditProductModal({ product, onClose, onSave }: Props) {
   const [prot100, setProt100] = useState("");
   const [carb100, setCarb100] = useState("");
   const [fat100, setFat100] = useState("");
+  const [sugars100, setSugars100] = useState("");
+  const [satFat100, setSatFat100] = useState("");
+  const [transFat100, setTransFat100] = useState("");
+  const [fiber100, setFiber100] = useState("");
+  const [sodiumMg100, setSodiumMg100] = useState("");
+  const [sugarTsp100, setSugarTsp100] = useState("");
   const [totalWeight, setTotalWeight] = useState("");
   const [units, setUnits] = useState("");
   const [formError, setFormError] = useState<string | null>(null);
@@ -68,6 +74,12 @@ export function EditProductModal({ product, onClose, onSave }: Props) {
     setProt100(String(product.prot100));
     setCarb100(String(product.carb100));
     setFat100(String(product.fat100));
+    setSugars100(product.sugars100 !== undefined ? String(product.sugars100) : "");
+    setSatFat100(product.satFat100 !== undefined ? String(product.satFat100) : "");
+    setTransFat100(product.transFat100 !== undefined ? String(product.transFat100) : "");
+    setFiber100(product.fiber100 !== undefined ? String(product.fiber100) : "");
+    setSodiumMg100(product.sodiumMg100 !== undefined ? String(product.sodiumMg100) : "");
+    setSugarTsp100(product.sugarTeaspoons100 !== undefined ? String(product.sugarTeaspoons100) : "");
     setTotalWeight(String(product.totalWeight));
     setUnits(String(product.units));
     setFormError(null);
@@ -98,6 +110,12 @@ export function EditProductModal({ product, onClose, onSave }: Props) {
     const p100 = parseNum(prot100);
     const cb100 = parseNum(carb100);
     const f100 = parseNum(fat100);
+    const sug100 = parseNum(sugars100);
+    const sat100 = parseNum(satFat100);
+    const trans100 = parseNum(transFat100);
+    const fib100 = parseNum(fiber100);
+    const sod100 = parseNum(sodiumMg100);
+    const tsp100 = parseNum(sugarTsp100);
 
     const payload = buildProductPayload(
       {
@@ -107,6 +125,12 @@ export function EditProductModal({ product, onClose, onSave }: Props) {
         prot100: Number.isFinite(p100) ? p100 : 0,
         carb100: Number.isFinite(cb100) ? cb100 : 0,
         fat100: Number.isFinite(f100) ? f100 : 0,
+        sugars100: Number.isFinite(sug100) ? sug100 : undefined,
+        satFat100: Number.isFinite(sat100) ? sat100 : undefined,
+        transFat100: Number.isFinite(trans100) ? trans100 : undefined,
+        fiber100: Number.isFinite(fib100) ? fib100 : undefined,
+        sodiumMg100: Number.isFinite(sod100) ? sod100 : undefined,
+        sugarTeaspoons100: Number.isFinite(tsp100) ? tsp100 : undefined,
         totalWeight: tw,
         units: u,
       },
@@ -175,6 +199,48 @@ export function EditProductModal({ product, onClose, onSave }: Props) {
               label="שומן (ל-100 גרם)"
               value={fat100}
               onChange={setFat100}
+              inputMode="decimal"
+            />
+            <Field
+              id="edit-sugars100"
+              label="סוכרים (ל-100 גרם)"
+              value={sugars100}
+              onChange={setSugars100}
+              inputMode="decimal"
+            />
+            <Field
+              id="edit-sat100"
+              label="שומן רווי (ל-100 גרם)"
+              value={satFat100}
+              onChange={setSatFat100}
+              inputMode="decimal"
+            />
+            <Field
+              id="edit-trans100"
+              label="שומן טראנס (ל-100 גרם)"
+              value={transFat100}
+              onChange={setTransFat100}
+              inputMode="decimal"
+            />
+            <Field
+              id="edit-fiber100"
+              label="סיבים (ל-100 גרם)"
+              value={fiber100}
+              onChange={setFiber100}
+              inputMode="decimal"
+            />
+            <Field
+              id="edit-sodium100"
+              label="נתרן (מ״ג ל-100 גרם)"
+              value={sodiumMg100}
+              onChange={setSodiumMg100}
+              inputMode="decimal"
+            />
+            <Field
+              id="edit-sugar-tsp"
+              label="כפיות סוכר (ל-100 גרם)"
+              value={sugarTsp100}
+              onChange={setSugarTsp100}
               inputMode="decimal"
             />
           </div>

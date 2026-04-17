@@ -1,11 +1,9 @@
 import { BrowserRouter, Navigate, Outlet, Route, Routes } from "react-router-dom";
 import { BottomNav } from "./components/BottomNav";
 import { AuthProvider, useAuth } from "./context/AuthContext";
-import { CatalogProvider } from "./context/CatalogContext";
 import { ProductsProvider } from "./context/ProductsContext";
 import { ToastProvider } from "./context/ToastContext";
 import { Verified100Provider } from "./context/Verified100Context";
-import { Catalog } from "./pages/Catalog";
 import { History } from "./pages/History";
 import { Home } from "./pages/Home";
 import { Settings } from "./pages/Settings";
@@ -52,15 +50,7 @@ function Shell() {
           </div>
         ) : null}
 
-        {user ? (
-          <Outlet />
-        ) : (
-          <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-6 text-center">
-            <p className="text-sm text-ink-muted">
-              כדי לשמור מאגר פרטי בענן, צריך להתחבר עם Google.
-            </p>
-          </div>
-        )}
+        <Outlet />
       </div>
       <BottomNav />
     </div>
@@ -72,21 +62,18 @@ export default function App() {
     <AuthProvider>
       <ToastProvider>
         <Verified100Provider>
-          <CatalogProvider>
-            <ProductsProvider>
-              <BrowserRouter basename={import.meta.env.BASE_URL}>
-                <Routes>
-                  <Route element={<Shell />}>
-                    <Route index element={<Home />} />
-                    <Route path="catalog" element={<Catalog />} />
-                    <Route path="history" element={<History />} />
-                    <Route path="settings" element={<Settings />} />
-                    <Route path="*" element={<Navigate to="/" replace />} />
-                  </Route>
-                </Routes>
-              </BrowserRouter>
-            </ProductsProvider>
-          </CatalogProvider>
+          <ProductsProvider>
+            <BrowserRouter basename={import.meta.env.BASE_URL}>
+              <Routes>
+                <Route element={<Shell />}>
+                  <Route index element={<Home />} />
+                  <Route path="history" element={<History />} />
+                  <Route path="settings" element={<Settings />} />
+                  <Route path="*" element={<Navigate to="/" replace />} />
+                </Route>
+              </Routes>
+            </BrowserRouter>
+          </ProductsProvider>
         </Verified100Provider>
       </ToastProvider>
     </AuthProvider>
