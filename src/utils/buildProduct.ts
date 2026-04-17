@@ -3,6 +3,7 @@ import type { Product } from "../types/product";
 /** Builds a full `Product` from base nutrition + package fields (same logic as Home save). */
 export function buildProductPayload(
   base: {
+    barcode?: string;
     name: string;
     brand: string;
     cals100: number;
@@ -32,6 +33,7 @@ export function buildProductPayload(
   return {
     id,
     savedAt,
+    barcode: base.barcode?.trim() || undefined,
     name: base.name.trim(),
     brand: base.brand.trim(),
     cals100: c100,

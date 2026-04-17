@@ -10,11 +10,16 @@ function escapeCsvCell(value: string): string {
 /** UTF-8 BOM so Excel opens Hebrew / special chars correctly when needed */
 export function productsToCsv(products: Product[]): string {
   const headers = [
+    "Barcode",
     "Product",
     "Brand",
     "Package weight (g)",
     "Units per pack",
     "Unit Weight (g)",
+    "Calories / 100g",
+    "Protein / 100g",
+    "Carbs / 100g",
+    "Fat / 100g",
     "Calories / unit",
     "Protein / unit",
     "Carbs / unit",
@@ -31,11 +36,16 @@ export function productsToCsv(products: Product[]): string {
   for (const p of products) {
     lines.push(
       [
+        escapeCsvCell(p.barcode ?? ""),
         escapeCsvCell(p.name),
         escapeCsvCell(p.brand),
         String(p.totalWeight),
         String(p.units),
         String(p.unitWeight),
+        String(p.cals100),
+        String(p.prot100),
+        String(p.carb100),
+        String(p.fat100),
         String(p.calsUnit),
         String(p.protUnit),
         String(p.carbUnit),

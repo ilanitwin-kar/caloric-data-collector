@@ -13,6 +13,7 @@ import { useVerified100 } from "../context/Verified100Context";
 import {
   countParsedFields,
   parseNutritionFromOcrText,
+  parsePackageFromOcrText,
   runLabelOcr,
   type ParsedMacros,
 } from "../utils/labelOcr";
@@ -228,6 +229,7 @@ export function Home() {
       if (d.brand) setBrand(d.brand);
       const qg = d.quantityG;
       const pu = d.packUnits;
+      const sg = d.servingG;
       if (typeof qg === "number" && qg > 0) {
         setTotalWeight((prev) => (prev.trim() ? prev : String(Math.round(qg))));
         setUnits((prev) => {
@@ -235,6 +237,9 @@ export function Home() {
           if (typeof pu === "number" && pu > 0) return String(Math.round(pu));
           return "1";
         });
+      } else if (typeof sg === "number" && sg > 0) {
+        setTotalWeight((prev) => (prev.trim() ? prev : String(Math.round(sg))));
+        setUnits((prev) => (prev.trim() ? prev : "1"));
       }
       if (d.cals100 !== undefined) setCals100(formatMacroValue(d.cals100));
       if (d.prot100 !== undefined) setProt100(formatMacroValue(d.prot100));
@@ -298,6 +303,7 @@ export function Home() {
 
     const qg = offData?.quantityG;
     const pu = offData?.packUnits;
+    const sg = offData?.servingG;
     if (typeof qg === "number" && qg > 0) {
       setTotalWeight((prev) => (prev.trim() ? prev : String(Math.round(qg))));
       setUnits((prev) => {
@@ -305,8 +311,11 @@ export function Home() {
         if (typeof pu === "number" && pu > 0) return String(Math.round(pu));
         return "1";
       });
+    } else if (typeof sg === "number" && sg > 0) {
+      setTotalWeight((prev) => (prev.trim() ? prev : String(Math.round(sg))));
+      setUnits((prev) => (prev.trim() ? prev : "1"));
     }
-  }, [verifiedCandidate, offData?.quantityG, offData?.packUnits]);
+  }, [verifiedCandidate, offData?.quantityG, offData?.packUnits, offData?.servingG]);
 
   const applyVerified = useCallback(() => {
     if (!verifiedCandidate) return;
@@ -346,6 +355,13 @@ export function Home() {
           setSodiumMg100,
           setSugarTsp100,
         });
+        const pkg = parsePackageFromOcrText(text);
+        if (pkg.totalWeightG !== undefined) {
+          setTotalWeight((prev) => (prev.trim() ? prev : String(pkg.totalWeightG)));
+        }
+        if (pkg.units !== undefined) {
+          setUnits((prev) => (prev.trim() ? prev : String(pkg.units)));
+        }
         if (n >= 4) setOcrUi({ status: "success", filled: n });
         else if (n > 0) setOcrUi({ status: "partial", filled: n });
         else setOcrUi({ status: "none" });
@@ -706,7 +722,7 @@ export function Home() {
         </h2>
         <Field
           id="barcode"
-          label="ברקוד (מומלץ כדי לשמור לקטלוג)"
+          label="ברקוד (מומלץ לזיהוי ולייצוא)"
           value={barcode}
           onChange={setBarcode}
           placeholder="לדוגמה: 7290000000000"
