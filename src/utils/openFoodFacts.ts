@@ -1,19 +1,24 @@
-const OFF_PRODUCT_URL =
-  "https://world.openfoodfacts.org/api/v0/product";
+const OFF_API_ORIGINS = [
+  "https://ssl-api.openfoodfacts.org",
+  "https://us.openfoodfacts.org",
+  "https://world.openfoodfacts.org",
+] as const;
+
+const OFF_PRODUCT_PATH = "/api/v0/product";
+
+const OFF_REQUEST_HEADERS: HeadersInit = {
+  Accept: "application/json",
+  "User-Agent":
+    "CaloricIntelligence/1.0 (+https://github.com/ilanitwin-kar/caloric-data-collector)",
+};
 
 export type OpenFoodFactsProduct = {
   productName: string;
   brand: string;
   quantityText?: string;
-  /** Parsed from OFF quantity when possible (grams or milliliters-as-grams). */
   quantityG?: number;
-  /**
-   * Best-effort: number of retail units inside the package when parseable
-   * (e.g. quantity text like "6 x 40 g").
-   */
   packUnits?: number;
   servingSizeText?: string;
-  /** Parsed grams/ml from serving size (best-effort). */
   servingG?: number;
   ingredientsText?: string;
   allergensText?: string;
@@ -26,17 +31,11 @@ export type OpenFoodFactsProduct = {
   carb100?: number;
   fat100?: number;
   sugars100?: number;
-  /** Added sugars per 100g when available (preferred for "כפיות סוכר"). */
   addedSugars100?: number;
   satFat100?: number;
   transFat100?: number;
   fiber100?: number;
-  /** Sodium in mg per 100g (best-effort; may be derived from salt). */
   sodiumMg100?: number;
-  /**
-   * Approximate teaspoons of added sugars per 100g (1 tsp ≈ 4.2g sucrose).
-   * Only filled when added sugars exist; otherwise may fall back to total sugars if added is missing.
-   */
   sugarTeaspoons100?: number;
 };
 
@@ -92,7 +91,6 @@ function tagsToReadable(tags?: string[], prefix?: string): string | undefined {
     .map((t) => t.replace(/^[^:]+:\s*/, "").replace(/-/g, " ").trim())
     .filter(Boolean);
   if (!parts.length) return undefined;
-  // De-dupe while keeping order
   const seen = new Set<string>();
   const uniq: string[] = [];
   for (const x of parts) {
@@ -113,7 +111,6 @@ function parseQuantityToGrams(raw?: string): number | undefined {
     .toLowerCase();
   if (!s) return undefined;
 
-  // Examples: "500 g", "1 kg", "330ml", "0.5 l"
   const m = s.match(/(\d+(?:\.\d+)?)\s*(g|kg|ml|l)\b/);
   if (!m) return undefined;
   const n = parseFloat(m[1]);
@@ -121,7 +118,6 @@ function parseQuantityToGrams(raw?: string): number | undefined {
   const unit = m[2];
   if (unit === "g") return n;
   if (unit === "kg") return n * 1000;
-  // For our per-100g normalization we treat ml as grams (rough approximation).
   if (unit === "ml") return n;
   if (unit === "l") return n * 1000;
   return undefined;
@@ -141,7 +137,6 @@ function per100FromServing(
   return (vs / servingG) * 100;
 }
 
-/** משקל אריזה מספרי מ־OFF (לרוב אמין יותר משדה הטקסט «quantity» שבו לפעמים רשומה מנה בודדת, למשל 15g מיונז). */
 function readProductQuantityGrams(product: Record<string, unknown>): number | undefined {
   const pq = readNum(product, ["product_quantity"]);
   const pqu = readStr(product, ["product_quantity_unit"]);
@@ -225,7 +220,6 @@ function nutrimentsFromProduct(product: Record<string, unknown>): OpenFoodFactsP
   const servingSizeText = readStr(product, ["serving_size"]);
   const servingG = parseQuantityToGrams(servingSizeText);
 
-  // Net pack weight ÷ one serving (e.g. 160 g ÷ 40 g → 4 units) when OFF omits "4x40" in text.
   if (
     quantityG !== undefined &&
     servingG !== undefined &&
@@ -239,7 +233,6 @@ function nutrimentsFromProduct(product: Record<string, unknown>): OpenFoodFactsP
     }
   }
 
-  // Prefer explicit *_100g fields so we never mix in per-serving "value" fields by mistake.
   let cals100 = per100FromServing(nut, servingG, ["energy-kcal_100g"], ["energy-kcal_serving"]);
   if (cals100 === undefined) {
     const kj100 = readNum(nut, ["energy-kj_100g"]);
@@ -347,7 +340,6 @@ function nutrimentsFromProduct(product: Record<string, unknown>): OpenFoodFactsP
   };
 }
 
-/** מנקה קוד מוצר — ספרות בלבד */
 export function normalizeBarcode(raw: string): string {
   return raw.replace(/\D/g, "");
 }
@@ -359,80 +351,103 @@ export type OffSearchHit = {
   quantityText?: string;
 };
 
-/**
- * חיפוש טקסטואלי במאגר Open Food Facts (שם / מותג).
- */
 export async function searchOpenFoodFactsProducts(
   query: string,
   pageSize = 16,
-  timeoutMs = 15000,
+  timeoutMs = 20000,
 ): Promise<
-  { ok: true; results: OffSearchHit[] } | { ok: false; reason: "network" | "timeout" | "parse" }
+  | { ok: true; results: OffSearchHit[] }
+  | { ok: false; reason: "network" | "timeout" | "parse" | "blocked" }
 > {
   const q = query.trim();
   if (q.length < 2) return { ok: true, results: [] };
 
-  const url = new URL("https://world.openfoodfacts.org/cgi/search.pl");
-  url.searchParams.set("search_terms", q);
-  url.searchParams.set("search_simple", "1");
-  url.searchParams.set("action", "process");
-  url.searchParams.set("json", "1");
-  url.searchParams.set("page_size", String(pageSize));
+  const ctrl = new AbortController();
+  const t = window.setTimeout(() => ctrl.abort(), timeoutMs);
+  let sawThrottleHtml = false;
 
   try {
-    const ctrl = new AbortController();
-    const t = window.setTimeout(() => ctrl.abort(), timeoutMs);
-    const res = await fetch(url.toString(), {
-      signal: ctrl.signal,
-      headers: { Accept: "application/json" },
-    });
-    window.clearTimeout(t);
-    if (!res.ok) return { ok: false, reason: "network" };
+    for (const origin of OFF_API_ORIGINS) {
+      const url = new URL(`${origin}/cgi/search.pl`);
+      url.searchParams.set("search_terms", q);
+      url.searchParams.set("search_simple", "1");
+      url.searchParams.set("action", "process");
+      url.searchParams.set("json", "1");
+      url.searchParams.set("page_size", String(pageSize));
 
-    let json: unknown;
-    try {
-      json = await res.json();
-    } catch {
-      return { ok: false, reason: "parse" };
-    }
-    const products = (json as { products?: unknown }).products;
-    if (!Array.isArray(products)) return { ok: false, reason: "parse" };
+      let res: Response;
+      try {
+        res = await fetch(url.toString(), {
+          signal: ctrl.signal,
+          headers: OFF_REQUEST_HEADERS,
+        });
+      } catch {
+        continue;
+      }
 
-    const results: OffSearchHit[] = [];
-    for (const row of products) {
-      if (typeof row !== "object" || row === null) continue;
-      const p = row as Record<string, unknown>;
-      const code = String(p.code ?? "").replace(/\D/g, "");
-      if (code.length < 8) continue;
-      const productName =
-        typeof p.product_name === "string"
-          ? p.product_name.trim()
-          : typeof p.product_name_en === "string"
-            ? p.product_name_en.trim()
-            : "";
-      const brandsRaw = typeof p.brands === "string" ? p.brands : "";
-      const brand = brandsRaw.split(/[,;/]/)[0]?.trim() ?? "";
-      const quantityText =
-        typeof p.quantity === "string" ? p.quantity.trim() : undefined;
-      results.push({
-        code,
-        productName: productName || "ללא שם",
-        brand,
-        quantityText,
-      });
+      if (!res.ok) continue;
+
+      let text: string;
+      try {
+        text = await res.text();
+      } catch {
+        continue;
+      }
+
+      const head = text.trimStart();
+      if (head.startsWith("<") || head.includes("Page temporarily unavailable")) {
+        sawThrottleHtml = true;
+        continue;
+      }
+
+      let json: unknown;
+      try {
+        json = JSON.parse(text);
+      } catch {
+        continue;
+      }
+
+      const products = (json as { products?: unknown }).products;
+      if (!Array.isArray(products)) continue;
+
+      const results: OffSearchHit[] = [];
+      for (const row of products) {
+        if (typeof row !== "object" || row === null) continue;
+        const p = row as Record<string, unknown>;
+        const code = String(p.code ?? "").replace(/\D/g, "");
+        if (code.length < 8) continue;
+        const productName =
+          typeof p.product_name === "string"
+            ? p.product_name.trim()
+            : typeof p.product_name_en === "string"
+              ? p.product_name_en.trim()
+              : "";
+        const brandsRaw = typeof p.brands === "string" ? p.brands : "";
+        const brand = brandsRaw.split(/[,;/]/)[0]?.trim() ?? "";
+        const quantityText =
+          typeof p.quantity === "string" ? p.quantity.trim() : undefined;
+        results.push({
+          code,
+          productName: productName || "ללא שם",
+          brand,
+          quantityText,
+        });
+      }
+      return { ok: true, results };
     }
-    return { ok: true, results };
+
+    if (sawThrottleHtml) return { ok: false, reason: "blocked" };
+    return { ok: false, reason: "network" };
   } catch (e) {
     if (e instanceof DOMException && e.name === "AbortError") {
       return { ok: false, reason: "timeout" };
     }
     return { ok: false, reason: "network" };
+  } finally {
+    window.clearTimeout(t);
   }
 }
 
-/**
- * מביא מוצר מ-Open Food Facts. לא זורק חריגות — במקרה של תקלת רשת מחזיר ok: false.
- */
 export async function fetchOpenFoodFactsProduct(
   barcode: string,
   timeoutMs = 15000,
@@ -440,25 +455,45 @@ export async function fetchOpenFoodFactsProduct(
   const code = normalizeBarcode(barcode);
   if (code.length < 8) return { ok: true, found: false };
 
-  const url = `${OFF_PRODUCT_URL}/${encodeURIComponent(code)}.json`;
-
   try {
     const ctrl = new AbortController();
     const t = window.setTimeout(() => ctrl.abort(), timeoutMs);
-    const res = await fetch(url, {
-      signal: ctrl.signal,
-      headers: { Accept: "application/json" },
-    });
-    window.clearTimeout(t);
 
-    if (!res.ok) return { ok: false, reason: "network" };
+    let json: unknown | undefined;
 
-    let json: unknown;
     try {
-      json = await res.json();
-    } catch {
-      return { ok: false, reason: "parse" };
+      for (const origin of OFF_API_ORIGINS) {
+        const url = `${origin}${OFF_PRODUCT_PATH}/${encodeURIComponent(code)}.json`;
+        let res: Response;
+        try {
+          res = await fetch(url, {
+            signal: ctrl.signal,
+            headers: OFF_REQUEST_HEADERS,
+          });
+        } catch {
+          continue;
+        }
+        if (!res.ok) continue;
+        let text: string;
+        try {
+          text = await res.text();
+        } catch {
+          continue;
+        }
+        const head = text.trimStart();
+        if (head.startsWith("<")) continue;
+        try {
+          json = JSON.parse(text);
+        } catch {
+          continue;
+        }
+        break;
+      }
+    } finally {
+      window.clearTimeout(t);
     }
+
+    if (json === undefined) return { ok: false, reason: "network" };
 
     if (
       typeof json !== "object" ||
