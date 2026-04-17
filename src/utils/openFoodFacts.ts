@@ -141,26 +141,37 @@ function per100FromServing(
   return (vs / servingG) * 100;
 }
 
+/** משקל אריזה מספרי מ־OFF (לרוב אמין יותר משדה הטקסט «quantity» שבו לפעמים רשומה מנה בודדת, למשל 15g מיונז). */
+function readProductQuantityGrams(product: Record<string, unknown>): number | undefined {
+  const pq = readNum(product, ["product_quantity"]);
+  const pqu = readStr(product, ["product_quantity_unit"]);
+  if (pq === undefined || !pqu) return undefined;
+  const u = pqu.toLowerCase();
+  if (u === "g") return pq;
+  if (u === "kg") return pq * 1000;
+  if (u === "ml") return pq;
+  if (u === "l" || u === "liter" || u === "litre") return pq * 1000;
+  return undefined;
+}
+
 function nutrimentsFromProduct(product: Record<string, unknown>): OpenFoodFactsProduct {
   const nut = (product.nutriments ?? {}) as Record<string, unknown>;
 
+  const pqG = readProductQuantityGrams(product);
   const quantityText = readStr(product, ["quantity"]);
   let quantityG = parseQuantityToGrams(quantityText);
   let packUnits: number | undefined = undefined;
   if (quantityText) {
-    const mPack = quantityText
-      .replace(",", ".")
-      .replace(/×/g, "x")
-      .toLowerCase()
-      .match(
-        /(\d+(?:\.\d+)?)\s*x\s*(\d+(?:\.\d+)?)\s*(g|kg|ml|l)\b/i,
-      );
+    const qt = quantityText.replace(",", ".").replace(/×/g, "x");
+    const mPack = qt.toLowerCase().match(
+      /(\d+(?:\.\d+)?)\s*x\s*(\d+(?:\.\d+)?)\s*(g|kg|ml|l)\b/i,
+    );
     if (mPack) {
       const count = parseFloat(mPack[1]);
       const each = parseFloat(mPack[2]);
       const unit = mPack[3];
       if (Number.isFinite(count) && Number.isFinite(each) && count > 0 && each > 0) {
-        packUnits = count;
+        packUnits = Math.round(count);
         const eachG =
           unit === "g"
             ? each
@@ -171,24 +182,62 @@ function nutrimentsFromProduct(product: Record<string, unknown>): OpenFoodFactsP
                 : unit === "l"
                   ? each * 1000
                   : undefined;
-        if (eachG !== undefined) quantityG = count * eachG;
+        if (eachG !== undefined) quantityG = Math.round(count * eachG);
+      }
+    }
+    const mParenPack = qt.toLowerCase().match(
+      /\(\s*(\d+(?:\.\d+)?)\s*x\s*(\d+(?:\.\d+)?)\s*(g|kg|ml|l)\s*\)/i,
+    );
+    if (mParenPack) {
+      const count = parseFloat(mParenPack[1]);
+      const each = parseFloat(mParenPack[2]);
+      const unit = mParenPack[3];
+      if (Number.isFinite(count) && Number.isFinite(each) && count > 0 && each > 0) {
+        const eachG =
+          unit === "g"
+            ? each
+            : unit === "kg"
+              ? each * 1000
+              : unit === "ml"
+                ? each
+                : unit === "l"
+                  ? each * 1000
+                  : undefined;
+        if (eachG !== undefined) {
+          const fromParen = Math.round(count * eachG);
+          packUnits = packUnits ?? Math.round(count);
+          if (quantityG === undefined || quantityG < fromParen * 0.85) {
+            quantityG = fromParen;
+          }
+        }
       }
     }
   }
-  if (quantityG === undefined) {
-    const pq = readNum(product, ["product_quantity"]);
-    const pqu = readStr(product, ["product_quantity_unit"]);
-    if (pq !== undefined && pqu) {
-      const u = pqu.toLowerCase();
-      if (u === "g") quantityG = pq;
-      else if (u === "kg") quantityG = pq * 1000;
-      else if (u === "ml") quantityG = pq;
-      else if (u === "l" || u === "liter" || u === "litre") quantityG = pq * 1000;
+
+  if (pqG !== undefined && pqG > 0) {
+    if (quantityG === undefined) {
+      quantityG = pqG;
+    } else if (quantityG < pqG && (quantityG < 80 || pqG >= quantityG * 3)) {
+      quantityG = pqG;
     }
   }
 
   const servingSizeText = readStr(product, ["serving_size"]);
   const servingG = parseQuantityToGrams(servingSizeText);
+
+  // Net pack weight ÷ one serving (e.g. 160 g ÷ 40 g → 4 units) when OFF omits "4x40" in text.
+  if (
+    quantityG !== undefined &&
+    servingG !== undefined &&
+    servingG > 0 &&
+    quantityG >= servingG * 1.35
+  ) {
+    const ratio = quantityG / servingG;
+    const n = Math.round(ratio);
+    if (n >= 2 && n <= 200 && Math.abs(ratio - n) < 0.22) {
+      packUnits ??= n;
+    }
+  }
 
   // Prefer explicit *_100g fields so we never mix in per-serving "value" fields by mistake.
   let cals100 = per100FromServing(nut, servingG, ["energy-kcal_100g"], ["energy-kcal_serving"]);
@@ -301,6 +350,84 @@ function nutrimentsFromProduct(product: Record<string, unknown>): OpenFoodFactsP
 /** מנקה קוד מוצר — ספרות בלבד */
 export function normalizeBarcode(raw: string): string {
   return raw.replace(/\D/g, "");
+}
+
+export type OffSearchHit = {
+  code: string;
+  productName: string;
+  brand: string;
+  quantityText?: string;
+};
+
+/**
+ * חיפוש טקסטואלי במאגר Open Food Facts (שם / מותג).
+ */
+export async function searchOpenFoodFactsProducts(
+  query: string,
+  pageSize = 16,
+  timeoutMs = 15000,
+): Promise<
+  { ok: true; results: OffSearchHit[] } | { ok: false; reason: "network" | "timeout" | "parse" }
+> {
+  const q = query.trim();
+  if (q.length < 2) return { ok: true, results: [] };
+
+  const url = new URL("https://world.openfoodfacts.org/cgi/search.pl");
+  url.searchParams.set("search_terms", q);
+  url.searchParams.set("search_simple", "1");
+  url.searchParams.set("action", "process");
+  url.searchParams.set("json", "1");
+  url.searchParams.set("page_size", String(pageSize));
+
+  try {
+    const ctrl = new AbortController();
+    const t = window.setTimeout(() => ctrl.abort(), timeoutMs);
+    const res = await fetch(url.toString(), {
+      signal: ctrl.signal,
+      headers: { Accept: "application/json" },
+    });
+    window.clearTimeout(t);
+    if (!res.ok) return { ok: false, reason: "network" };
+
+    let json: unknown;
+    try {
+      json = await res.json();
+    } catch {
+      return { ok: false, reason: "parse" };
+    }
+    const products = (json as { products?: unknown }).products;
+    if (!Array.isArray(products)) return { ok: false, reason: "parse" };
+
+    const results: OffSearchHit[] = [];
+    for (const row of products) {
+      if (typeof row !== "object" || row === null) continue;
+      const p = row as Record<string, unknown>;
+      const code = String(p.code ?? "").replace(/\D/g, "");
+      if (code.length < 8) continue;
+      const productName =
+        typeof p.product_name === "string"
+          ? p.product_name.trim()
+          : typeof p.product_name_en === "string"
+            ? p.product_name_en.trim()
+            : "";
+      const brandsRaw = typeof p.brands === "string" ? p.brands : "";
+      const brand = brandsRaw.split(/[,;/]/)[0]?.trim() ?? "";
+      const quantityText =
+        typeof p.quantity === "string" ? p.quantity.trim() : undefined;
+      results.push({
+        code,
+        productName: productName || "ללא שם",
+        brand,
+        quantityText,
+      });
+    }
+    return { ok: true, results };
+  } catch (e) {
+    if (e instanceof DOMException && e.name === "AbortError") {
+      return { ok: false, reason: "timeout" };
+    }
+    return { ok: false, reason: "network" };
+  }
 }
 
 /**

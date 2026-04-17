@@ -4,12 +4,18 @@ type Props = {
   /** כש-false — המצלמה נעצרת */
   isActive: boolean;
   onScan: (barcodeDigits: string) => void;
+  /** מסך מלא (כמו MyFitnessPal) — מסגרת גדולה וגובה וידאו גבוה */
+  mode?: "compact" | "fullscreen";
 };
 
 /**
  * סורק ברקוד דרך המצלמה (EAN/UPC וכו׳).
  */
-export function BarcodeScanner({ isActive, onScan }: Props) {
+export function BarcodeScanner({
+  isActive,
+  onScan,
+  mode = "compact",
+}: Props) {
   const containerId = useRef(`bc-${Math.random().toString(36).slice(2, 12)}`).current;
   const onScanRef = useRef(onScan);
   const consumedRef = useRef(false);
@@ -46,13 +52,24 @@ export function BarcodeScanner({ isActive, onScan }: Props) {
         });
         instRef.current = html5;
 
+        const fullscreen = mode === "fullscreen";
         const qrboxFunc = (
           viewfinderWidth: number,
           viewfinderHeight: number,
         ) => {
-          const w = Math.min(320, viewfinderWidth * 0.92);
-          const h = Math.min(150, viewfinderHeight * 0.38);
-          return { width: Math.round(w), height: Math.round(h) };
+          if (fullscreen) {
+            const w = Math.round(viewfinderWidth * 0.9);
+            const h = Math.round(
+              Math.min(viewfinderHeight * 0.42, viewfinderWidth * 0.36),
+            );
+            return { width: w, height: Math.max(100, Math.min(240, h)) };
+          }
+          const w = Math.min(280, Math.round(viewfinderWidth * 0.88));
+          const h = Math.min(
+            120,
+            Math.round(Math.min(viewfinderHeight * 0.48, viewfinderWidth * 0.32)),
+          );
+          return { width: w, height: Math.max(72, h) };
         };
 
         await html5.start(
@@ -60,7 +77,7 @@ export function BarcodeScanner({ isActive, onScan }: Props) {
           {
             fps: 8,
             qrbox: qrboxFunc,
-            aspectRatio: 1.777,
+            aspectRatio: fullscreen ? 1.4 : 1.25,
           },
           (decodedText) => {
             if (consumedRef.current) return;
@@ -89,14 +106,32 @@ export function BarcodeScanner({ isActive, onScan }: Props) {
         h.stop().then(() => h.clear()).catch(() => {});
       }
     };
-  }, [isActive, containerId]);
+  }, [isActive, containerId, mode]);
+
+  const fullscreen = mode === "fullscreen";
 
   return (
-    <div className="overflow-hidden rounded-2xl border border-white/15 bg-black">
+    <div
+      className={
+        fullscreen
+          ? "h-full min-h-0 w-full overflow-hidden bg-black"
+          : "overflow-hidden rounded-2xl border border-white/15 bg-black"
+      }
+    >
       <div
         id={containerId}
-        className="w-full [&_video]:object-cover"
-        style={{ minHeight: "clamp(200px, 38vh, 320px)" }}
+        className="w-full [&_video]:h-full [&_video]:min-h-0 [&_video]:object-cover"
+        style={
+          fullscreen
+            ? {
+                height: "min(62dvh, 560px)",
+                minHeight: "min(45dvh, 400px)",
+              }
+            : {
+                height: "min(200px, 32dvh)",
+                maxHeight: "240px",
+              }
+        }
       />
     </div>
   );
