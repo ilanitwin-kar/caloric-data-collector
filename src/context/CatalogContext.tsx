@@ -132,19 +132,32 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
   const [catalog, setCatalog] = useState<CatalogProduct[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [stuckHint, setStuckHint] = useState<string | null>(null);
 
   useEffect(() => {
     if (!user) {
       setCatalog([]);
       setLoading(false);
       setError(null);
+      setStuckHint(null);
       return;
     }
     setLoading(true);
+    setStuckHint(null);
     const r = ref(db, `users/${user.uid}/catalog/products`);
+    let gotData = false;
+    const stuckTimer = window.setTimeout(() => {
+      if (!gotData) {
+        setStuckHint(
+          "הטעינה מהענן נמשכת יותר מדי זמן. בדקי חיבור לאינטרנט, רענני את העמוד, או נקי קאש של האפליקציה (PWA).",
+        );
+      }
+    }, 12000);
     const unsub = onValue(
       r,
       (snap: DataSnapshot) => {
+        gotData = true;
+        window.clearTimeout(stuckTimer);
         const v = snap.val() as Record<string, CatalogProduct> | null;
         const list = v ? Object.values(v) : [];
         list.sort(
@@ -154,13 +167,20 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
         setCatalog(list);
         setError(null);
         setLoading(false);
+        setStuckHint(null);
       },
       (err) => {
+        gotData = true;
+        window.clearTimeout(stuckTimer);
         setError(err.message);
         setLoading(false);
+        setStuckHint(null);
       },
     );
-    return () => unsub();
+    return () => {
+      window.clearTimeout(stuckTimer);
+      unsub();
+    };
   }, [user]);
 
   const upsertByBarcode = useCallback(
@@ -320,8 +340,16 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
   );
 
   const value = useMemo<CatalogContextValue>(
-    () => ({ catalog, loading, error, upsertByBarcode, updateProduct, bulkUpsert, deleteProduct }),
-    [catalog, loading, error, upsertByBarcode, updateProduct, bulkUpsert, deleteProduct],
+    () => ({
+      catalog,
+      loading,
+      error: error ?? stuckHint,
+      upsertByBarcode,
+      updateProduct,
+      bulkUpsert,
+      deleteProduct,
+    }),
+    [catalog, loading, error, stuckHint, upsertByBarcode, updateProduct, bulkUpsert, deleteProduct],
   );
 
   return <CatalogContext.Provider value={value}>{children}</CatalogContext.Provider>;

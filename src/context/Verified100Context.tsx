@@ -93,31 +93,51 @@ export function Verified100Provider({ children }: { children: ReactNode }) {
   const [items, setItems] = useState<Verified100Item[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [stuckHint, setStuckHint] = useState<string | null>(null);
 
   useEffect(() => {
     if (!user) {
       setItems([]);
       setLoading(false);
       setError(null);
+      setStuckHint(null);
       return;
     }
     setLoading(true);
+    setStuckHint(null);
     const r = ref(db, `users/${user.uid}/verified100/items`);
+    let gotData = false;
+    const stuckTimer = window.setTimeout(() => {
+      if (!gotData) {
+        setStuckHint(
+          "הטעינה מהענן נמשכת יותר מדי זמן. בדקי חיבור לאינטרנט, רענני את העמוד, או נקי קאש של האפליקציה (PWA).",
+        );
+      }
+    }, 12000);
     const unsub = onValue(
       r,
       (snap: DataSnapshot) => {
+        gotData = true;
+        window.clearTimeout(stuckTimer);
         const v = snap.val() as Record<string, Verified100Item> | null;
         const list = v ? Object.values(v) : [];
         setItems(list);
         setError(null);
         setLoading(false);
+        setStuckHint(null);
       },
       (err) => {
+        gotData = true;
+        window.clearTimeout(stuckTimer);
         setError(err.message);
         setLoading(false);
+        setStuckHint(null);
       },
     );
-    return () => unsub();
+    return () => {
+      window.clearTimeout(stuckTimer);
+      unsub();
+    };
   }, [user]);
 
   const importTsv = useCallback(
@@ -207,8 +227,8 @@ export function Verified100Provider({ children }: { children: ReactNode }) {
   );
 
   const value = useMemo<Verified100ContextValue>(
-    () => ({ items, loading, error, importTsv, findBestMatch }),
-    [items, loading, error, importTsv, findBestMatch],
+    () => ({ items, loading, error: error ?? stuckHint, importTsv, findBestMatch }),
+    [items, loading, error, stuckHint, importTsv, findBestMatch],
   );
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

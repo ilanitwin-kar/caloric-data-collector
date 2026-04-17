@@ -12,6 +12,7 @@ import { useProducts } from "../context/ProductsContext";
 import { useCatalog } from "../context/CatalogContext";
 import { useAuth } from "../context/AuthContext";
 import { useVerified100 } from "../context/Verified100Context";
+import { auth } from "../firebase";
 import {
   countParsedFields,
   parseNutritionFromOcrText,
@@ -26,6 +27,7 @@ import {
 import { playSuccessChime } from "../utils/successChime";
 import { fmt1, parseNum } from "../utils/number";
 import { uploadCatalogImage } from "../utils/storageUpload";
+import { normalizeText } from "../utils/verifiedTsv";
 
 function BarcodeIcon({ className }: { className?: string }) {
   return (
@@ -70,6 +72,18 @@ function CameraIcon({ className }: { className?: string }) {
 function formatMacroValue(n: number): string {
   const r = Math.round(n * 10) / 10;
   return Number.isInteger(r) ? String(r) : r.toFixed(1);
+}
+
+function syntheticGtin12(brand: string | undefined, name: string): string {
+  const key = `${normalizeText(brand ?? "")}|${normalizeText(name)}`;
+  let h = 2166136261;
+  for (let i = 0; i < key.length; i++) {
+    h ^= key.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  const n = h >>> 0;
+  // 12 digits (no check digit) — stable internal key for items without a real barcode.
+  return String(n % 1_000_000_000_000).padStart(12, "0");
 }
 
 function applyMacrosToFields(
@@ -261,6 +275,29 @@ export function Home() {
     });
   }, [name, brand, findBestMatch]);
 
+  // When we have a verified match, auto-fill macros + package hints (still editable).
+  useEffect(() => {
+    if (!verifiedCandidate) return;
+    if (verifiedCandidate.calories100 !== undefined) {
+      setCals100((prev) => (prev.trim() ? prev : formatMacroValue(verifiedCandidate.calories100!)));
+    }
+    if (verifiedCandidate.protein100 !== undefined) {
+      setProt100((prev) => (prev.trim() ? prev : formatMacroValue(verifiedCandidate.protein100!)));
+    }
+    if (verifiedCandidate.carbs100 !== undefined) {
+      setCarb100((prev) => (prev.trim() ? prev : formatMacroValue(verifiedCandidate.carbs100!)));
+    }
+    if (verifiedCandidate.fat100 !== undefined) {
+      setFat100((prev) => (prev.trim() ? prev : formatMacroValue(verifiedCandidate.fat100!)));
+    }
+
+    const qg = offData?.quantityG;
+    if (typeof qg === "number" && qg > 0) {
+      setTotalWeight((prev) => (prev.trim() ? prev : String(Math.round(qg))));
+      setUnits((prev) => (prev.trim() ? prev : "1"));
+    }
+  }, [verifiedCandidate, offData?.quantityG]);
+
   const applyVerified = useCallback(() => {
     if (!verifiedCandidate) return;
     if (verifiedCandidate.calories100 !== undefined) {
@@ -415,56 +452,58 @@ export function Home() {
         fatUnit: (Number.isFinite(f100) ? f100 : 0) * factor,
       });
 
-      if (barcode.trim()) {
-        const fromOff = offData;
-        const imgFile = lastImageRef.current;
-        const uploadedLabel =
-          user && imgFile
-            ? await uploadCatalogImage({
-                uid: user.uid,
-                gtin: barcode.trim(),
-                kind: "label",
-                file: imgFile,
-              })
-            : null;
+      const uid = user?.uid ?? auth.currentUser?.uid;
+      const rawBarcode = barcode.trim();
+      const catalogBarcode = rawBarcode || syntheticGtin12(brand.trim() || undefined, n);
 
-        await upsertByBarcode({
-          barcode: barcode.trim(),
-          name: n,
-          brand: brand.trim() || undefined,
-          per100: {
-            calories: c100,
-            proteinG: Number.isFinite(p100) ? p100 : undefined,
-            carbsG: Number.isFinite(cb100) ? cb100 : undefined,
-            sugarsG: Number.isFinite(sug100) ? sug100 : undefined,
-            fatG: Number.isFinite(f100) ? f100 : undefined,
-            satFatG: Number.isFinite(sat100) ? sat100 : undefined,
-            fiberG: Number.isFinite(fib100) ? fib100 : undefined,
-            sodiumMg: Number.isFinite(sod100) ? sod100 : undefined,
-          },
-          totalWeightG: tw,
-          unitsPerPack: u,
-          quantityText: fromOff?.quantityText,
-          quantityG: fromOff?.quantityG,
-          servingSizeText: fromOff?.servingSizeText,
-          servingG: fromOff?.servingG,
-          ingredientsText: fromOff?.ingredientsText,
-          allergensText: fromOff?.allergensText,
-          categoriesText: fromOff?.categoriesText,
-          images: fromOff
-            ? {
-                frontUrl: fromOff.imageFrontUrl,
-                nutritionUrl: fromOff.imageNutritionUrl,
-                ingredientsUrl: fromOff.imageIngredientsUrl,
-                labelUploadedUrl: uploadedLabel?.url ?? undefined,
-                labelUploadedPath: uploadedLabel?.path ?? undefined,
-              }
-            : uploadedLabel
-              ? { labelUploadedUrl: uploadedLabel.url, labelUploadedPath: uploadedLabel.path }
-              : undefined,
-          sourceType: offNotice === "success" ? "barcode_openfoodfacts" : previewUrl ? "ocr" : "manual",
-        });
-      }
+      const fromOff = offData;
+      const imgFile = lastImageRef.current;
+      const uploadedLabel =
+        uid && imgFile
+          ? await uploadCatalogImage({
+              uid,
+              gtin: catalogBarcode,
+              kind: "label",
+              file: imgFile,
+            })
+          : null;
+
+      await upsertByBarcode({
+        barcode: catalogBarcode,
+        name: n,
+        brand: brand.trim() || undefined,
+        per100: {
+          calories: c100,
+          proteinG: Number.isFinite(p100) ? p100 : undefined,
+          carbsG: Number.isFinite(cb100) ? cb100 : undefined,
+          sugarsG: Number.isFinite(sug100) ? sug100 : undefined,
+          fatG: Number.isFinite(f100) ? f100 : undefined,
+          satFatG: Number.isFinite(sat100) ? sat100 : undefined,
+          fiberG: Number.isFinite(fib100) ? fib100 : undefined,
+          sodiumMg: Number.isFinite(sod100) ? sod100 : undefined,
+        },
+        totalWeightG: tw,
+        unitsPerPack: u,
+        quantityText: fromOff?.quantityText,
+        quantityG: fromOff?.quantityG,
+        servingSizeText: fromOff?.servingSizeText,
+        servingG: fromOff?.servingG,
+        ingredientsText: fromOff?.ingredientsText,
+        allergensText: fromOff?.allergensText,
+        categoriesText: fromOff?.categoriesText,
+        images: fromOff
+          ? {
+              frontUrl: fromOff.imageFrontUrl,
+              nutritionUrl: fromOff.imageNutritionUrl,
+              ingredientsUrl: fromOff.imageIngredientsUrl,
+              labelUploadedUrl: uploadedLabel?.url ?? undefined,
+              labelUploadedPath: uploadedLabel?.path ?? undefined,
+            }
+          : uploadedLabel
+            ? { labelUploadedUrl: uploadedLabel.url, labelUploadedPath: uploadedLabel.path }
+            : undefined,
+        sourceType: offNotice === "success" ? "barcode_openfoodfacts" : previewUrl ? "ocr" : "manual",
+      });
     } catch (err) {
       console.error("Home save — full error:", err);
       return;

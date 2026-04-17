@@ -75,6 +75,7 @@ export function ProductsProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [hasLoaded, setHasLoaded] = useState(false);
+  const [stuckHint, setStuckHint] = useState<string | null>(null);
 
   useEffect(() => {
     if (!user) {
@@ -82,18 +83,31 @@ export function ProductsProvider({ children }: { children: ReactNode }) {
       setLoading(false);
       setHasLoaded(false);
       setError(null);
+      setStuckHint(null);
       return;
     }
 
     const r = ref(db, `users/${user.uid}/${HISTORY_NODE}`);
     let first = true;
+    let gotData = false;
+    setStuckHint(null);
+    const stuckTimer = window.setTimeout(() => {
+      if (!gotData) {
+        setStuckHint(
+          "הטעינה מהענן נמשכת יותר מדי זמן. בדקי חיבור לאינטרנט, רענני את העמוד, או נקי קאש של האפליקציה (PWA).",
+        );
+      }
+    }, 12000);
 
     const unsub = onValue(
       r,
       (snap) => {
+        gotData = true;
+        window.clearTimeout(stuckTimer);
         const list = snapshotToProducts(snap);
         setProducts(list);
         setError(null);
+        setStuckHint(null);
         if (first) {
           first = false;
           setLoading(false);
@@ -101,8 +115,11 @@ export function ProductsProvider({ children }: { children: ReactNode }) {
         }
       },
       (err) => {
+        gotData = true;
+        window.clearTimeout(stuckTimer);
         logFirebaseError("onValue(history) listener error:", err);
         setError(err.message);
+        setStuckHint(null);
         setLoading(false);
         if (first) {
           first = false;
@@ -110,7 +127,10 @@ export function ProductsProvider({ children }: { children: ReactNode }) {
       },
     );
 
-    return () => unsub();
+    return () => {
+      window.clearTimeout(stuckTimer);
+      unsub();
+    };
   }, [user]);
 
   const addProduct = useCallback(
@@ -149,7 +169,7 @@ export function ProductsProvider({ children }: { children: ReactNode }) {
         throw e;
       }
     },
-    [showToast],
+    [showToast, user],
   );
 
   const deleteProduct = useCallback(
@@ -167,7 +187,7 @@ export function ProductsProvider({ children }: { children: ReactNode }) {
         throw e;
       }
     },
-    [showToast],
+    [showToast, user],
   );
 
   const updateProduct = useCallback(
@@ -185,7 +205,7 @@ export function ProductsProvider({ children }: { children: ReactNode }) {
         throw e;
       }
     },
-    [showToast],
+    [showToast, user],
   );
 
   const duplicateProduct = useCallback(
@@ -215,14 +235,14 @@ export function ProductsProvider({ children }: { children: ReactNode }) {
         throw e;
       }
     },
-    [showToast],
+    [showToast, user],
   );
 
   const value = useMemo(
     () => ({
       products,
       loading,
-      error,
+      error: error ?? stuckHint,
       hasLoaded,
       addProduct,
       deleteProduct,
@@ -233,6 +253,7 @@ export function ProductsProvider({ children }: { children: ReactNode }) {
       products,
       loading,
       error,
+      stuckHint,
       hasLoaded,
       addProduct,
       deleteProduct,
