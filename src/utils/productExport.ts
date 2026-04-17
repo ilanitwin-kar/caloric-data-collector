@@ -24,6 +24,19 @@ function perGramsCals100(cals100: number | undefined, grams: number): number | s
   return Math.round((cals100 * grams) / 100);
 }
 
+function gramsFromPer100(countPer100: number | undefined): number | undefined {
+  if (countPer100 === undefined || !Number.isFinite(countPer100) || countPer100 <= 0) return undefined;
+  return 100 / countPer100;
+}
+
+function gramsForTbsp(p: Product): number {
+  return gramsFromPer100(p.tbspPer100g) ?? PORTION_TBSP_G;
+}
+
+function gramsForCup(p: Product): number {
+  return gramsFromPer100(p.cupsPer100g) ?? PORTION_CUP_G;
+}
+
 export function productsToSheetRows(products: Product[]): Record<string, string | number>[] {
   return products.map((p) => ({
     ברקוד: p.barcode ?? "",
@@ -52,14 +65,14 @@ export function productsToSheetRows(products: Product[]): Record<string, string 
     "סיבים ליחידה": perUnitFrom100(p, p.fiber100),
     "נתרן מג ליחידה": perUnitFrom100(p, p.sodiumMg100),
     "כפיות סוכר ליחידה": perUnitFrom100(p, p.sugarTeaspoons100),
-    [`קק"ל כף (~${PORTION_TBSP_G}ג)`]: perGramsCals100(p.cals100, PORTION_TBSP_G),
-    [`חלבון ג כף (~${PORTION_TBSP_G}ג)`]: perGramsFrom100(p.prot100, PORTION_TBSP_G),
-    [`פחמימות ג כף (~${PORTION_TBSP_G}ג)`]: perGramsFrom100(p.carb100, PORTION_TBSP_G),
-    [`שומן ג כף (~${PORTION_TBSP_G}ג)`]: perGramsFrom100(p.fat100, PORTION_TBSP_G),
-    [`קק"ל כוס (~${PORTION_CUP_G}ג)`]: perGramsCals100(p.cals100, PORTION_CUP_G),
-    [`חלבון ג כוס (~${PORTION_CUP_G}ג)`]: perGramsFrom100(p.prot100, PORTION_CUP_G),
-    [`פחמימות ג כוס (~${PORTION_CUP_G}ג)`]: perGramsFrom100(p.carb100, PORTION_CUP_G),
-    [`שומן ג כוס (~${PORTION_CUP_G}ג)`]: perGramsFrom100(p.fat100, PORTION_CUP_G),
+    [`קק"ל כף (${Math.round(gramsForTbsp(p) * 10) / 10}ג)`]: perGramsCals100(p.cals100, gramsForTbsp(p)),
+    [`חלבון ג כף`]: perGramsFrom100(p.prot100, gramsForTbsp(p)),
+    [`פחמימות ג כף`]: perGramsFrom100(p.carb100, gramsForTbsp(p)),
+    [`שומן ג כף`]: perGramsFrom100(p.fat100, gramsForTbsp(p)),
+    [`קק"ל כוס (${Math.round(gramsForCup(p) * 10) / 10}ג)`]: perGramsCals100(p.cals100, gramsForCup(p)),
+    [`חלבון ג כוס`]: perGramsFrom100(p.prot100, gramsForCup(p)),
+    [`פחמימות ג כוס`]: perGramsFrom100(p.carb100, gramsForCup(p)),
+    [`שומן ג כוס`]: perGramsFrom100(p.fat100, gramsForCup(p)),
     "נשמר (ISO)": p.savedAt,
   }));
 }
@@ -161,13 +174,15 @@ function r1(n: number): string {
 export function productsToShareSummaryText(products: Product[], maxChars = 10_000): string {
   const lines: string[] = [
     `המוצרים שלי — ${products.length} פריטים`,
-    "100ג · יחידה · כף (~15ג) · כוס (~240ג)",
+    "100ג · יחידה · כף · כוס",
     "",
   ];
   for (const p of products) {
     const bc = p.barcode ?? "ללא ברקוד";
-    const kTb = perGramsCals100(p.cals100, PORTION_TBSP_G);
-    const kCup = perGramsCals100(p.cals100, PORTION_CUP_G);
+    const gTb = gramsForTbsp(p);
+    const gCup = gramsForCup(p);
+    const kTb = perGramsCals100(p.cals100, gTb);
+    const kCup = perGramsCals100(p.cals100, gCup);
     const kTbS = kTb === "" ? "—" : String(kTb);
     const kCupS = kCup === "" ? "—" : String(kCup);
     lines.push(`• ${p.name} | ${p.brand} | ${bc}`);
@@ -178,10 +193,10 @@ export function productsToShareSummaryText(products: Product[], maxChars = 10_00
       `  יחידה (${r1(p.unitWeight)}ג): ${r1(p.calsUnit)} קק"ל, ח ${r1(p.protUnit)}ג, פ ${r1(p.carbUnit)}ג, ש ${r1(p.fatUnit)}ג`,
     );
     lines.push(
-      `  כף: ${kTbS} קק"ל, ח ${r1((p.prot100 * PORTION_TBSP_G) / 100)}ג, פ ${r1((p.carb100 * PORTION_TBSP_G) / 100)}ג, ש ${r1((p.fat100 * PORTION_TBSP_G) / 100)}ג`,
+      `  כף: ${kTbS} קק"ל, ח ${r1((p.prot100 * gTb) / 100)}ג, פ ${r1((p.carb100 * gTb) / 100)}ג, ש ${r1((p.fat100 * gTb) / 100)}ג`,
     );
     lines.push(
-      `  כוס: ${kCupS} קק"ל, ח ${r1((p.prot100 * PORTION_CUP_G) / 100)}ג, פ ${r1((p.carb100 * PORTION_CUP_G) / 100)}ג, ש ${r1((p.fat100 * PORTION_CUP_G) / 100)}ג`,
+      `  כוס: ${kCupS} קק"ל, ח ${r1((p.prot100 * gCup) / 100)}ג, פ ${r1((p.carb100 * gCup) / 100)}ג, ש ${r1((p.fat100 * gCup) / 100)}ג`,
     );
     lines.push(`  אריזה: ${p.totalWeight}ג, ${p.units} יח׳`);
     lines.push("");

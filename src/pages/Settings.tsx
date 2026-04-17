@@ -13,11 +13,19 @@ export function Settings() {
   const [importing, setImporting] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const [bodyKgInput, setBodyKgInput] = useState("");
+  const [bodySavedAt, setBodySavedAt] = useState<number | null>(null);
+  const [bodyError, setBodyError] = useState<string | null>(null);
 
   useEffect(() => {
     const w = readBodyWeightKg();
     setBodyKgInput(w !== null ? String(w) : "");
   }, []);
+
+  useEffect(() => {
+    if (!bodySavedAt) return;
+    const t = window.setTimeout(() => setBodySavedAt(null), 2200);
+    return () => window.clearTimeout(t);
+  }, [bodySavedAt]);
 
   return (
     <div className="space-y-8 pb-4">
@@ -50,19 +58,37 @@ export function Settings() {
               step="0.1"
               value={bodyKgInput}
               onChange={(e) => setBodyKgInput(e.target.value)}
-              onBlur={() => {
-                const n = parseFloat(bodyKgInput.replace(",", "."));
-                if (Number.isFinite(n) && n >= 20 && n <= 400) {
-                  writeBodyWeightKg(n);
-                } else if (bodyKgInput.trim() === "") {
-                  clearBodyWeightKg();
-                }
-              }}
               placeholder="למשל 65"
               className="min-h-[44px] rounded-xl border border-white/15 bg-black/40 px-3 text-sm text-white placeholder:text-ink-dim focus:border-white/35 focus:outline-none"
             />
           </label>
+          <button
+            type="button"
+            onClick={() => {
+              setBodyError(null);
+              const raw = bodyKgInput.trim();
+              if (!raw) {
+                clearBodyWeightKg();
+                setBodySavedAt(Date.now());
+                return;
+              }
+              const n = parseFloat(raw.replace(",", "."));
+              if (!Number.isFinite(n) || n < 20 || n > 400) {
+                setBodyError("נא להזין משקל תקין (20–400 ק״ג).");
+                return;
+              }
+              writeBodyWeightKg(n);
+              setBodySavedAt(Date.now());
+            }}
+            className="min-h-[44px] rounded-xl bg-white px-4 text-sm font-semibold text-black transition active:scale-[0.99] active:bg-neutral-200"
+          >
+            שמור
+          </button>
         </div>
+        {bodyError ? <p className="mt-2 text-xs text-red-200">{bodyError}</p> : null}
+        {bodySavedAt ? (
+          <p className="mt-2 text-xs text-emerald-200">נשמר</p>
+        ) : null}
       </section>
 
       <section className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">

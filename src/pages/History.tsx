@@ -169,8 +169,13 @@ function ProductNutritionDetails({ p }: { p: Product }) {
     return n === null ? "—" : `כ־${n.toLocaleString("he-IL")} צעדים`;
   }
 
-  const kcalTbsp = (p.cals100 * PORTION_TBSP_G) / 100;
-  const kcalCup = (p.cals100 * PORTION_CUP_G) / 100;
+  const gTb = p.tbspPer100g && p.tbspPer100g > 0 ? 100 / p.tbspPer100g : PORTION_TBSP_G;
+  const gCup = p.cupsPer100g && p.cupsPer100g > 0 ? 100 / p.cupsPer100g : PORTION_CUP_G;
+  const gPiece = p.unitsPer100g && p.unitsPer100g > 0 ? 100 / p.unitsPer100g : NaN;
+
+  const kcalTbsp = (p.cals100 * gTb) / 100;
+  const kcalCup = (p.cals100 * gCup) / 100;
+  const kcalPiece = Number.isFinite(gPiece) ? (p.cals100 * gPiece) / 100 : NaN;
 
   return (
     <div className="mt-3 space-y-3 border-t border-white/10 pt-3 text-sm">
@@ -246,46 +251,51 @@ function ProductNutritionDetails({ p }: { p: Product }) {
       </div>
       <p className="text-xs font-semibold text-ink-dim">לכף ולכוס (הערכה)</p>
       <p className="text-[11px] leading-snug text-ink-dim">
-        כף ~{PORTION_TBSP_G} גרם, כוס ~{PORTION_CUP_G} גרם — לפי ערכי ה-100 גרם.
+        כף {fmt1(gTb)} גרם, כוס {fmt1(gCup)} גרם.
       </p>
       <div className="grid grid-cols-2 gap-2">
         <div>
           <span className="text-ink-muted">אנרגיה כף</span>
           <p className="tabular-nums text-white">
-            {fmt1((p.cals100 * PORTION_TBSP_G) / 100)} קק&quot;ל
+            {fmt1((p.cals100 * gTb) / 100)} קק&quot;ל
           </p>
         </div>
         <div>
           <span className="text-ink-muted">אנרגיה כוס</span>
           <p className="tabular-nums text-white">
-            {fmt1((p.cals100 * PORTION_CUP_G) / 100)} קק&quot;ל
+            {fmt1((p.cals100 * gCup) / 100)} קק&quot;ל
           </p>
         </div>
         <div>
           <span className="text-ink-muted">חלבון כף</span>
-          <p className="tabular-nums text-white">{fmt1((p.prot100 * PORTION_TBSP_G) / 100)} גרם</p>
+          <p className="tabular-nums text-white">{fmt1((p.prot100 * gTb) / 100)} גרם</p>
         </div>
         <div>
           <span className="text-ink-muted">חלבון כוס</span>
-          <p className="tabular-nums text-white">{fmt1((p.prot100 * PORTION_CUP_G) / 100)} גרם</p>
+          <p className="tabular-nums text-white">{fmt1((p.prot100 * gCup) / 100)} גרם</p>
         </div>
         <div>
           <span className="text-ink-muted">פחמימות כף</span>
-          <p className="tabular-nums text-white">{fmt1((p.carb100 * PORTION_TBSP_G) / 100)} גרם</p>
+          <p className="tabular-nums text-white">{fmt1((p.carb100 * gTb) / 100)} גרם</p>
         </div>
         <div>
           <span className="text-ink-muted">פחמימות כוס</span>
-          <p className="tabular-nums text-white">{fmt1((p.carb100 * PORTION_CUP_G) / 100)} גרם</p>
+          <p className="tabular-nums text-white">{fmt1((p.carb100 * gCup) / 100)} גרם</p>
         </div>
         <div>
           <span className="text-ink-muted">שומן כף</span>
-          <p className="tabular-nums text-white">{fmt1((p.fat100 * PORTION_TBSP_G) / 100)} גרם</p>
+          <p className="tabular-nums text-white">{fmt1((p.fat100 * gTb) / 100)} גרם</p>
         </div>
         <div>
           <span className="text-ink-muted">שומן כוס</span>
-          <p className="tabular-nums text-white">{fmt1((p.fat100 * PORTION_CUP_G) / 100)} גרם</p>
+          <p className="tabular-nums text-white">{fmt1((p.fat100 * gCup) / 100)} גרם</p>
         </div>
       </div>
+      {p.unitsPer100g && p.unitsPer100g > 0 ? (
+        <div className="rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-[11px] text-ink-muted">
+          יחידה לפי 100 גרם: {fmt1(p.unitsPer100g)} יח׳ ב־100 גרם (≈ {fmt1(gPiece)}g ליחידה)
+        </div>
+      ) : null}
       <p className="text-xs font-semibold text-ink-dim">הליכה — צעדים משוערים</p>
       <p className="text-[11px] leading-snug text-ink-dim">
         MET {WALKING_MET}, לפי משקל גוף ב«הגדרות».
@@ -307,6 +317,12 @@ function ProductNutritionDetails({ p }: { p: Product }) {
           <span className="text-ink-muted">לכוס</span>
           <p className="tabular-nums text-white">{stepsLine(kcalCup)}</p>
         </div>
+        {Number.isFinite(kcalPiece) ? (
+          <div className="col-span-2">
+            <span className="text-ink-muted">ליחידה (לפי 100g)</span>
+            <p className="tabular-nums text-white">{stepsLine(kcalPiece)}</p>
+          </div>
+        ) : null}
       </div>
       <p className="text-xs font-semibold text-ink-dim">ליחידה אחת</p>
       <div className="grid grid-cols-2 gap-2">
