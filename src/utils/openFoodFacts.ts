@@ -20,6 +20,11 @@ export type OpenFoodFactsProduct = {
   prot100?: number;
   carb100?: number;
   fat100?: number;
+  sugars100?: number;
+  satFat100?: number;
+  fiber100?: number;
+  /** Sodium in mg per 100g (best-effort; may be derived from salt). */
+  sodiumMg100?: number;
 };
 
 type OffResult =
@@ -48,6 +53,42 @@ function readStr(o: Record<string, unknown>, keys: string[]): string | undefined
     }
   }
   return undefined;
+}
+
+function readStrList(
+  o: Record<string, unknown>,
+  keys: string[],
+): string[] | undefined {
+  for (const k of keys) {
+    const v = o[k];
+    if (Array.isArray(v)) {
+      const out = v
+        .filter((x): x is string => typeof x === "string")
+        .map((x) => x.trim())
+        .filter(Boolean);
+      if (out.length) return out;
+    }
+  }
+  return undefined;
+}
+
+function tagsToReadable(tags?: string[], prefix?: string): string | undefined {
+  if (!tags?.length) return undefined;
+  const p = prefix ? `${prefix}:` : "";
+  const parts = tags
+    .map((t) => t.replace(/^[^:]+:\s*/, "").replace(/-/g, " ").trim())
+    .filter(Boolean);
+  if (!parts.length) return undefined;
+  // De-dupe while keeping order
+  const seen = new Set<string>();
+  const uniq: string[] = [];
+  for (const x of parts) {
+    const key = `${p}${x}`.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    uniq.push(`${p}${x}`);
+  }
+  return uniq.join(", ");
 }
 
 function parseQuantityToGrams(raw?: string): number | undefined {
@@ -97,6 +138,20 @@ function nutrimentsFromProduct(product: Record<string, unknown>): OpenFoodFactsP
     "carbohydrates_value",
   ]);
   const fat100 = readNum(nut, ["fat_100g", "fat_value"]);
+  const sugars100 = readNum(nut, ["sugars_100g", "sugars_value"]);
+  const satFat100 = readNum(nut, [
+    "saturated-fat_100g",
+    "saturated_fat_100g",
+    "saturated-fat_value",
+  ]);
+  const fiber100 = readNum(nut, ["fiber_100g", "fiber_value"]);
+
+  let sodiumMg100 = readNum(nut, ["sodium_100g", "sodium_value"]);
+  // OFF often provides salt in g/100g; sodium ≈ salt * 1000 * 0.4
+  if (sodiumMg100 === undefined) {
+    const saltG = readNum(nut, ["salt_100g", "salt_value"]);
+    if (saltG !== undefined) sodiumMg100 = saltG * 1000 * 0.4;
+  }
 
   const nameRaw =
     (typeof product.product_name === "string" && product.product_name) ||
@@ -111,22 +166,41 @@ function nutrimentsFromProduct(product: Record<string, unknown>): OpenFoodFactsP
       ?.trim() ?? "";
 
   const quantityText = readStr(product, ["quantity"]);
-  const quantityG = parseQuantityToGrams(quantityText);
+  let quantityG = parseQuantityToGrams(quantityText);
+  if (quantityG === undefined) {
+    const pq = readNum(product, ["product_quantity"]);
+    const pqu = readStr(product, ["product_quantity_unit"]);
+    if (pq !== undefined && pqu) {
+      const u = pqu.toLowerCase();
+      if (u === "g") quantityG = pq;
+      else if (u === "kg") quantityG = pq * 1000;
+      else if (u === "ml") quantityG = pq;
+      else if (u === "l" || u === "liter" || u === "litre") quantityG = pq * 1000;
+    }
+  }
 
   const servingSizeText = readStr(product, ["serving_size"]);
   const servingG = parseQuantityToGrams(servingSizeText);
 
   const ingredientsText =
-    readStr(product, ["ingredients_text_he", "ingredients_text"]) ??
+    readStr(product, [
+      "ingredients_text_he",
+      "ingredients_text",
+      "ingredients_text_with_allergens",
+    ]) ??
     undefined;
 
+  const allergenTags = readStrList(product, ["allergens_tags"]);
+  const allergensFromTags = tagsToReadable(allergenTags);
   const allergensText =
-    readStr(product, ["allergens", "allergens_from_ingredients", "allergens_from_user", "allergens_hierarchy", "allergens_tags"]) ??
+    allergensFromTags ??
+    readStr(product, ["allergens", "allergens_from_ingredients", "allergens_from_user"]) ??
     undefined;
 
+  const categoryTags = readStrList(product, ["categories_tags"]);
+  const categoriesFromTags = tagsToReadable(categoryTags);
   const categoriesText =
-    readStr(product, ["categories", "categories_hierarchy", "categories_tags"]) ??
-    undefined;
+    categoriesFromTags ?? readStr(product, ["categories"]) ?? undefined;
 
   const imageFrontUrl = readStr(product, ["image_front_url", "image_url"]);
   const imageNutritionUrl = readStr(product, ["image_nutrition_url"]);
@@ -149,6 +223,10 @@ function nutrimentsFromProduct(product: Record<string, unknown>): OpenFoodFactsP
     prot100,
     carb100,
     fat100,
+    sugars100,
+    satFat100,
+    fiber100,
+    sodiumMg100,
   };
 }
 

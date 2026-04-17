@@ -106,6 +106,11 @@ type CatalogContextValue = {
 
 const CatalogContext = createContext<CatalogContextValue | null>(null);
 
+function cleanForRtdb<T>(value: T): T {
+  // RTDB rejects `undefined` anywhere in the payload.
+  return JSON.parse(JSON.stringify(value)) as T;
+}
+
 function computePerUnit(
   per100: CatalogNutritionPer100g,
   unitWeightG?: number,
@@ -255,13 +260,20 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
             calories: input.per100.calories,
             proteinG: input.per100.proteinG,
             carbsG: input.per100.carbsG,
+            sugarsG: input.per100.sugarsG,
             fatG: input.per100.fatG,
+            satFatG: input.per100.satFatG,
+            fiberG: input.per100.fiberG,
+            sodiumMg: input.per100.sodiumMg,
           },
           perUnit: computePerUnit(input.per100, unitWeightG),
         },
       };
 
-      await set(ref(db, `users/${user.uid}/catalog/products/${gtin}`), payload);
+      await set(
+        ref(db, `users/${user.uid}/catalog/products/${gtin}`),
+        cleanForRtdb(payload),
+      );
       showToast("נשמר לקטלוג לפי ברקוד", "success");
     },
     [user, showToast],
@@ -280,7 +292,7 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
       }
       const now = new Date().toISOString();
       const next: CatalogProduct = { ...product, gtin, updatedAt: now };
-      await set(ref(db, `users/${user.uid}/catalog/products/${gtin}`), next);
+      await set(ref(db, `users/${user.uid}/catalog/products/${gtin}`), cleanForRtdb(next));
       showToast("מוצר עודכן בקטלוג", "success");
     },
     [user, showToast],
@@ -309,7 +321,7 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
         for (const p of chunk) {
           const gtin = normalizeBarcode(p.gtin);
           if (gtin.length < 8) continue;
-          updates[`${basePath}/${gtin}`] = { ...p, gtin, updatedAt: now };
+          updates[`${basePath}/${gtin}`] = cleanForRtdb({ ...p, gtin, updatedAt: now });
         }
         if (Object.keys(updates).length > 0) {
           await update(ref(db), updates);

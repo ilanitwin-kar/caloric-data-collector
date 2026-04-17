@@ -239,11 +239,19 @@ export function Home() {
       if (typeof qg === "number") {
         setTotalWeight((prev) => (prev.trim() ? prev : String(Math.round(qg))));
         setUnits((prev) => (prev.trim() ? prev : "1"));
+      } else if (typeof d.servingG === "number" && d.servingG > 0) {
+        // Fallback: some products only expose serving size reliably.
+        setTotalWeight((prev) => (prev.trim() ? prev : String(Math.round(d.servingG!))));
+        setUnits((prev) => (prev.trim() ? prev : "1"));
       }
       if (d.cals100 !== undefined) setCals100(formatMacroValue(d.cals100));
       if (d.prot100 !== undefined) setProt100(formatMacroValue(d.prot100));
       if (d.carb100 !== undefined) setCarb100(formatMacroValue(d.carb100));
       if (d.fat100 !== undefined) setFat100(formatMacroValue(d.fat100));
+      if (d.sugars100 !== undefined) setSugars100(formatMacroValue(d.sugars100));
+      if (d.satFat100 !== undefined) setSatFat100(formatMacroValue(d.satFat100));
+      if (d.fiber100 !== undefined) setFiber100(formatMacroValue(d.fiber100));
+      if (d.sodiumMg100 !== undefined) setSodiumMg100(formatMacroValue(d.sodiumMg100));
       playSuccessChime();
       setOffNotice("success");
       window.setTimeout(() => {
@@ -506,6 +514,11 @@ export function Home() {
       });
     } catch (err) {
       console.error("Home save — full error:", err);
+      const msg =
+        err instanceof Error && err.message
+          ? err.message
+          : "שמירה נכשלה. בדקי חיבור/הרשאות ונסי שוב.";
+      setError(msg);
       return;
     }
 
