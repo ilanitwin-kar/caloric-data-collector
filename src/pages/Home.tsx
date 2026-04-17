@@ -180,6 +180,8 @@ export function Home() {
   const [sugarTsp100, setSugarTsp100] = useState("");
   const [totalWeight, setTotalWeight] = useState("");
   const [units, setUnits] = useState("");
+  const [unitWeightInput, setUnitWeightInput] = useState("");
+  const lastPackEditRef = useRef<"tw" | "units" | "uw" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [verifiedCandidate, setVerifiedCandidate] = useState<null | {
     name: string;
@@ -295,13 +297,17 @@ export function Home() {
         if (d.brand) setBrand(d.brand);
         const qg = d.quantityG;
         const pu = d.packUnits;
+        const servingG = d.servingG;
         if (typeof qg === "number" && qg > 0) {
           setTotalWeight((prev) => (prev.trim() ? prev : String(Math.round(qg))));
-          setUnits((prev) => {
-            if (prev.trim()) return prev;
-            if (typeof pu === "number" && pu > 0) return String(Math.round(pu));
-            return "1";
-          });
+        } else if (typeof servingG === "number" && servingG > 0 && typeof pu === "number" && pu > 0) {
+          const implied = servingG * pu;
+          setTotalWeight((prev) => (prev.trim() ? prev : String(Math.round(implied))));
+        }
+        if (typeof pu === "number" && pu > 0) {
+          setUnits((prev) => (prev.trim() ? prev : String(Math.round(pu))));
+        } else {
+          setUnits((prev) => (prev.trim() ? prev : "1"));
         }
         if (d.cals100 !== undefined) setCals100(formatMacroValue(d.cals100));
         if (d.prot100 !== undefined) setProt100(formatMacroValue(d.prot100));
@@ -327,6 +333,41 @@ export function Home() {
     },
     [products],
   );
+
+  // Keep the optional "unit weight" input in sync when the two main fields change.
+  useEffect(() => {
+    if (lastPackEditRef.current === "uw") return;
+    const tw = parseNum(totalWeight);
+    const u = parseNum(units);
+    if (!(tw > 0) || !(u > 0)) return;
+    const uw = tw / u;
+    if (Number.isFinite(uw) && uw > 0) setUnitWeightInput(fmt1(uw));
+  }, [totalWeight, units]);
+
+  // If user types unit weight + one of the other two, fill the missing one.
+  useEffect(() => {
+    if (lastPackEditRef.current !== "uw") return;
+    const uw = parseNum(unitWeightInput);
+    if (!(uw > 0)) return;
+
+    const tw = parseNum(totalWeight);
+    const u = parseNum(units);
+
+    if (tw > 0 && (!(u > 0) || !Number.isFinite(u))) {
+      const nextUnits = tw / uw;
+      if (Number.isFinite(nextUnits) && nextUnits > 0) {
+        setUnits(String(Math.max(1, Math.round(nextUnits))));
+      }
+      return;
+    }
+
+    if (u > 0 && (!(tw > 0) || !Number.isFinite(tw))) {
+      const nextTw = uw * u;
+      if (Number.isFinite(nextTw) && nextTw > 0) {
+        setTotalWeight(String(Math.round(nextTw)));
+      }
+    }
+  }, [unitWeightInput, totalWeight, units]);
 
   const handleBarcode = useCallback(
     async (code: string) => {
@@ -707,6 +748,7 @@ export function Home() {
     setCupsPer100g("");
     setTotalWeight("");
     setUnits("");
+    setUnitWeightInput("");
     handleRemoveImage();
   }
 
@@ -1100,16 +1142,45 @@ export function Home() {
             id="total-weight"
             label="משקל כולל של האריזה (גרם)"
             value={totalWeight}
-            onChange={setTotalWeight}
+            onChange={(v) => {
+              lastPackEditRef.current = "tw";
+              setTotalWeight(v);
+              window.setTimeout(() => {
+                if (lastPackEditRef.current === "tw") lastPackEditRef.current = null;
+              }, 0);
+            }}
             inputMode="decimal"
           />
           <Field
             id="units"
             label="יחידות באריזה (כמה פריטים בפנים)"
             value={units}
-            onChange={setUnits}
+            onChange={(v) => {
+              lastPackEditRef.current = "units";
+              setUnits(v);
+              window.setTimeout(() => {
+                if (lastPackEditRef.current === "units") lastPackEditRef.current = null;
+              }, 0);
+            }}
             inputMode="numeric"
           />
+        </div>
+        <div className="mt-3">
+          <Field
+            id="unit-weight"
+            label="משקל יחידה (גרם) — אופציונלי"
+            value={unitWeightInput}
+            onChange={(v) => {
+              lastPackEditRef.current = "uw";
+              setUnitWeightInput(v);
+            }}
+            inputMode="decimal"
+            placeholder="לדוגמה: 12.5"
+          />
+          <p className="mt-2 text-[11px] leading-snug text-ink-dim">
+            אפשר להזין שני שדות בלבד: (משקל כולל + יחידות) או (משקל כולל + משקל יחידה) או (יחידות + משקל יחידה) —
+            והשדה השלישי יתמלא אוטומטית.
+          </p>
         </div>
         <p className="text-xs text-ink-dim">
           &quot;משקל כולל&quot; הוא כל האריזה; &quot;יחידות באריזה&quot; מתייחס לרב־חבילה (למשל 6) ולא למשקל של יחידה בודדת.
