@@ -1,11 +1,20 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { EditProductModal } from "../components/EditProductModal";
 import { Spinner } from "../components/Spinner";
 import { useProducts } from "../context/ProductsContext";
+import { useToast } from "../context/ToastContext";
 import type { Product } from "../types/product";
 import { downloadCsv, productsToCsv } from "../utils/csv";
 import { fmt1 } from "../utils/number";
-import { shareCsv } from "../utils/share";
+import {
+  downloadProductsXlsx,
+  mailtoProductsUrl,
+  productsToPdfBlob,
+  productsToShareSummaryText,
+  productsToXlsxBlob,
+  whatsAppShareUrl,
+} from "../utils/productExport";
+import { downloadBlob, shareBlobFile } from "../utils/share";
 
 function IconDuplicate({ className }: { className?: string }) {
   return (
@@ -50,7 +59,13 @@ function savedCountLabel(n: number): string {
   return `${n} מוצרים ברשימה.`;
 }
 
+function perUnitFrom100(p: Product, v100: number | undefined): string {
+  if (v100 === undefined || !Number.isFinite(v100)) return "—";
+  return fmt1((v100 * p.unitWeight) / 100);
+}
+
 export function History() {
+  const { showToast } = useToast();
   const {
     products,
     loading,
@@ -64,24 +79,60 @@ export function History() {
   const [editing, setEditing] = useState<Product | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
 
-  function handleExport() {
-    const csv = productsToCsv(products);
-    const stamp = new Date().toISOString().slice(0, 10);
-    downloadCsv(`products-${stamp}.csv`, csv);
+  const summaryText = useMemo(() => productsToShareSummaryText(products), [products]);
+  const waHref = useMemo(
+    () => (products.length ? whatsAppShareUrl(summaryText) : ""),
+    [products.length, summaryText],
+  );
+  const mailHref = useMemo(
+    () =>
+      products.length
+        ? mailtoProductsUrl("המוצרים שלי — תקציר", summaryText)
+        : "",
+    [products.length, summaryText],
+  );
+
+  function exportStamp() {
+    return new Date().toISOString().slice(0, 10);
   }
 
-  async function handleShare() {
+  function handleExportCsv() {
     const csv = productsToCsv(products);
-    const stamp = new Date().toISOString().slice(0, 10);
-    const res = await shareCsv({
-      filename: `products-${stamp}.csv`,
-      csv,
-      title: "מוצרי האפליקציה",
-      text: "קובץ CSV של המוצרים שנשמרו באפליקציה.",
+    downloadCsv(`products-${exportStamp()}.csv`, csv);
+  }
+
+  async function handleExportXlsx() {
+    await downloadProductsXlsx(products, `products-${exportStamp()}.xlsx`);
+  }
+
+  async function handleExportPdf() {
+    const blob = await productsToPdfBlob(products);
+    downloadBlob(blob, `products-${exportStamp()}.pdf`);
+  }
+
+  async function handleShareFile() {
+    const text = summaryText;
+    const stamp = exportStamp();
+    const xlsxBlob = await productsToXlsxBlob(products);
+    let r = await shareBlobFile({
+      blob: xlsxBlob,
+      filename: `products-${stamp}.xlsx`,
+      mime: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      title: "המוצרים שלי",
+      text,
     });
-    if (!res.ok && res.reason === "unsupported") {
-      handleExport();
-    }
+    if (r.ok) return;
+    const pdfBlob = await productsToPdfBlob(products);
+    r = await shareBlobFile({
+      blob: pdfBlob,
+      filename: `products-${stamp}.pdf`,
+      mime: "application/pdf",
+      title: "המוצרים שלי",
+      text,
+    });
+    if (r.ok) return;
+    await downloadProductsXlsx(products, `products-${stamp}.xlsx`);
+    showToast("שיתוף הקובץ לא זמין — הורדנו Excel למכשיר", "success");
   }
 
   async function handleDelete(p: Product) {
@@ -127,24 +178,57 @@ export function History() {
           <p className="text-sm text-ink-muted">{savedCountLabel(products.length)}</p>
         )}
 
-        <div className="flex gap-2">
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
           <button
             type="button"
-            onClick={() => void handleShare()}
+            onClick={() => void handleShareFile()}
             disabled={products.length === 0}
-            className="min-h-[52px] flex-1 rounded-2xl bg-white text-lg font-semibold text-black transition enabled:active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-40"
+            className="min-h-[48px] rounded-2xl bg-white text-sm font-semibold text-black transition enabled:active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-40 sm:text-base"
           >
-            שיתוף / שליחה
+            שיתוף קובץ
           </button>
           <button
             type="button"
-            onClick={handleExport}
+            onClick={() => void handleExportXlsx()}
             disabled={products.length === 0}
-            className="min-h-[52px] flex-1 rounded-2xl border border-white/25 bg-white/[0.06] text-lg font-semibold text-white transition enabled:active:scale-[0.99] enabled:hover:border-white/35 enabled:hover:bg-white/[0.09] disabled:cursor-not-allowed disabled:opacity-40"
+            className="min-h-[48px] rounded-2xl border border-white/25 bg-white/[0.06] text-sm font-semibold text-white transition enabled:active:scale-[0.99] enabled:hover:border-white/35 enabled:hover:bg-white/[0.09] disabled:cursor-not-allowed disabled:opacity-40 sm:text-base"
           >
-            הורדת CSV
+            הורד Excel
+          </button>
+          <button
+            type="button"
+            onClick={() => void handleExportPdf()}
+            disabled={products.length === 0}
+            className="min-h-[48px] rounded-2xl border border-white/25 bg-white/[0.06] text-sm font-semibold text-white transition enabled:active:scale-[0.99] enabled:hover:border-white/35 enabled:hover:bg-white/[0.09] disabled:cursor-not-allowed disabled:opacity-40 sm:text-base"
+          >
+            הורד PDF
+          </button>
+          <a
+            href={waHref || undefined}
+            target="_blank"
+            rel="noreferrer"
+            className={`flex min-h-[48px] items-center justify-center rounded-2xl border border-emerald-400/35 bg-emerald-500/15 text-sm font-semibold text-emerald-100 transition hover:bg-emerald-500/25 ${products.length === 0 ? "pointer-events-none opacity-40" : ""}`}
+          >
+            ווטסאפ
+          </a>
+          <a
+            href={mailHref || undefined}
+            className={`flex min-h-[48px] items-center justify-center rounded-2xl border border-sky-400/35 bg-sky-500/15 text-sm font-semibold text-sky-100 transition hover:bg-sky-500/25 ${products.length === 0 ? "pointer-events-none opacity-40" : ""}`}
+          >
+            אימייל
+          </a>
+          <button
+            type="button"
+            onClick={handleExportCsv}
+            disabled={products.length === 0}
+            className="min-h-[48px] rounded-2xl border border-white/15 bg-transparent text-sm font-semibold text-ink-muted transition enabled:hover:border-white/25 enabled:hover:text-white disabled:cursor-not-allowed disabled:opacity-40 sm:text-base"
+          >
+            CSV
           </button>
         </div>
+        <p className="text-xs text-ink-dim">
+          שיתוף קובץ מנסה קודם Excel ואז PDF. ווטסאפ ואימייל שולחים תקציר טקסט — לטבלה מלאה השתמשו בהורדה.
+        </p>
       </header>
 
       <ul className="space-y-3">
@@ -169,6 +253,11 @@ export function History() {
                   <span className="font-display text-xl text-white">{p.name}</span>
                   {p.brand ? (
                     <span className="mt-0.5 block text-sm text-ink-muted">{p.brand}</span>
+                  ) : null}
+                  {p.barcode ? (
+                    <span className="mt-0.5 block font-mono text-xs text-ink-muted" dir="ltr">
+                      {p.barcode}
+                    </span>
                   ) : null}
                   <span className="mt-1 block text-xs text-ink-dim">
                     נשמר {formatSavedAt(p.savedAt)}
@@ -212,26 +301,125 @@ export function History() {
                   )}
                 </div>
               </div>
-              <div className="mt-3 grid grid-cols-2 gap-2 border-t border-white/10 pt-3 text-sm">
-                <div>
-                  <span className="text-ink-muted">משקל יחידה</span>
-                  <p className="tabular-nums text-white">{fmt1(p.unitWeight)} גרם</p>
+              <div className="mt-3 space-y-3 border-t border-white/10 pt-3 text-sm">
+                <p className="text-xs font-semibold text-ink-dim">אריזה</p>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <span className="text-ink-muted">משקל כולל</span>
+                    <p className="tabular-nums text-white">{fmt1(p.totalWeight)} גרם</p>
+                  </div>
+                  <div>
+                    <span className="text-ink-muted">יחידות באריזה</span>
+                    <p className="tabular-nums text-white">{p.units}</p>
+                  </div>
+                  <div className="col-span-2">
+                    <span className="text-ink-muted">משקל יחידה</span>
+                    <p className="tabular-nums text-white">{fmt1(p.unitWeight)} גרם</p>
+                  </div>
                 </div>
-                <div>
-                  <span className="text-ink-muted">קלוריות</span>
-                  <p className="tabular-nums text-white">{fmt1(p.calsUnit)} קק&quot;ל</p>
+                <p className="text-xs font-semibold text-ink-dim">ל-100 גרם</p>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <span className="text-ink-muted">אנרגיה</span>
+                    <p className="tabular-nums text-white">{fmt1(p.cals100)} קק&quot;ל</p>
+                  </div>
+                  <div>
+                    <span className="text-ink-muted">חלבון</span>
+                    <p className="tabular-nums text-white">{fmt1(p.prot100)} גרם</p>
+                  </div>
+                  <div>
+                    <span className="text-ink-muted">פחמימות</span>
+                    <p className="tabular-nums text-white">{fmt1(p.carb100)} גרם</p>
+                  </div>
+                  <div>
+                    <span className="text-ink-muted">שומן</span>
+                    <p className="tabular-nums text-white">{fmt1(p.fat100)} גרם</p>
+                  </div>
+                  <div>
+                    <span className="text-ink-muted">סוכרים</span>
+                    <p className="tabular-nums text-white">
+                      {p.sugars100 !== undefined ? fmt1(p.sugars100) : "—"}
+                    </p>
+                  </div>
+                  <div>
+                    <span className="text-ink-muted">שומן רווי</span>
+                    <p className="tabular-nums text-white">
+                      {p.satFat100 !== undefined ? fmt1(p.satFat100) : "—"}
+                    </p>
+                  </div>
+                  <div>
+                    <span className="text-ink-muted">שומן טראנס</span>
+                    <p className="tabular-nums text-white">
+                      {p.transFat100 !== undefined ? fmt1(p.transFat100) : "—"}
+                    </p>
+                  </div>
+                  <div>
+                    <span className="text-ink-muted">סיבים</span>
+                    <p className="tabular-nums text-white">
+                      {p.fiber100 !== undefined ? fmt1(p.fiber100) : "—"}
+                    </p>
+                  </div>
+                  <div>
+                    <span className="text-ink-muted">נתרן</span>
+                    <p className="tabular-nums text-white">
+                      {p.sodiumMg100 !== undefined ? `${fmt1(p.sodiumMg100)} מ״ג` : "—"}
+                    </p>
+                  </div>
+                  <div>
+                    <span className="text-ink-muted">כפיות סוכר (הערכה)</span>
+                    <p className="tabular-nums text-white">
+                      {p.sugarTeaspoons100 !== undefined ? fmt1(p.sugarTeaspoons100) : "—"}
+                    </p>
+                  </div>
                 </div>
-                <div>
-                  <span className="text-ink-muted">חלבון</span>
-                  <p className="tabular-nums text-white">{fmt1(p.protUnit)} גרם</p>
-                </div>
-                <div>
-                  <span className="text-ink-muted">פחמימות</span>
-                  <p className="tabular-nums text-white">{fmt1(p.carbUnit)} גרם</p>
-                </div>
-                <div className="col-span-2">
-                  <span className="text-ink-muted">שומן</span>
-                  <p className="tabular-nums text-white">{fmt1(p.fatUnit)} גרם</p>
+                <p className="text-xs font-semibold text-ink-dim">ליחידה אחת</p>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <span className="text-ink-muted">אנרגיה</span>
+                    <p className="tabular-nums text-white">{fmt1(p.calsUnit)} קק&quot;ל</p>
+                  </div>
+                  <div>
+                    <span className="text-ink-muted">חלבון</span>
+                    <p className="tabular-nums text-white">{fmt1(p.protUnit)} גרם</p>
+                  </div>
+                  <div>
+                    <span className="text-ink-muted">פחמימות</span>
+                    <p className="tabular-nums text-white">{fmt1(p.carbUnit)} גרם</p>
+                  </div>
+                  <div>
+                    <span className="text-ink-muted">שומן</span>
+                    <p className="tabular-nums text-white">{fmt1(p.fatUnit)} גרם</p>
+                  </div>
+                  <div>
+                    <span className="text-ink-muted">סוכרים</span>
+                    <p className="tabular-nums text-white">{perUnitFrom100(p, p.sugars100)} גרם</p>
+                  </div>
+                  <div>
+                    <span className="text-ink-muted">שומן רווי</span>
+                    <p className="tabular-nums text-white">{perUnitFrom100(p, p.satFat100)} גרם</p>
+                  </div>
+                  <div>
+                    <span className="text-ink-muted">שומן טראנס</span>
+                    <p className="tabular-nums text-white">{perUnitFrom100(p, p.transFat100)} גרם</p>
+                  </div>
+                  <div>
+                    <span className="text-ink-muted">סיבים</span>
+                    <p className="tabular-nums text-white">{perUnitFrom100(p, p.fiber100)} גרם</p>
+                  </div>
+                  <div>
+                    <span className="text-ink-muted">נתרן</span>
+                    <p className="tabular-nums text-white">
+                      {p.sodiumMg100 !== undefined
+                        ? `${perUnitFrom100(p, p.sodiumMg100)} מ״ג`
+                        : "—"}
+                    </p>
+                  </div>
+                  <div>
+                    <span className="text-ink-muted">כפיות סוכר</span>
+                    <p className="tabular-nums text-white">
+                      {perUnitFrom100(p, p.sugarTeaspoons100)}
+                    </p>
+                  </div>
                 </div>
               </div>
             </li>

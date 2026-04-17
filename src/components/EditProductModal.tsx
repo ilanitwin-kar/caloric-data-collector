@@ -40,6 +40,7 @@ function Field({
 }
 
 export function EditProductModal({ product, onClose, onSave }: Props) {
+  const [barcode, setBarcode] = useState("");
   const [name, setName] = useState("");
   const [brand, setBrand] = useState("");
   const [cals100, setCals100] = useState("");
@@ -68,6 +69,7 @@ export function EditProductModal({ product, onClose, onSave }: Props) {
 
   useEffect(() => {
     if (!product) return;
+    setBarcode(product.barcode ?? "");
     setName(product.name);
     setBrand(product.brand);
     setCals100(String(product.cals100));
@@ -119,6 +121,7 @@ export function EditProductModal({ product, onClose, onSave }: Props) {
 
     const payload = buildProductPayload(
       {
+        barcode: barcode.trim() || undefined,
         name: n,
         brand: brand.trim(),
         cals100: c100,
@@ -135,7 +138,7 @@ export function EditProductModal({ product, onClose, onSave }: Props) {
         units: u,
       },
       product.id,
-      new Date().toISOString(),
+      product.savedAt,
     );
 
     setSaving(true);
@@ -170,6 +173,13 @@ export function EditProductModal({ product, onClose, onSave }: Props) {
           עריכת מוצר
         </h2>
         <form onSubmit={handleSubmit} className="mt-4 max-h-[min(70vh,520px)] space-y-3 overflow-y-auto pr-1">
+          <Field
+            id="edit-barcode"
+            label="ברקוד"
+            value={barcode}
+            onChange={setBarcode}
+            inputMode="numeric"
+          />
           <Field id="edit-name" label="שם המוצר" value={name} onChange={setName} />
           <Field id="edit-brand" label="מותג" value={brand} onChange={setBrand} />
           <div className="grid grid-cols-2 gap-3">

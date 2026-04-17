@@ -127,76 +127,22 @@ function parseQuantityToGrams(raw?: string): number | undefined {
   return undefined;
 }
 
+function per100FromServing(
+  nut: Record<string, unknown>,
+  servingG: number | undefined,
+  keys100: string[],
+  keysServing: string[],
+): number | undefined {
+  const v100 = readNum(nut, keys100);
+  if (v100 !== undefined) return v100;
+  if (!servingG || servingG <= 0) return undefined;
+  const vs = readNum(nut, keysServing);
+  if (vs === undefined) return undefined;
+  return (vs / servingG) * 100;
+}
+
 function nutrimentsFromProduct(product: Record<string, unknown>): OpenFoodFactsProduct {
   const nut = (product.nutriments ?? {}) as Record<string, unknown>;
-
-  let cals100 = readNum(nut, [
-    "energy-kcal_100g",
-    "energy-kcal_value",
-    "energy-kcal",
-  ]);
-
-  if (cals100 === undefined) {
-    const kj = readNum(nut, [
-      "energy-kj_100g",
-      "energy_100g",
-      "energy-kj_value",
-    ]);
-    if (kj !== undefined && kj > 200) cals100 = Math.round(kj / 4.184);
-  }
-
-  const prot100 = readNum(nut, ["proteins_100g", "proteins_value"]);
-  const carb100 = readNum(nut, [
-    "carbohydrates_100g",
-    "carbohydrates_value",
-  ]);
-  const fat100 = readNum(nut, ["fat_100g", "fat_value"]);
-  const sugars100 = readNum(nut, ["sugars_100g", "sugars_value"]);
-  const addedSugars100 = readNum(nut, [
-    "added-sugars_100g",
-    "added_sugars_100g",
-    "added-sugars_value",
-  ]);
-  const satFat100 = readNum(nut, [
-    "saturated-fat_100g",
-    "saturated_fat_100g",
-    "saturated-fat_value",
-  ]);
-  const transFat100 = readNum(nut, [
-    "trans-fat_100g",
-    "trans_fat_100g",
-    "trans_fat_value",
-    "trans-fat_value",
-    "trans-fat",
-  ]);
-  const fiber100 = readNum(nut, ["fiber_100g", "fiber_value"]);
-
-  let sodiumMg100 = readNum(nut, ["sodium_100g", "sodium_value"]);
-  // Open Food Facts: sodium_100g is grams of sodium per 100g product → convert to mg.
-  if (sodiumMg100 !== undefined && sodiumMg100 > 0 && sodiumMg100 <= 10) {
-    sodiumMg100 = sodiumMg100 * 1000;
-  }
-  // OFF often provides salt in g/100g; sodium ≈ salt * 1000 * 0.4
-  if (sodiumMg100 === undefined) {
-    const saltG = readNum(nut, ["salt_100g", "salt_value"]);
-    if (saltG !== undefined) sodiumMg100 = saltG * 1000 * 0.4;
-  }
-
-  const sugarBaseG = addedSugars100 ?? sugars100;
-  const sugarTeaspoons100 =
-    sugarBaseG !== undefined ? sugarBaseG / 4.2 : undefined;
-
-  const nameRaw =
-    (typeof product.product_name === "string" && product.product_name) ||
-    (typeof product.product_name_en === "string" && product.product_name_en) ||
-    (typeof product.generic_name === "string" && product.generic_name) ||
-    "";
-
-  const brandsRaw = typeof product.brands === "string" ? product.brands : "";
-  const brand =
-    brandsRaw
-      .split(/[,;/]/)[0]
-      ?.trim() ?? "";
 
   const quantityText = readStr(product, ["quantity"]);
   let quantityG = parseQuantityToGrams(quantityText);
@@ -243,6 +189,62 @@ function nutrimentsFromProduct(product: Record<string, unknown>): OpenFoodFactsP
 
   const servingSizeText = readStr(product, ["serving_size"]);
   const servingG = parseQuantityToGrams(servingSizeText);
+
+  // Prefer explicit *_100g fields so we never mix in per-serving "value" fields by mistake.
+  let cals100 = per100FromServing(nut, servingG, ["energy-kcal_100g"], ["energy-kcal_serving"]);
+  if (cals100 === undefined) {
+    const kj100 = readNum(nut, ["energy-kj_100g"]);
+    if (kj100 !== undefined && kj100 > 200) cals100 = Math.round(kj100 / 4.184);
+  }
+  if (cals100 === undefined && servingG && servingG > 0) {
+    const kjS = readNum(nut, ["energy-kj_serving"]);
+    if (kjS !== undefined && kjS > 50) {
+      cals100 = Math.round(((kjS / servingG) * 100) / 4.184);
+    }
+  }
+
+  const prot100 = per100FromServing(nut, servingG, ["proteins_100g"], ["proteins_serving"]);
+  const carb100 = per100FromServing(nut, servingG, ["carbohydrates_100g"], ["carbohydrates_serving"]);
+  const fat100 = per100FromServing(nut, servingG, ["fat_100g"], ["fat_serving"]);
+  const sugars100 = per100FromServing(nut, servingG, ["sugars_100g"], ["sugars_serving"]);
+  const addedSugars100 = per100FromServing(nut, servingG, ["added-sugars_100g", "added_sugars_100g"], ["added-sugars_serving"]);
+  const satFat100 = per100FromServing(nut, servingG, ["saturated-fat_100g", "saturated_fat_100g"], ["saturated-fat_serving", "saturated_fat_serving"]);
+  const transFat100 = per100FromServing(nut, servingG, ["trans-fat_100g", "trans_fat_100g"], ["trans-fat_serving", "trans_fat_serving"]);
+  const fiber100 = per100FromServing(nut, servingG, ["fiber_100g"], ["fiber_serving"]);
+
+  let sodiumMg100 = readNum(nut, ["sodium_100g"]);
+  if (sodiumMg100 !== undefined && sodiumMg100 > 0 && sodiumMg100 <= 10) {
+    sodiumMg100 = sodiumMg100 * 1000;
+  }
+  if (sodiumMg100 === undefined) {
+    const saltG = readNum(nut, ["salt_100g"]);
+    if (saltG !== undefined) sodiumMg100 = saltG * 1000 * 0.4;
+  }
+  if (sodiumMg100 === undefined && servingG && servingG > 0) {
+    let sServ = readNum(nut, ["sodium_serving"]);
+    if (sServ !== undefined && sServ > 0 && sServ <= 10) sServ *= 1000;
+    if (sServ !== undefined) sodiumMg100 = (sServ / servingG) * 100;
+    if (sodiumMg100 === undefined) {
+      const saltS = readNum(nut, ["salt_serving"]);
+      if (saltS !== undefined) sodiumMg100 = ((saltS / servingG) * 100) * 1000 * 0.4;
+    }
+  }
+
+  const sugarBaseG = addedSugars100 ?? sugars100;
+  const sugarTeaspoons100 =
+    sugarBaseG !== undefined ? sugarBaseG / 4.2 : undefined;
+
+  const nameRaw =
+    (typeof product.product_name === "string" && product.product_name) ||
+    (typeof product.product_name_en === "string" && product.product_name_en) ||
+    (typeof product.generic_name === "string" && product.generic_name) ||
+    "";
+
+  const brandsRaw = typeof product.brands === "string" ? product.brands : "";
+  const brand =
+    brandsRaw
+      .split(/[,;/]/)[0]
+      ?.trim() ?? "";
 
   const ingredientsText =
     readStr(product, [

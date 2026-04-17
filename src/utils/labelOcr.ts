@@ -253,6 +253,54 @@ function extractSugarTeaspoonsFromLines(lines: string[]): number | undefined {
   return undefined;
 }
 
+/** Best-effort net weight / unit count from label OCR (Hebrew + common pack patterns). */
+export type ParsedPackage = {
+  totalWeightG?: number;
+  units?: number;
+};
+
+export function parsePackageFromOcrText(raw: string): ParsedPackage {
+  const flat = stripBidi(raw.replace(/\s+/g, " "));
+  const out: ParsedPackage = {};
+
+  const packMatch = flat.match(
+    /(\d+(?:[.,]\d+)?)\s*[x×]\s*(\d+(?:[.,]\d+)?)\s*(?:g|ג|גרם|ml|מ["׳]ל)?/i,
+  );
+  if (packMatch) {
+    const count = parseFloat(packMatch[1].replace(",", "."));
+    const each = parseFloat(packMatch[2].replace(",", "."));
+    if (Number.isFinite(count) && Number.isFinite(each) && count > 0 && each > 0 && count <= 200) {
+      out.units = Math.round(count);
+      out.totalWeightG = Math.round(count * each);
+      return out;
+    }
+  }
+
+  const weightMatch = flat.match(
+    /(?:משקל\s*(?:נטו|כולל|הכולל)?|נ["׳]טו|net\s*weight)\s*[:\-]?\s*(\d+(?:[.,]\d+)?)\s*(?:g|גרם)?/i,
+  );
+  if (weightMatch) {
+    const g = parseFloat(weightMatch[1].replace(",", "."));
+    if (Number.isFinite(g) && g > 0 && g < 100_000) {
+      out.totalWeightG = Math.round(g);
+    }
+  }
+
+  const looseG = flat.match(/\b(\d{2,5})\s*(?:g|גרם)\b/i);
+  if (out.totalWeightG === undefined && looseG) {
+    const g = parseInt(looseG[1], 10);
+    if (g >= 20 && g <= 50_000) out.totalWeightG = g;
+  }
+
+  const unitsMatch = flat.match(/(\d{1,3})\s*(?:יחידות|יח')/i);
+  if (unitsMatch) {
+    const u = parseInt(unitsMatch[1], 10);
+    if (u > 0 && u < 1000) out.units = u;
+  }
+
+  return out;
+}
+
 export function parseNutritionFromOcrText(raw: string): ParsedMacros {
   const lines = raw.split(/\r?\n/).map((l) => stripBidi(l).trim());
 
