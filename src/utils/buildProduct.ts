@@ -16,6 +16,9 @@ export function buildProductPayload(
     fiber100?: number;
     sodiumMg100?: number;
     sugarTeaspoons100?: number;
+    unitsPer100g?: number;
+    tbspPer100g?: number;
+    cupsPer100g?: number;
     totalWeight: number;
     units: number;
   },
@@ -46,6 +49,9 @@ export function buildProductPayload(
     fiber100: base.fiber100,
     sodiumMg100: base.sodiumMg100,
     sugarTeaspoons100: base.sugarTeaspoons100,
+    unitsPer100g: base.unitsPer100g,
+    tbspPer100g: base.tbspPer100g,
+    cupsPer100g: base.cupsPer100g,
     totalWeight: tw,
     units: u,
     unitWeight,

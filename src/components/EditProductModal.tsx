@@ -53,6 +53,9 @@ export function EditProductModal({ product, onClose, onSave }: Props) {
   const [fiber100, setFiber100] = useState("");
   const [sodiumMg100, setSodiumMg100] = useState("");
   const [sugarTsp100, setSugarTsp100] = useState("");
+  const [unitsPer100g, setUnitsPer100g] = useState("");
+  const [tbspPer100g, setTbspPer100g] = useState("");
+  const [cupsPer100g, setCupsPer100g] = useState("");
   const [totalWeight, setTotalWeight] = useState("");
   const [units, setUnits] = useState("");
   const [formError, setFormError] = useState<string | null>(null);
@@ -82,6 +85,9 @@ export function EditProductModal({ product, onClose, onSave }: Props) {
     setFiber100(product.fiber100 !== undefined ? String(product.fiber100) : "");
     setSodiumMg100(product.sodiumMg100 !== undefined ? String(product.sodiumMg100) : "");
     setSugarTsp100(product.sugarTeaspoons100 !== undefined ? String(product.sugarTeaspoons100) : "");
+    setUnitsPer100g(product.unitsPer100g !== undefined ? String(product.unitsPer100g) : "");
+    setTbspPer100g(product.tbspPer100g !== undefined ? String(product.tbspPer100g) : "");
+    setCupsPer100g(product.cupsPer100g !== undefined ? String(product.cupsPer100g) : "");
     setTotalWeight(String(product.totalWeight));
     setUnits(String(product.units));
     setFormError(null);
@@ -118,6 +124,9 @@ export function EditProductModal({ product, onClose, onSave }: Props) {
     const fib100 = parseNum(fiber100);
     const sod100 = parseNum(sodiumMg100);
     const tsp100 = parseNum(sugarTsp100);
+    const units100 = parseNum(unitsPer100g);
+    const tbsp100 = parseNum(tbspPer100g);
+    const cups100 = parseNum(cupsPer100g);
 
     const payload = buildProductPayload(
       {
@@ -134,6 +143,9 @@ export function EditProductModal({ product, onClose, onSave }: Props) {
         fiber100: Number.isFinite(fib100) ? fib100 : undefined,
         sodiumMg100: Number.isFinite(sod100) ? sod100 : undefined,
         sugarTeaspoons100: Number.isFinite(tsp100) ? tsp100 : undefined,
+        unitsPer100g: Number.isFinite(units100) && units100 > 0 ? units100 : undefined,
+        tbspPer100g: Number.isFinite(tbsp100) && tbsp100 > 0 ? tbsp100 : undefined,
+        cupsPer100g: Number.isFinite(cups100) && cups100 > 0 ? cups100 : undefined,
         totalWeight: tw,
         units: u,
       },
@@ -253,6 +265,35 @@ export function EditProductModal({ product, onClose, onSave }: Props) {
               onChange={setSugarTsp100}
               inputMode="decimal"
             />
+          </div>
+          <div className="rounded-xl border border-white/10 bg-white/[0.03] p-3">
+            <p className="text-xs font-semibold text-white">המרות לפי 100 גרם (אופציונלי)</p>
+            <p className="mt-1 text-[11px] leading-snug text-ink-dim">
+              לדוגמה: ענבים — כמה יחידות יש ב־100 גרם; אורז — כמה כפות ב־100 גרם.
+            </p>
+            <div className="mt-3 grid grid-cols-2 gap-3">
+              <Field
+                id="edit-units100"
+                label="יחידות ב־100 גרם"
+                value={unitsPer100g}
+                onChange={setUnitsPer100g}
+                inputMode="decimal"
+              />
+              <Field
+                id="edit-tbsp100"
+                label="כפות ב־100 גרם"
+                value={tbspPer100g}
+                onChange={setTbspPer100g}
+                inputMode="decimal"
+              />
+              <Field
+                id="edit-cups100"
+                label="כוסות ב־100 גרם"
+                value={cupsPer100g}
+                onChange={setCupsPer100g}
+                inputMode="decimal"
+              />
+            </div>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <Field

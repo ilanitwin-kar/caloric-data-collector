@@ -180,6 +180,8 @@ export function Home() {
   const [sugarTsp100, setSugarTsp100] = useState("");
   const [totalWeight, setTotalWeight] = useState("");
   const [units, setUnits] = useState("");
+  const [unitWeightInput, setUnitWeightInput] = useState("");
+  const lastPackEditRef = useRef<"tw" | "units" | "uw" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [verifiedCandidate, setVerifiedCandidate] = useState<null | {
     name: string;
@@ -210,8 +212,11 @@ export function Home() {
   const [offSearchResults, setOffSearchResults] = useState<OffSearchHit[]>([]);
   const [offSearchBusy, setOffSearchBusy] = useState(false);
   const [offSearchError, setOffSearchError] = useState<string | null>(null);
-  type PortionPreset = "100" | "tbsp" | "cup" | "unit";
+  type PortionPreset = "100" | "tbsp" | "cup" | "pack_unit" | "piece";
   const [portionPreset, setPortionPreset] = useState<PortionPreset>("100");
+  const [unitsPer100g, setUnitsPer100g] = useState("");
+  const [tbspPer100g, setTbspPer100g] = useState("");
+  const [cupsPer100g, setCupsPer100g] = useState("");
 
   const revokePreview = useCallback(() => {
     setPreviewUrl((prev) => {
@@ -292,13 +297,17 @@ export function Home() {
         if (d.brand) setBrand(d.brand);
         const qg = d.quantityG;
         const pu = d.packUnits;
+        const servingG = d.servingG;
         if (typeof qg === "number" && qg > 0) {
           setTotalWeight((prev) => (prev.trim() ? prev : String(Math.round(qg))));
-          setUnits((prev) => {
-            if (prev.trim()) return prev;
-            if (typeof pu === "number" && pu > 0) return String(Math.round(pu));
-            return "1";
-          });
+        } else if (typeof servingG === "number" && servingG > 0 && typeof pu === "number" && pu > 0) {
+          const implied = servingG * pu;
+          setTotalWeight((prev) => (prev.trim() ? prev : String(Math.round(implied))));
+        }
+        if (typeof pu === "number" && pu > 0) {
+          setUnits((prev) => (prev.trim() ? prev : String(Math.round(pu))));
+        } else {
+          setUnits((prev) => (prev.trim() ? prev : "1"));
         }
         if (d.cals100 !== undefined) setCals100(formatMacroValue(d.cals100));
         if (d.prot100 !== undefined) setProt100(formatMacroValue(d.prot100));
@@ -324,6 +333,41 @@ export function Home() {
     },
     [products],
   );
+
+  // Keep the optional "unit weight" input in sync when the two main fields change.
+  useEffect(() => {
+    if (lastPackEditRef.current === "uw") return;
+    const tw = parseNum(totalWeight);
+    const u = parseNum(units);
+    if (!(tw > 0) || !(u > 0)) return;
+    const uw = tw / u;
+    if (Number.isFinite(uw) && uw > 0) setUnitWeightInput(fmt1(uw));
+  }, [totalWeight, units]);
+
+  // If user types unit weight + one of the other two, fill the missing one.
+  useEffect(() => {
+    if (lastPackEditRef.current !== "uw") return;
+    const uw = parseNum(unitWeightInput);
+    if (!(uw > 0)) return;
+
+    const tw = parseNum(totalWeight);
+    const u = parseNum(units);
+
+    if (tw > 0 && (!(u > 0) || !Number.isFinite(u))) {
+      const nextUnits = tw / uw;
+      if (Number.isFinite(nextUnits) && nextUnits > 0) {
+        setUnits(String(Math.max(1, Math.round(nextUnits))));
+      }
+      return;
+    }
+
+    if (u > 0 && (!(tw > 0) || !Number.isFinite(tw))) {
+      const nextTw = uw * u;
+      if (Number.isFinite(nextTw) && nextTw > 0) {
+        setTotalWeight(String(Math.round(nextTw)));
+      }
+    }
+  }, [unitWeightInput, totalWeight, units]);
 
   const handleBarcode = useCallback(
     async (code: string) => {
@@ -534,21 +578,51 @@ export function Home() {
   const PORTION_TBSP_G = 15;
   const PORTION_CUP_G = 240;
 
+  const unitsPer100gNum = useMemo(() => {
+    const n = parseNum(unitsPer100g);
+    return Number.isFinite(n) && n > 0 ? n : undefined;
+  }, [unitsPer100g]);
+  const tbspPer100gNum = useMemo(() => {
+    const n = parseNum(tbspPer100g);
+    return Number.isFinite(n) && n > 0 ? n : undefined;
+  }, [tbspPer100g]);
+  const cupsPer100gNum = useMemo(() => {
+    const n = parseNum(cupsPer100g);
+    return Number.isFinite(n) && n > 0 ? n : undefined;
+  }, [cupsPer100g]);
+
+  const tbspGrams = useMemo(() => {
+    if (tbspPer100gNum !== undefined) return 100 / tbspPer100gNum;
+    return PORTION_TBSP_G;
+  }, [tbspPer100gNum]);
+
+  const cupGrams = useMemo(() => {
+    if (cupsPer100gNum !== undefined) return 100 / cupsPer100gNum;
+    return PORTION_CUP_G;
+  }, [cupsPer100gNum]);
+
+  const pieceGrams = useMemo(() => {
+    if (unitsPer100gNum !== undefined) return 100 / unitsPer100gNum;
+    return NaN;
+  }, [unitsPer100gNum]);
+
   const portionGrams = useMemo(() => {
     switch (portionPreset) {
       case "100":
         return 100;
       case "tbsp":
-        return PORTION_TBSP_G;
+        return tbspGrams;
       case "cup":
-        return PORTION_CUP_G;
-      case "unit":
+        return cupGrams;
+      case "pack_unit":
         if (!derived.hasPackage || !Number.isFinite(derived.unitWeight)) return NaN;
         return derived.unitWeight;
+      case "piece":
+        return pieceGrams;
       default:
         return 100;
     }
-  }, [portionPreset, derived.hasPackage, derived.unitWeight]);
+  }, [portionPreset, derived.hasPackage, derived.unitWeight, tbspGrams, cupGrams, pieceGrams]);
 
   const portionPreview = useMemo(() => {
     const g = portionGrams;
@@ -634,6 +708,9 @@ export function Home() {
         fiber100: Number.isFinite(fib100) ? fib100 : undefined,
         sodiumMg100: Number.isFinite(sod100) ? sod100 : undefined,
         sugarTeaspoons100: Number.isFinite(tsp100) ? tsp100 : undefined,
+        unitsPer100g: unitsPer100gNum,
+        tbspPer100g: tbspPer100gNum,
+        cupsPer100g: cupsPer100gNum,
         totalWeight: tw,
         units: u,
         unitWeight,
@@ -666,8 +743,12 @@ export function Home() {
     setFiber100("");
     setSodiumMg100("");
     setSugarTsp100("");
+    setUnitsPer100g("");
+    setTbspPer100g("");
+    setCupsPer100g("");
     setTotalWeight("");
     setUnits("");
+    setUnitWeightInput("");
     handleRemoveImage();
   }
 
@@ -1061,16 +1142,45 @@ export function Home() {
             id="total-weight"
             label="משקל כולל של האריזה (גרם)"
             value={totalWeight}
-            onChange={setTotalWeight}
+            onChange={(v) => {
+              lastPackEditRef.current = "tw";
+              setTotalWeight(v);
+              window.setTimeout(() => {
+                if (lastPackEditRef.current === "tw") lastPackEditRef.current = null;
+              }, 0);
+            }}
             inputMode="decimal"
           />
           <Field
             id="units"
             label="יחידות באריזה (כמה פריטים בפנים)"
             value={units}
-            onChange={setUnits}
+            onChange={(v) => {
+              lastPackEditRef.current = "units";
+              setUnits(v);
+              window.setTimeout(() => {
+                if (lastPackEditRef.current === "units") lastPackEditRef.current = null;
+              }, 0);
+            }}
             inputMode="numeric"
           />
+        </div>
+        <div className="mt-3">
+          <Field
+            id="unit-weight"
+            label="משקל יחידה (גרם) — אופציונלי"
+            value={unitWeightInput}
+            onChange={(v) => {
+              lastPackEditRef.current = "uw";
+              setUnitWeightInput(v);
+            }}
+            inputMode="decimal"
+            placeholder="לדוגמה: 12.5"
+          />
+          <p className="mt-2 text-[11px] leading-snug text-ink-dim">
+            אפשר להזין שני שדות בלבד: (משקל כולל + יחידות) או (משקל כולל + משקל יחידה) או (יחידות + משקל יחידה) —
+            והשדה השלישי יתמלא אוטומטית.
+          </p>
         </div>
         <p className="text-xs text-ink-dim">
           &quot;משקל כולל&quot; הוא כל האריזה; &quot;יחידות באריזה&quot; מתייחס לרב־חבילה (למשל 6) ולא למשקל של יחידה בודדת.
@@ -1093,12 +1203,15 @@ export function Home() {
             {(
               [
                 { id: "100" as const, label: "100 גרם" },
-                { id: "tbsp" as const, label: `כף (~${PORTION_TBSP_G}g)` },
-                { id: "cup" as const, label: `כוס (~${PORTION_CUP_G}g)` },
-                { id: "unit" as const, label: "יחידה מהאריזה" },
+                { id: "tbsp" as const, label: `כף (${fmt1(tbspGrams)}g)` },
+                { id: "cup" as const, label: `כוס (${fmt1(cupGrams)}g)` },
+                { id: "pack_unit" as const, label: "יחידה מהאריזה" },
+                { id: "piece" as const, label: "יחידה (לפי 100g)" },
               ] as const
             ).map(({ id, label }) => {
-              const disabled = id === "unit" && !derived.hasPackage;
+              const disabled =
+                (id === "pack_unit" && !derived.hasPackage) ||
+                (id === "piece" && unitsPer100gNum === undefined);
               const active = portionPreset === id;
               return (
                 <button
@@ -1116,6 +1229,66 @@ export function Home() {
                 </button>
               );
             })}
+          </div>
+          <div className="mt-4 rounded-xl border border-white/10 bg-black/25 px-3 py-3">
+            <p className="text-[11px] font-semibold text-ink-dim">המרות לפי 100 גרם (אופציונלי)</p>
+            <p className="mt-1 text-xs text-ink-muted">
+              לדוגמה: ענבים — כמה יחידות ב־100 גרם. אורז — כמה כפות ב־100 גרם.
+            </p>
+            <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-3">
+              <div className="space-y-1.5">
+                <label className="block text-xs font-medium text-ink-muted" htmlFor="units-100g">
+                  יחידות ב־100 גרם
+                </label>
+                <input
+                  id="units-100g"
+                  value={unitsPer100g}
+                  onChange={(e) => setUnitsPer100g(e.target.value)}
+                  inputMode="decimal"
+                  placeholder="למשל 20"
+                  className="min-h-[44px] w-full rounded-xl border border-white/15 bg-black/40 px-3 text-sm text-white placeholder:text-ink-dim focus:border-white/35 focus:outline-none"
+                />
+                {unitsPer100gNum !== undefined ? (
+                  <p className="text-[11px] text-ink-dim">יחידה ≈ {fmt1(100 / unitsPer100gNum)}g</p>
+                ) : null}
+              </div>
+              <div className="space-y-1.5">
+                <label className="block text-xs font-medium text-ink-muted" htmlFor="tbsp-100g">
+                  כפות ב־100 גרם
+                </label>
+                <input
+                  id="tbsp-100g"
+                  value={tbspPer100g}
+                  onChange={(e) => setTbspPer100g(e.target.value)}
+                  inputMode="decimal"
+                  placeholder="למשל 6.5"
+                  className="min-h-[44px] w-full rounded-xl border border-white/15 bg-black/40 px-3 text-sm text-white placeholder:text-ink-dim focus:border-white/35 focus:outline-none"
+                />
+                {tbspPer100gNum !== undefined ? (
+                  <p className="text-[11px] text-ink-dim">כף ≈ {fmt1(100 / tbspPer100gNum)}g</p>
+                ) : (
+                  <p className="text-[11px] text-ink-dim">ברירת מחדל: {PORTION_TBSP_G}g</p>
+                )}
+              </div>
+              <div className="space-y-1.5">
+                <label className="block text-xs font-medium text-ink-muted" htmlFor="cups-100g">
+                  כוסות ב־100 גרם
+                </label>
+                <input
+                  id="cups-100g"
+                  value={cupsPer100g}
+                  onChange={(e) => setCupsPer100g(e.target.value)}
+                  inputMode="decimal"
+                  placeholder="למשל 0.55"
+                  className="min-h-[44px] w-full rounded-xl border border-white/15 bg-black/40 px-3 text-sm text-white placeholder:text-ink-dim focus:border-white/35 focus:outline-none"
+                />
+                {cupsPer100gNum !== undefined ? (
+                  <p className="text-[11px] text-ink-dim">כוס ≈ {fmt1(100 / cupsPer100gNum)}g</p>
+                ) : (
+                  <p className="text-[11px] text-ink-dim">ברירת מחדל: {PORTION_CUP_G}g</p>
+                )}
+              </div>
+            </div>
           </div>
           {portionPreview ? (
             <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
@@ -1169,9 +1342,13 @@ export function Home() {
                 </div>
               ) : null}
             </dl>
-          ) : portionPreset === "unit" && !derived.hasPackage ? (
+          ) : portionPreset === "pack_unit" && !derived.hasPackage ? (
             <p className="mt-3 text-xs text-ink-dim">
               הזיני משקל כולל ויחידות כדי לחשב &quot;יחידה מהאריזה&quot;.
+            </p>
+          ) : portionPreset === "piece" && unitsPer100gNum === undefined ? (
+            <p className="mt-3 text-xs text-ink-dim">
+              הזיני &quot;יחידות ב־100 גרם&quot; כדי לחשב יחידה לפי 100 גרם.
             </p>
           ) : null}
         </div>
