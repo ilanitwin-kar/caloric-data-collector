@@ -30,6 +30,9 @@ type Verified100ContextValue = {
   items: Verified100Item[];
   loading: boolean;
   error: string | null;
+  cloudSyncPaused: boolean;
+  pauseCloudSync: () => void;
+  resumeCloudSync: () => void;
   importTsv: (file: File) => Promise<void>;
   findBestMatch: (q: { name: string; brand?: string }) => Verified100Item | null;
 };
@@ -94,6 +97,18 @@ export function Verified100Provider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [stuckHint, setStuckHint] = useState<string | null>(null);
+  const [cloudSyncPaused, setCloudSyncPaused] = useState(false);
+
+  const pauseCloudSync = useCallback(() => {
+    setCloudSyncPaused(true);
+    setLoading(false);
+  }, []);
+
+  const resumeCloudSync = useCallback(() => {
+    setCloudSyncPaused(false);
+    setStuckHint(null);
+    setError(null);
+  }, []);
 
   useEffect(() => {
     if (!user) {
@@ -101,6 +116,11 @@ export function Verified100Provider({ children }: { children: ReactNode }) {
       setLoading(false);
       setError(null);
       setStuckHint(null);
+      setCloudSyncPaused(false);
+      return;
+    }
+    if (cloudSyncPaused) {
+      setLoading(false);
       return;
     }
     setLoading(true);
@@ -138,7 +158,7 @@ export function Verified100Provider({ children }: { children: ReactNode }) {
       window.clearTimeout(stuckTimer);
       unsub();
     };
-  }, [user]);
+  }, [user, cloudSyncPaused]);
 
   const importTsv = useCallback(
     async (file: File) => {
@@ -227,8 +247,27 @@ export function Verified100Provider({ children }: { children: ReactNode }) {
   );
 
   const value = useMemo<Verified100ContextValue>(
-    () => ({ items, loading, error: error ?? stuckHint, importTsv, findBestMatch }),
-    [items, loading, error, stuckHint, importTsv, findBestMatch],
+    () => ({
+      items,
+      loading,
+      error: error ?? stuckHint,
+      cloudSyncPaused,
+      pauseCloudSync,
+      resumeCloudSync,
+      importTsv,
+      findBestMatch,
+    }),
+    [
+      items,
+      loading,
+      error,
+      stuckHint,
+      cloudSyncPaused,
+      pauseCloudSync,
+      resumeCloudSync,
+      importTsv,
+      findBestMatch,
+    ],
   );
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

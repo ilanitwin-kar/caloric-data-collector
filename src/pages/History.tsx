@@ -5,6 +5,7 @@ import { useProducts } from "../context/ProductsContext";
 import type { Product } from "../types/product";
 import { downloadCsv, productsToCsv } from "../utils/csv";
 import { fmt1 } from "../utils/number";
+import { shareCsv } from "../utils/share";
 
 function IconDuplicate({ className }: { className?: string }) {
   return (
@@ -66,7 +67,21 @@ export function History() {
   function handleExport() {
     const csv = productsToCsv(products);
     const stamp = new Date().toISOString().slice(0, 10);
-    downloadCsv(`caloric-intelligence-${stamp}.csv`, csv);
+    downloadCsv(`products-${stamp}.csv`, csv);
+  }
+
+  async function handleShare() {
+    const csv = productsToCsv(products);
+    const stamp = new Date().toISOString().slice(0, 10);
+    const res = await shareCsv({
+      filename: `products-${stamp}.csv`,
+      csv,
+      title: "מוצרי האפליקציה",
+      text: "קובץ CSV של המוצרים שנשמרו באפליקציה.",
+    });
+    if (!res.ok && res.reason === "unsupported") {
+      handleExport();
+    }
   }
 
   async function handleDelete(p: Product) {
@@ -96,34 +111,47 @@ export function History() {
     <div className="space-y-6 pb-4">
       <header className="space-y-4 border-b border-white/10 pb-6">
         <p className="font-display text-3xl font-semibold tracking-tight text-white md:text-4xl">
-          היסטוריה
+          המוצרים שלי
         </p>
 
         {loading && (
-          <div className="flex items-center gap-2 text-sm text-ink-muted">
+          <div className="flex flex-wrap items-center gap-2 text-sm text-ink-muted">
             <Spinner className="!h-5 !w-5" />
-            טוען מהענן…
+            <span>טוען מקומית…</span>
           </div>
         )}
 
-        {error && <p className="text-sm text-red-300">{error}</p>}
+        {error ? <p className="text-sm text-red-300">{error}</p> : null}
 
         {!loading && !error && hasLoaded && products.length > 0 && (
           <p className="text-sm text-ink-muted">{savedCountLabel(products.length)}</p>
         )}
 
-        <button
-          type="button"
-          onClick={handleExport}
-          disabled={products.length === 0}
-          className="min-h-[52px] w-full rounded-2xl border border-white/25 bg-white/[0.06] text-lg font-semibold text-white transition enabled:active:scale-[0.99] enabled:hover:border-white/35 enabled:hover:bg-white/[0.09] disabled:cursor-not-allowed disabled:opacity-40"
-        >
-          ייצוא ל-CSV
-        </button>
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={() => void handleShare()}
+            disabled={products.length === 0}
+            className="min-h-[52px] flex-1 rounded-2xl bg-white text-lg font-semibold text-black transition enabled:active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            שיתוף / שליחה
+          </button>
+          <button
+            type="button"
+            onClick={handleExport}
+            disabled={products.length === 0}
+            className="min-h-[52px] flex-1 rounded-2xl border border-white/25 bg-white/[0.06] text-lg font-semibold text-white transition enabled:active:scale-[0.99] enabled:hover:border-white/35 enabled:hover:bg-white/[0.09] disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            הורדת CSV
+          </button>
+        </div>
       </header>
 
       <ul className="space-y-3">
-        {hasLoaded && !loading && !error && products.length === 0 ? (
+        {hasLoaded &&
+        !loading &&
+        !error &&
+        products.length === 0 ? (
           <li className="rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-12 text-center text-sm text-ink-muted">
             אין נתונים עדיין
           </li>
