@@ -20,6 +20,8 @@ export type CatalogNutritionPer100g = {
   fatG?: number;
 };
 
+export type CatalogPer100Basis = "g" | "ml";
+
 export type CatalogNutritionPerUnit = {
   calories?: number;
   proteinG?: number;
@@ -69,6 +71,8 @@ export type CatalogProduct = {
   category?: string;
   /** How this item is typically used (supports multiple tags). */
   usageTags?: CatalogUsageTag[];
+  /** Are nutrition values per 100g or per 100ml (as on label). */
+  per100Basis?: CatalogPer100Basis;
   /** Default measure to use in the journal UI. */
   defaultMeasure?: CatalogMeasureKey;
   /** Common measures to quickly choose from (2-4 recommended). */
@@ -105,6 +109,7 @@ type CatalogContextValue = {
     keywords?: string[];
     category?: string;
     usageTags?: CatalogUsageTag[];
+    per100Basis?: CatalogPer100Basis;
     defaultMeasure?: CatalogMeasureKey;
     commonMeasures?: CatalogMeasureKey[];
     per100: CatalogNutritionPer100g;
@@ -121,6 +126,7 @@ type CatalogContextValue = {
     keywords?: string[];
     category?: string;
     usageTags?: CatalogUsageTag[];
+    per100Basis?: CatalogPer100Basis;
     defaultMeasure?: CatalogMeasureKey;
     commonMeasures?: CatalogMeasureKey[];
     per100: CatalogNutritionPer100g;
@@ -240,6 +246,7 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
       keywords?: string[];
       category?: string;
       usageTags?: CatalogUsageTag[];
+      per100Basis?: CatalogPer100Basis;
       defaultMeasure?: CatalogMeasureKey;
       commonMeasures?: CatalogMeasureKey[];
       per100: CatalogNutritionPer100g;
@@ -282,6 +289,7 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
           input.keywords?.filter((k) => k.trim()).map((k) => k.trim()) ?? undefined,
         category: input.category?.trim() || undefined,
         usageTags: input.usageTags?.length ? input.usageTags : undefined,
+        per100Basis: input.per100Basis ?? "g",
         defaultMeasure: input.defaultMeasure ?? "unit",
         commonMeasures:
           input.commonMeasures?.length ? input.commonMeasures : [input.defaultMeasure ?? "unit", "g100"],
@@ -323,6 +331,7 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
       keywords?: string[];
       category?: string;
       usageTags?: CatalogUsageTag[];
+      per100Basis?: CatalogPer100Basis;
       defaultMeasure?: CatalogMeasureKey;
       commonMeasures?: CatalogMeasureKey[];
       per100: CatalogNutritionPer100g;
@@ -366,6 +375,7 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
           input.keywords?.filter((k) => k.trim()).map((k) => k.trim()) ?? undefined,
         category: input.category?.trim() || undefined,
         usageTags: input.usageTags?.length ? input.usageTags : undefined,
+        per100Basis: input.per100Basis ?? "g",
         defaultMeasure: input.defaultMeasure ?? inferredDefaultMeasure,
         commonMeasures: input.commonMeasures?.length
           ? input.commonMeasures

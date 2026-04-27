@@ -49,6 +49,7 @@ function measuresToText(list?: string[]): string {
 export function catalogToSheetRows(items: CatalogProduct[]): Record<string, string | number>[] {
   return items.map((p) => {
     const per = p.nutrition?.per100g;
+    const basis = p.per100Basis === "ml" ? "100ml" : "100g";
     return {
       מזהה: p.id,
       ברקוד: p.gtin ?? "",
@@ -58,19 +59,20 @@ export function catalogToSheetRows(items: CatalogProduct[]): Record<string, stri
       "מילות חיפוש": keywordsToText(p.keywords),
       קטגוריה: p.category ?? "",
       שימוש: usageToText(p.usageTags as string[] | undefined),
+      "בסיס ערכים": basis,
       "ברירת מחדל": measureToText(p.defaultMeasure as string | undefined),
       "מידות נפוצות": measuresToText(p.commonMeasures as string[] | undefined),
       "משקל אריזה (ג)": numOrEmpty(p.package?.totalWeightG),
       "יחידות באריזה": numOrEmpty(p.package?.unitsPerPack),
       "משקל יחידה (ג)": numOrEmpty(p.package?.unitWeightG),
-      "קלוריות ל-100 גרם": numOrEmpty(per?.calories),
-      "חלבון ל-100 גרם": numOrEmpty(per?.proteinG),
-      "פחמימות ל-100 גרם": numOrEmpty(per?.carbsG),
-      "שומן ל-100 גרם": numOrEmpty(per?.fatG),
-      "יחידות ב-100 גרם": numOrEmpty(p.measures?.unitsPer100g),
-      "כפות ב-100 גרם": numOrEmpty(p.measures?.tbspPer100g),
-      "כפיות ב-100 גרם": numOrEmpty(p.measures?.tspPer100g),
-      "כוסות ב-100 גרם": numOrEmpty(p.measures?.cupsPer100g),
+      "קלוריות ל-100": numOrEmpty(per?.calories),
+      "חלבון ל-100": numOrEmpty(per?.proteinG),
+      "פחמימות ל-100": numOrEmpty(per?.carbsG),
+      "שומן ל-100": numOrEmpty(per?.fatG),
+      "יחידות ב-100": numOrEmpty(p.measures?.unitsPer100g),
+      "כפות ב-100": numOrEmpty(p.measures?.tbspPer100g),
+      "כפיות ב-100": numOrEmpty(p.measures?.tspPer100g),
+      "כוסות ב-100": numOrEmpty(p.measures?.cupsPer100g),
       "עודכן (ISO)": p.updatedAt,
     };
   });
@@ -105,16 +107,18 @@ function catalogToPdfRows(items: CatalogProduct[]): Record<string, string | numb
   // Export a compact set of columns so it stays readable and doesn't get cut.
   return items.map((p) => {
     const per = p.nutrition?.per100g;
+    const basis = p.per100Basis === "ml" ? "100ml" : "100g";
     return {
       "שם מוצר": p.name ?? "",
       "שם קצר": p.shortName ?? "",
       מותג: p.brand ?? "",
       קטגוריה: p.category ?? "",
       "משקל יחידה (ג)": numOrEmpty(p.package?.unitWeightG),
-      "קלוריות ל-100 גרם": numOrEmpty(per?.calories),
-      "חלבון ל-100 גרם": numOrEmpty(per?.proteinG),
-      "פחמימות ל-100 גרם": numOrEmpty(per?.carbsG),
-      "שומן ל-100 גרם": numOrEmpty(per?.fatG),
+      בסיס: basis,
+      "קלוריות ל-100": numOrEmpty(per?.calories),
+      "חלבון ל-100": numOrEmpty(per?.proteinG),
+      "פחמימות ל-100": numOrEmpty(per?.carbsG),
+      "שומן ל-100": numOrEmpty(per?.fatG),
     };
   });
 }

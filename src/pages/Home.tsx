@@ -91,6 +91,8 @@ export function Home() {
   const [defaultMeasure, setDefaultMeasure] = useState<MeasureKey>("unit");
   const [commonMeasures, setCommonMeasures] = useState<MeasureKey[]>(["unit", "g100"]);
 
+  const [per100Basis, setPer100Basis] = useState<"g" | "ml">("g");
+
   const [kcal100, setKcal100] = useState("");
   const [prot100, setProt100] = useState("");
   const [carb100, setCarb100] = useState("");
@@ -140,6 +142,12 @@ export function Home() {
 
   // Suggest 100g macros from verified DB by best matches on name+brand (do not auto-apply).
   useEffect(() => {
+    if (per100Basis === "ml") {
+      // Verified DB is per 100g; avoid suggesting for 100ml mode.
+      setVerifiedSuggestions([]);
+      setVerifiedOffset(0);
+      return;
+    }
     const sig = `${name.trim()}|${brand.trim()}|${keywordsRaw.trim()}|${category.trim()}`;
     if (isAlreadyInCatalog || (verifiedPickedSig && verifiedPickedSig === sig)) {
       setVerifiedSuggestions([]);
@@ -166,7 +174,7 @@ export function Home() {
       })),
     );
     setVerifiedOffset(0);
-  }, [name, brand, keywordsRaw, category, findMatches, verifiedPickedSig, isAlreadyInCatalog]);
+  }, [name, brand, keywordsRaw, category, findMatches, verifiedPickedSig, isAlreadyInCatalog, per100Basis]);
 
   const visibleVerifiedSuggestions = useMemo(
     () => verifiedSuggestions.slice(verifiedOffset, verifiedOffset + 4),
@@ -290,6 +298,7 @@ export function Home() {
         keywords,
         category: category.trim() || undefined,
         usageTags: usage,
+        per100Basis,
         defaultMeasure,
         commonMeasures,
         per100,
@@ -311,6 +320,7 @@ export function Home() {
       keywords,
       category: category.trim() || undefined,
       usageTags: usage,
+      per100Basis,
       defaultMeasure,
       commonMeasures,
       per100,
@@ -331,7 +341,7 @@ export function Home() {
             מאגר מוצרים
           </p>
           <p className="text-sm text-ink-muted">
-            שדות חובה: שם מוצר + מאקרו ל־100g + משקל אריזה. באריזה: אם לא ממלאים יחידות/משקל יחידה — זה נחשב "יחידה 1" (האריזה כולה).
+            שדות חובה: שם מוצר + מאקרו ל־{per100Basis === "ml" ? "100ml" : "100g"} + משקל אריזה. באריזה: אם לא ממלאים יחידות/משקל יחידה — זה נחשב "יחידה 1" (האריזה כולה).
           </p>
         </header>
 
@@ -590,7 +600,22 @@ export function Home() {
         </section>
 
         <section className="rounded-2xl border border-white/10 bg-white/[0.03] p-4 space-y-3">
-          <p className="text-sm font-semibold text-white">ל־100 גרם</p>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="text-sm font-semibold text-white">
+              {per100Basis === "ml" ? "ל־100 מ״ל" : "ל־100 גרם"}
+            </p>
+            <div className="flex items-center gap-2 text-xs" dir="rtl">
+              <span className={per100Basis === "g" ? "text-white" : "text-ink-muted"}>100g</span>
+              <button
+                type="button"
+                onClick={() => setPer100Basis((x) => (x === "g" ? "ml" : "g"))}
+                className="rounded-full border border-white/15 bg-white/[0.06] px-3 py-1.5 font-semibold text-ink-muted hover:border-white/25 hover:text-white"
+              >
+                {per100Basis === "ml" ? "ערכים לפי מ״ל" : "ערכים לפי גרם"}
+              </button>
+              <span className={per100Basis === "ml" ? "text-white" : "text-ink-muted"}>100ml</span>
+            </div>
+          </div>
           <div className="grid grid-cols-2 gap-3">
             <Field label='קלוריות (קק"ל)' value={kcal100} onChange={setKcal100} inputMode="decimal" />
             <Field label="חלבון (g)" value={prot100} onChange={setProt100} inputMode="decimal" />
@@ -603,7 +628,7 @@ export function Home() {
           <p className="text-sm font-semibold text-white">אריזה</p>
           <div className="grid grid-cols-1 gap-3">
             <Field
-              label="משקל כולל של האריזה (גרם)"
+              label={per100Basis === "ml" ? "נפח כולל של האריזה (מ״ל)" : "משקל כולל של האריזה (גרם)"}
               value={totalWeightG}
               onChange={(v) => {
                 setTotalWeightG(v);
@@ -626,7 +651,7 @@ export function Home() {
                 placeholder="למשל 4"
               />
               <Field
-                label="משקל יחידה (גרם)"
+                label={per100Basis === "ml" ? "נפח יחידה (מ״ל)" : "משקל יחידה (גרם)"}
                 value={unitWeightG}
                 onChange={(v) => {
                   lastPackEditRef.current = "unitWeight";
@@ -641,20 +666,42 @@ export function Home() {
             </div>
           </div>
           <div className="rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-xs text-ink-muted">
-            משקל יחידה מחושב לפי \( \u200fמשקל כולל ÷ יחידות \u200f\) (או להפך).
+            {per100Basis === "ml"
+              ? "נפח יחידה מחושב לפי (נפח כולל ÷ יחידות) (או להפך)."
+              : "משקל יחידה מחושב לפי (משקל כולל ÷ יחידות) (או להפך)."}
           </div>
         </section>
 
         <section className="rounded-2xl border border-white/10 bg-white/[0.03] p-4 space-y-3">
           <p className="text-sm font-semibold text-white">מידות (אופציונלי)</p>
           <p className="text-[11px] leading-snug text-ink-dim">
-            הזיני כמה יחידות/כפות/כפיות/כוסות יש ב־100g. לדוגמה: אם 1 כף ≈ 15g, אז כפות ב־100g ≈ 6.67.
+            הזיני כמה יחידות/כפות/כפיות/כוסות יש ב־{per100Basis === "ml" ? "100ml" : "100g"}. לדוגמה: אם 1 כף ≈ 15g, אז כפות ב־100g ≈ 6.67.
           </p>
           <div className="grid grid-cols-2 gap-3">
-            <Field label="יחידות ב־100g" value={unitsPer100g} onChange={setUnitsPer100g} inputMode="decimal" />
-            <Field label="כפות ב־100g" value={tbspPer100g} onChange={setTbspPer100g} inputMode="decimal" />
-            <Field label="כפיות ב־100g" value={tspPer100g} onChange={setTspPer100g} inputMode="decimal" />
-            <Field label="כוסות ב־100g" value={cupsPer100g} onChange={setCupsPer100g} inputMode="decimal" />
+            <Field
+              label={per100Basis === "ml" ? "יחידות ב־100ml" : "יחידות ב־100g"}
+              value={unitsPer100g}
+              onChange={setUnitsPer100g}
+              inputMode="decimal"
+            />
+            <Field
+              label={per100Basis === "ml" ? "כפות ב־100ml" : "כפות ב־100g"}
+              value={tbspPer100g}
+              onChange={setTbspPer100g}
+              inputMode="decimal"
+            />
+            <Field
+              label={per100Basis === "ml" ? "כפיות ב־100ml" : "כפיות ב־100g"}
+              value={tspPer100g}
+              onChange={setTspPer100g}
+              inputMode="decimal"
+            />
+            <Field
+              label={per100Basis === "ml" ? "כוסות ב־100ml" : "כוסות ב־100g"}
+              value={cupsPer100g}
+              onChange={setCupsPer100g}
+              inputMode="decimal"
+            />
           </div>
         </section>
 

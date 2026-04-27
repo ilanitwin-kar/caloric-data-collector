@@ -70,6 +70,7 @@ type EditDraft = {
   keywords: string;
   usageTags: UsageTag[];
   category: string;
+  per100Basis: "g" | "ml";
   defaultMeasure: MeasureKey;
   commonMeasures: MeasureKey[];
   totalWeightG: string;
@@ -88,6 +89,7 @@ type EditDraft = {
 function productToDraft(p: CatalogProduct): EditDraft {
   const per = p.nutrition?.per100g;
   const tags = (p.usageTags as UsageTag[] | undefined) ?? [];
+  const basis = (p.per100Basis as "g" | "ml" | undefined) ?? "g";
   const dm = (p.defaultMeasure as MeasureKey | undefined) ?? (p.id.startsWith("internal:") ? "g100" : "unit");
   const cmRaw = (p.commonMeasures as MeasureKey[] | undefined) ?? [dm, "g100"];
   const cm = Array.from(new Set([dm, ...cmRaw])).slice(0, 4);
@@ -100,6 +102,7 @@ function productToDraft(p: CatalogProduct): EditDraft {
     keywords: (p.keywords ?? []).join(", "),
     usageTags: tags.length ? tags : p.id.startsWith("internal:") ? ["ingredient"] : ["ready"],
     category: p.category ?? "",
+    per100Basis: basis,
     defaultMeasure: dm,
     commonMeasures: cm,
     totalWeightG: p.package?.totalWeightG != null ? String(p.package.totalWeightG) : "",
@@ -207,6 +210,7 @@ function EditModal({
         keywords: parseKeywords(d.keywords),
         category: d.category.trim() || undefined,
         usageTags: d.usageTags.length ? d.usageTags : undefined,
+        per100Basis: d.per100Basis,
         defaultMeasure: d.defaultMeasure,
         commonMeasures: d.commonMeasures,
         package: {
@@ -297,6 +301,35 @@ function EditModal({
             placeholder="למשל עמק 9%"
           />
           <Field label="מותג" value={draft.brand} onChange={(v) => setDraft((d) => (d ? { ...d, brand: v } : d))} />
+          <div className="space-y-1.5">
+            <p className="text-xs font-medium text-ink-muted">הערכים הם ל־</p>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => setDraft((d) => (d ? { ...d, per100Basis: "g" } : d))}
+                className={
+                  "rounded-full px-3 py-1.5 text-xs font-semibold transition " +
+                  (draft.per100Basis === "g"
+                    ? "border border-white/20 bg-white/[0.12] text-white"
+                    : "border border-white/15 bg-white/[0.06] text-ink-muted hover:border-white/25 hover:text-white")
+                }
+              >
+                100g
+              </button>
+              <button
+                type="button"
+                onClick={() => setDraft((d) => (d ? { ...d, per100Basis: "ml" } : d))}
+                className={
+                  "rounded-full px-3 py-1.5 text-xs font-semibold transition " +
+                  (draft.per100Basis === "ml"
+                    ? "border border-white/20 bg-white/[0.12] text-white"
+                    : "border border-white/15 bg-white/[0.06] text-ink-muted hover:border-white/25 hover:text-white")
+                }
+              >
+                100ml
+              </button>
+            </div>
+          </div>
           <Field label="קטגוריה" value={draft.category} onChange={(v) => setDraft((d) => (d ? { ...d, category: v } : d))} />
           <Field label="מילות חיפוש (פסיקים)" value={draft.keywords} onChange={(v) => setDraft((d) => (d ? { ...d, keywords: v } : d))} />
           <div className="space-y-1.5">
@@ -485,6 +518,7 @@ export function Catalog() {
         keywords: r.keywords,
         category: r.category,
         usageTags: (r.usageTags as UsageTag[] | undefined) ?? undefined,
+        per100Basis: (r.per100Basis as "g" | "ml" | undefined) ?? "g",
         defaultMeasure: (r.defaultMeasure as MeasureKey | undefined) ?? undefined,
         commonMeasures: (r.commonMeasures as MeasureKey[] | undefined) ?? undefined,
         createdAt: now,
