@@ -50,7 +50,8 @@ export function downloadBlob(blob: Blob, filename: string) {
   a.href = url;
   a.download = filename;
   a.click();
-  URL.revokeObjectURL(url);
+  // Some browsers (especially mobile) need a short delay before revoking.
+  window.setTimeout(() => URL.revokeObjectURL(url), 10_000);
 }
 
 export async function shareCsv(params: {

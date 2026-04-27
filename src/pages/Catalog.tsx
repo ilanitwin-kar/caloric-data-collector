@@ -19,7 +19,10 @@ function matchProduct(p: CatalogProduct, q: string): boolean {
 }
 
 function csvStamp() {
-  return new Date().toISOString().slice(0, 10);
+  const d = new Date();
+  const pad = (n: number) => String(n).padStart(2, "0");
+  // Local time stamp to avoid overwriting same-day downloads on mobile.
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}_${pad(d.getHours())}-${pad(d.getMinutes())}-${pad(d.getSeconds())}`;
 }
 
 function keywordsCell(list?: string[]) {
