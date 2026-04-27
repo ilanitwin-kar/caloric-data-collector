@@ -126,6 +126,8 @@ export function Home() {
     return catalog.find((p) => p.id === barcodeDigits || p.gtin === barcodeDigits) ?? null;
   }, [barcodeDigits, catalog, isInternal]);
 
+  const [existingBarcodeDismissed, setExistingBarcodeDismissed] = useState<string | null>(null);
+
   const [catalogMatchIgnoredSig, setCatalogMatchIgnoredSig] = useState<string | null>(null);
   const [catalogMatchCheckedIds, setCatalogMatchCheckedIds] = useState<Record<string, true>>({});
 
@@ -163,32 +165,12 @@ export function Home() {
 
   const showCatalogNameHint = catalogNameMatches.length > 0;
 
-  const applyCatalogProduct = useCallback(
-    (p: (typeof catalog)[number]) => {
-      setName(p.name ?? "");
-      setShortName(p.shortName ?? "");
-      setBrand(p.brand ?? "");
-      setCategory(p.category ?? "");
-      setKeywordsRaw((p.keywords ?? []).join(", "));
-      setUsageTags((p.usageTags as UsageTag[] | undefined) ?? (p.id.startsWith("internal:") ? ["ingredient"] : ["ready"]));
-      setDefaultMeasure((p.defaultMeasure as MeasureKey | undefined) ?? (p.id.startsWith("internal:") ? "g100" : "unit"));
-      setCommonMeasures((p.commonMeasures as MeasureKey[] | undefined) ?? (p.id.startsWith("internal:") ? ["g100", "unit"] : ["unit", "g100"]));
-      setPer100Basis((p.per100Basis as "g" | "ml" | undefined) ?? "g");
-      const per = p.nutrition?.per100g;
-      setKcal100(per?.calories != null ? String(per.calories) : "");
-      setProt100(per?.proteinG != null ? String(per.proteinG) : "");
-      setCarb100(per?.carbsG != null ? String(per.carbsG) : "");
-      setFat100(per?.fatG != null ? String(per.fatG) : "");
-      setTotalWeightG(p.package?.totalWeightG != null ? String(p.package.totalWeightG) : "");
-      setUnitsPerPack(p.package?.unitsPerPack != null ? String(p.package.unitsPerPack) : "");
-      setUnitWeightG(p.package?.unitWeightG != null ? fmt1(p.package.unitWeightG) : "");
-      setUnitsPer100g(p.measures?.unitsPer100g != null ? String(p.measures.unitsPer100g) : "");
-      setTbspPer100g(p.measures?.tbspPer100g != null ? String(p.measures.tbspPer100g) : "");
-      setTspPer100g(p.measures?.tspPer100g != null ? String(p.measures.tspPer100g) : "");
-      setCupsPer100g(p.measures?.cupsPer100g != null ? String(p.measures.cupsPer100g) : "");
-    },
-    [fmt1],
-  );
+  // (intentionally no "load into form" action here; we only open existing items in the Catalog)
+
+  useEffect(() => {
+    // If barcode changes, allow showing the "exists" notice again.
+    setExistingBarcodeDismissed(null);
+  }, [barcodeDigits]);
 
   const [totalWeightG, setTotalWeightG] = useState("");
   const [unitsPerPack, setUnitsPerPack] = useState("");
@@ -456,11 +438,19 @@ export function Home() {
                   {barcodeDigits ? `מנורמל: ${barcodeDigits}` : "—"}
                 </div>
               </div>
-              {existingByBarcode ? (
+              {existingByBarcode && existingBarcodeDismissed !== barcodeDigits ? (
                 <div className="rounded-xl border border-amber-400/30 bg-amber-500/10 px-3 py-2">
-                  <p className="text-xs font-semibold text-amber-100">
-                    המוצר כבר קיים במאגר.
-                  </p>
+                  <div className="flex items-start justify-between gap-2">
+                    <p className="text-xs font-semibold text-amber-100">המוצר כבר קיים במאגר.</p>
+                    <button
+                      type="button"
+                      className="rounded-md border border-white/15 bg-transparent px-2 py-1 text-[11px] font-semibold text-ink-muted hover:border-white/25 hover:text-white"
+                      onClick={() => setExistingBarcodeDismissed(barcodeDigits || null)}
+                      aria-label="סגור"
+                    >
+                      סגור
+                    </button>
+                  </div>
                   <p className="mt-1 text-[11px] text-amber-100/90">
                     {existingByBarcode.name}
                     {existingByBarcode.brand ? ` · ${existingByBarcode.brand}` : ""}
@@ -469,16 +459,9 @@ export function Home() {
                     <button
                       type="button"
                       className="rounded-lg border border-white/15 bg-white/[0.06] px-3 py-1.5 text-[11px] font-semibold text-white/90 hover:border-white/25"
-                      onClick={() => navigate(`/catalog?q=${encodeURIComponent(existingByBarcode.gtin ?? existingByBarcode.id)}`)}
+                      onClick={() => navigate(`/catalog?edit=${encodeURIComponent(existingByBarcode.id)}`)}
                     >
                       פתח במאגר
-                    </button>
-                    <button
-                      type="button"
-                      className="rounded-lg border border-white/15 bg-transparent px-3 py-1.5 text-[11px] font-semibold text-ink-muted hover:border-white/25 hover:text-white"
-                      onClick={() => applyCatalogProduct(existingByBarcode)}
-                    >
-                      טען כאן
                     </button>
                   </div>
                 </div>
@@ -495,25 +478,9 @@ export function Home() {
 
           <div className="grid grid-cols-1 gap-3">
             <Field label="שם מוצר" value={name} onChange={setName} placeholder="למשל גבינת עמק 9%" />
-            <Field
-              label="שם קצר ליומן (אופציונלי)"
-              value={shortName}
-              onChange={setShortName}
-              placeholder="למשל עמק 9%"
-            />
-            <Field label="מותג" value={brand} onChange={setBrand} placeholder="למשל תנובה" />
-            <Field label="קטגוריה" value={category} onChange={setCategory} placeholder="למשל שימורים" />
-            <Field
-              label="מילות חיפוש נוספות (מופרד בפסיק)"
-              value={keywordsRaw}
-              onChange={setKeywordsRaw}
-              placeholder="למשל גבינה צהובה, עמק, 9 אחוז"
-            />
             {showCatalogNameHint ? (
               <div className="rounded-xl border border-sky-400/25 bg-sky-500/10 px-3 py-2">
-                <p className="text-[11px] font-semibold text-sky-50">
-                  ייתכן שכבר קיים במאגר:
-                </p>
+                <p className="text-[11px] font-semibold text-sky-50">ייתכן שכבר קיים במאגר:</p>
                 <div className="mt-2 space-y-2">
                   {catalogNameMatches.map((p) => {
                     const checked = Boolean(catalogMatchCheckedIds[p.id]);
@@ -527,9 +494,9 @@ export function Home() {
                           <button
                             type="button"
                             className="rounded-lg border border-white/15 bg-white/[0.06] px-3 py-1.5 text-[11px] font-semibold text-white/90 hover:border-white/25"
-                            onClick={() => applyCatalogProduct(p)}
+                            onClick={() => navigate(`/catalog?edit=${encodeURIComponent(p.id)}`)}
                           >
-                            פתח
+                            פתח במאגר
                           </button>
                           <button
                             type="button"
@@ -558,6 +525,20 @@ export function Home() {
                 </div>
               </div>
             ) : null}
+            <Field
+              label="שם קצר ליומן (אופציונלי)"
+              value={shortName}
+              onChange={setShortName}
+              placeholder="למשל עמק 9%"
+            />
+            <Field label="מותג" value={brand} onChange={setBrand} placeholder="למשל תנובה" />
+            <Field label="קטגוריה" value={category} onChange={setCategory} placeholder="למשל שימורים" />
+            <Field
+              label="מילות חיפוש נוספות (מופרד בפסיק)"
+              value={keywordsRaw}
+              onChange={setKeywordsRaw}
+              placeholder="למשל גבינה צהובה, עמק, 9 אחוז"
+            />
             {verifiedPicked ? (
               <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-emerald-400/25 bg-emerald-500/10 px-3 py-2">
                 <span className="text-[11px] font-semibold text-emerald-50">
@@ -823,31 +804,87 @@ export function Home() {
         <section className="rounded-2xl border border-white/10 bg-white/[0.03] p-4 space-y-3">
           <p className="text-sm font-semibold text-white">מידות (אופציונלי)</p>
           <p className="text-[11px] leading-snug text-ink-dim">
-            הזיני כמה יחידות/כפות/כפיות/כוסות יש ב־{per100Basis === "ml" ? "100ml" : "100g"}. לדוגמה: אם 1 כף ≈ 15g, אז כפות ב־100g ≈ 6.67.
+            הכי נוח: שקלי/מדדי פעם אחת כמה {per100Basis === "ml" ? "מ״ל" : "גרם"} יש בכף/כפית/כוס, והאפליקציה תחושב אוטומטית.
           </p>
           <div className="grid grid-cols-2 gap-3">
             <Field
-              label={per100Basis === "ml" ? "יחידות ב־100ml" : "יחידות ב־100g"}
-              value={unitsPer100g}
-              onChange={setUnitsPer100g}
+              label={per100Basis === "ml" ? "מ״ל בכוס (סטנדרט)" : "גרם בכוס (סטנדרט)"}
+              value={
+                (() => {
+                  const n = parseNum(cupsPer100g);
+                  if (!(n > 0)) return "";
+                  const per = 100 / n;
+                  return Number.isFinite(per) ? fmt1(per) : "";
+                })()
+              }
+              onChange={(v) => {
+                const per = parseNum(v);
+                if (!(per > 0)) {
+                  setCupsPer100g("");
+                  return;
+                }
+                setCupsPer100g(String(100 / per));
+              }}
               inputMode="decimal"
             />
             <Field
-              label={per100Basis === "ml" ? "כפות ב־100ml" : "כפות ב־100g"}
-              value={tbspPer100g}
-              onChange={setTbspPer100g}
+              label={per100Basis === "ml" ? "מ״ל בכף" : "גרם בכף"}
+              value={
+                (() => {
+                  const n = parseNum(tbspPer100g);
+                  if (!(n > 0)) return "";
+                  const per = 100 / n;
+                  return Number.isFinite(per) ? fmt1(per) : "";
+                })()
+              }
+              onChange={(v) => {
+                const per = parseNum(v);
+                if (!(per > 0)) {
+                  setTbspPer100g("");
+                  return;
+                }
+                setTbspPer100g(String(100 / per));
+              }}
               inputMode="decimal"
             />
             <Field
-              label={per100Basis === "ml" ? "כפיות ב־100ml" : "כפיות ב־100g"}
-              value={tspPer100g}
-              onChange={setTspPer100g}
+              label={per100Basis === "ml" ? "מ״ל בכפית" : "גרם בכפית"}
+              value={
+                (() => {
+                  const n = parseNum(tspPer100g);
+                  if (!(n > 0)) return "";
+                  const per = 100 / n;
+                  return Number.isFinite(per) ? fmt1(per) : "";
+                })()
+              }
+              onChange={(v) => {
+                const per = parseNum(v);
+                if (!(per > 0)) {
+                  setTspPer100g("");
+                  return;
+                }
+                setTspPer100g(String(100 / per));
+              }}
               inputMode="decimal"
             />
             <Field
-              label={per100Basis === "ml" ? "כוסות ב־100ml" : "כוסות ב־100g"}
-              value={cupsPer100g}
-              onChange={setCupsPer100g}
+              label={per100Basis === "ml" ? "מ״ל ליחידה (אם רלוונטי)" : "גרם ליחידה (אם רלוונטי)"}
+              value={
+                (() => {
+                  const n = parseNum(unitsPer100g);
+                  if (!(n > 0)) return "";
+                  const per = 100 / n;
+                  return Number.isFinite(per) ? fmt1(per) : "";
+                })()
+              }
+              onChange={(v) => {
+                const per = parseNum(v);
+                if (!(per > 0)) {
+                  setUnitsPer100g("");
+                  return;
+                }
+                setUnitsPer100g(String(100 / per));
+              }}
               inputMode="decimal"
             />
           </div>

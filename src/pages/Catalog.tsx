@@ -449,10 +449,58 @@ function EditModal({
           </div>
 
           <div className="grid grid-cols-2 gap-2">
-            <Field label="יחידות ב־100g" value={draft.unitsPer100g} onChange={(v) => setDraft((d) => (d ? { ...d, unitsPer100g: v } : d))} inputMode="decimal" />
-            <Field label="כפות ב־100g" value={draft.tbspPer100g} onChange={(v) => setDraft((d) => (d ? { ...d, tbspPer100g: v } : d))} inputMode="decimal" />
-            <Field label="כפיות ב־100g" value={draft.tspPer100g} onChange={(v) => setDraft((d) => (d ? { ...d, tspPer100g: v } : d))} inputMode="decimal" />
-            <Field label="כוסות ב־100g" value={draft.cupsPer100g} onChange={(v) => setDraft((d) => (d ? { ...d, cupsPer100g: v } : d))} inputMode="decimal" />
+            <Field
+              label="גרם בכוס (סטנדרט)"
+              value={(() => {
+                const n = parseNum(draft.cupsPer100g);
+                if (!(n > 0)) return "";
+                return fmt1(100 / n);
+              })()}
+              onChange={(v) => {
+                const per = parseNum(v);
+                setDraft((d) => (d ? { ...d, cupsPer100g: per > 0 ? String(100 / per) : "" } : d));
+              }}
+              inputMode="decimal"
+            />
+            <Field
+              label="גרם בכף"
+              value={(() => {
+                const n = parseNum(draft.tbspPer100g);
+                if (!(n > 0)) return "";
+                return fmt1(100 / n);
+              })()}
+              onChange={(v) => {
+                const per = parseNum(v);
+                setDraft((d) => (d ? { ...d, tbspPer100g: per > 0 ? String(100 / per) : "" } : d));
+              }}
+              inputMode="decimal"
+            />
+            <Field
+              label="גרם בכפית"
+              value={(() => {
+                const n = parseNum(draft.tspPer100g);
+                if (!(n > 0)) return "";
+                return fmt1(100 / n);
+              })()}
+              onChange={(v) => {
+                const per = parseNum(v);
+                setDraft((d) => (d ? { ...d, tspPer100g: per > 0 ? String(100 / per) : "" } : d));
+              }}
+              inputMode="decimal"
+            />
+            <Field
+              label="גרם ליחידה (אם רלוונטי)"
+              value={(() => {
+                const n = parseNum(draft.unitsPer100g);
+                if (!(n > 0)) return "";
+                return fmt1(100 / n);
+              })()}
+              onChange={(v) => {
+                const per = parseNum(v);
+                setDraft((d) => (d ? { ...d, unitsPer100g: per > 0 ? String(100 / per) : "" } : d));
+              }}
+              inputMode="decimal"
+            />
           </div>
         </div>
         <div className="flex shrink-0 gap-2 border-t border-white/10 p-3">
@@ -498,9 +546,15 @@ export function Catalog() {
 
   useEffect(() => {
     const qp = (searchParams.get("q") ?? "").trim();
+    const editId = (searchParams.get("edit") ?? "").trim();
+
     if (qp) setQ(qp);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+
+    if (editId) {
+      const p = catalog.find((x) => x.id === editId || x.gtin === editId);
+      if (p) setEditing(p);
+    }
+  }, [searchParams, catalog]);
 
   const filtered = useMemo(() => catalog.filter((p) => matchProduct(p, q)), [catalog, q]);
 
