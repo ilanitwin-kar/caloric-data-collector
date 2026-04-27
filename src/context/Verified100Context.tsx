@@ -35,6 +35,7 @@ type Verified100ContextValue = {
   resumeCloudSync: () => void;
   importTsv: (file: File) => Promise<void>;
   findBestMatch: (q: { name: string; brand?: string }) => Verified100Item | null;
+  findMatches: (q: { name: string; brand?: string }, opts?: { limit?: number }) => Verified100Item[];
 };
 
 const Ctx = createContext<Verified100ContextValue | null>(null);
@@ -246,6 +247,21 @@ export function Verified100Provider({ children }: { children: ReactNode }) {
     [items],
   );
 
+  const findMatches = useCallback(
+    (q: { name: string; brand?: string }, opts?: { limit?: number }) => {
+      if (!q.name.trim() || items.length === 0) return [];
+      const scored: Match[] = [];
+      for (const it of items) {
+        const s = scoreMatch(it, q);
+        if (s >= 35) scored.push({ item: it, score: s });
+      }
+      scored.sort((a, b) => b.score - a.score);
+      const limit = Math.max(1, Math.min(10, opts?.limit ?? 4));
+      return scored.slice(0, limit).map((m) => m.item);
+    },
+    [items],
+  );
+
   const value = useMemo<Verified100ContextValue>(
     () => ({
       items,
@@ -256,6 +272,7 @@ export function Verified100Provider({ children }: { children: ReactNode }) {
       resumeCloudSync,
       importTsv,
       findBestMatch,
+      findMatches,
     }),
     [
       items,
@@ -267,6 +284,7 @@ export function Verified100Provider({ children }: { children: ReactNode }) {
       resumeCloudSync,
       importTsv,
       findBestMatch,
+      findMatches,
     ],
   );
 

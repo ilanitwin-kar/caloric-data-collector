@@ -54,7 +54,7 @@ function newInternalId(): string {
 
 export function Home() {
   const { upsertByBarcode, upsertInternal } = useCatalog();
-  const { findBestMatch } = useVerified100();
+  const { findMatches } = useVerified100();
   const bodyKg = useBodyWeightKg();
 
   const [isInternal, setIsInternal] = useState(false);
@@ -71,14 +71,16 @@ export function Home() {
   const [prot100, setProt100] = useState("");
   const [carb100, setCarb100] = useState("");
   const [fat100, setFat100] = useState("");
-  const [verifiedSuggestion, setVerifiedSuggestion] = useState<null | {
-    name: string;
-    brand?: string;
-    calories100?: number;
-    protein100?: number;
-    carbs100?: number;
-    fat100?: number;
-  }>(null);
+  const [verifiedSuggestions, setVerifiedSuggestions] = useState<
+    Array<{
+      name: string;
+      brand?: string;
+      calories100?: number;
+      protein100?: number;
+      carbs100?: number;
+      fat100?: number;
+    }>
+  >([]);
 
   const [totalWeightG, setTotalWeightG] = useState("");
   const [unitsPerPack, setUnitsPerPack] = useState("");
@@ -102,27 +104,28 @@ export function Home() {
     };
   }, [scannerOpen]);
 
-  // Suggest 100g macros from verified DB by best match on name+brand (do not auto-apply).
+  // Suggest 100g macros from verified DB by best matches on name+brand (do not auto-apply).
   useEffect(() => {
     const n = name.trim();
     if (n.length < 3) {
-      setVerifiedSuggestion(null);
+      setVerifiedSuggestions([]);
       return;
     }
-    const match = findBestMatch({ name: n, brand: brand.trim() || undefined });
-    if (!match) {
-      setVerifiedSuggestion(null);
-      return;
-    }
-    setVerifiedSuggestion({
-      name: match.name,
-      brand: match.brand,
-      calories100: match.calories100,
-      protein100: match.protein100,
-      carbs100: match.carbs100,
-      fat100: match.fat100,
-    });
-  }, [name, brand, findBestMatch]);
+    const matches = findMatches(
+      { name: n, brand: brand.trim() || undefined },
+      { limit: 4 },
+    );
+    setVerifiedSuggestions(
+      matches.map((m) => ({
+        name: m.name,
+        brand: m.brand,
+        calories100: m.calories100,
+        protein100: m.protein100,
+        carbs100: m.carbs100,
+        fat100: m.fat100,
+      })),
+    );
+  }, [name, brand, findMatches]);
 
   // Package triad: user inputs totalWeight always; typing either units or unitWeight calculates the other.
   useEffect(() => {
@@ -339,29 +342,37 @@ export function Home() {
             <Field label="פחמימה (g)" value={carb100} onChange={setCarb100} inputMode="decimal" />
             <Field label="שומן (g)" value={fat100} onChange={setFat100} inputMode="decimal" />
           </div>
-          {verifiedSuggestion ? (
+          {verifiedSuggestions.length > 0 ? (
             <div className="rounded-xl border border-emerald-400/25 bg-emerald-500/10 px-3 py-2">
-              <p className="text-[11px] text-emerald-100/90">
-                הצעה מהמאגר המאומת: {verifiedSuggestion.name}
-                {verifiedSuggestion.brand ? ` · ${verifiedSuggestion.brand}` : ""}
-              </p>
+              <p className="text-[11px] text-emerald-100/90">הצעות מהמאגר המאומת:</p>
+              <div className="mt-2 space-y-2">
+                {verifiedSuggestions.map((sug, idx) => (
+                  <div key={`${sug.name}|${sug.brand ?? ""}|${idx}`} className="flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      className="rounded-lg bg-emerald-400/15 px-3 py-1.5 text-xs font-semibold text-emerald-50 hover:bg-emerald-400/20"
+                      onClick={() => {
+                        if (sug.calories100 != null) setKcal100(String(sug.calories100));
+                        if (sug.protein100 != null) setProt100(String(sug.protein100));
+                        if (sug.carbs100 != null) setCarb100(String(sug.carbs100));
+                        if (sug.fat100 != null) setFat100(String(sug.fat100));
+                      }}
+                    >
+                      בחר {idx + 1}
+                    </button>
+                    <span className="text-[11px] text-emerald-100/90">
+                      {sug.name}
+                      {sug.brand ? ` · ${sug.brand}` : ""}
+                      {sug.calories100 != null ? ` · ${sug.calories100} קק\"ל` : ""}
+                    </span>
+                  </div>
+                ))}
+              </div>
               <div className="mt-2 flex flex-wrap gap-2">
                 <button
                   type="button"
-                  className="rounded-lg bg-emerald-400/15 px-3 py-1.5 text-xs font-semibold text-emerald-50 hover:bg-emerald-400/20"
-                  onClick={() => {
-                    if (verifiedSuggestion.calories100 != null) setKcal100(String(verifiedSuggestion.calories100));
-                    if (verifiedSuggestion.protein100 != null) setProt100(String(verifiedSuggestion.protein100));
-                    if (verifiedSuggestion.carbs100 != null) setCarb100(String(verifiedSuggestion.carbs100));
-                    if (verifiedSuggestion.fat100 != null) setFat100(String(verifiedSuggestion.fat100));
-                  }}
-                >
-                  מלא מאקרו ל־100g
-                </button>
-                <button
-                  type="button"
                   className="rounded-lg border border-white/15 bg-transparent px-3 py-1.5 text-xs font-semibold text-ink-muted hover:border-white/25 hover:text-white"
-                  onClick={() => setVerifiedSuggestion(null)}
+                  onClick={() => setVerifiedSuggestions([])}
                 >
                   התעלם
                 </button>
