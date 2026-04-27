@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { Spinner } from "../components/Spinner";
 import { useCatalog, type CatalogProduct } from "../context/CatalogContext";
 import { useToast } from "../context/ToastContext";
@@ -489,10 +490,17 @@ export function Catalog() {
   const { catalog, loading, error, cloudSyncPaused, pauseCloudSync, resumeCloudSync, bulkUpsert, deleteProduct } =
     useCatalog();
   const { showToast } = useToast();
+  const [searchParams] = useSearchParams();
   const [q, setQ] = useState("");
   const [editing, setEditing] = useState<CatalogProduct | null>(null);
   const fileRef = useRef<HTMLInputElement | null>(null);
   const [exporting, setExporting] = useState<null | "csv" | "xlsx" | "pdf">(null);
+
+  useEffect(() => {
+    const qp = (searchParams.get("q") ?? "").trim();
+    if (qp) setQ(qp);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const filtered = useMemo(() => catalog.filter((p) => matchProduct(p, q)), [catalog, q]);
 
