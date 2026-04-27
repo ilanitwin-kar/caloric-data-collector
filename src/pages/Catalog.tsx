@@ -4,8 +4,10 @@ import { useCatalog, type CatalogProduct } from "../context/CatalogContext";
 import { useToast } from "../context/ToastContext";
 import { normalizeBarcode } from "../utils/openFoodFacts";
 import { catalogToCsv, parseCatalogCsv } from "../utils/catalogCsv";
+import { catalogToPdfBlob, downloadCatalogXlsx } from "../utils/catalogExport";
 import { downloadCsv } from "../utils/csv";
 import { fmt1, parseNum } from "../utils/number";
+import { downloadBlob } from "../utils/share";
 
 function matchProduct(p: CatalogProduct, q: string): boolean {
   const s = q.trim().toLowerCase();
@@ -291,6 +293,7 @@ export function Catalog() {
   const [q, setQ] = useState("");
   const [editing, setEditing] = useState<CatalogProduct | null>(null);
   const fileRef = useRef<HTMLInputElement | null>(null);
+  const [exporting, setExporting] = useState<null | "csv" | "xlsx" | "pdf">(null);
 
   const filtered = useMemo(() => catalog.filter((p) => matchProduct(p, q)), [catalog, q]);
 
@@ -342,16 +345,51 @@ export function Catalog() {
           <p className="font-display min-w-0 flex-1 text-3xl font-semibold tracking-tight text-white md:text-4xl">
             מאגר
           </p>
-          <button
-            type="button"
-            onClick={() => {
-              const csv = catalogToCsv(catalog);
-              downloadCsv(`catalog-${csvStamp()}.csv`, csv);
-            }}
-            className="rounded-xl border border-white/20 bg-white/[0.06] px-3 py-2 text-xs font-semibold text-white transition hover:border-white/30"
-          >
-            ייצוא CSV
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              disabled={exporting !== null}
+              onClick={() => {
+                setExporting("csv");
+                try {
+                  const csv = catalogToCsv(catalog);
+                  downloadCsv(`catalog-${csvStamp()}.csv`, csv);
+                } finally {
+                  setExporting(null);
+                }
+              }}
+              className="rounded-xl border border-white/20 bg-white/[0.06] px-3 py-2 text-xs font-semibold text-white transition hover:border-white/30 disabled:opacity-60"
+            >
+              {exporting === "csv" ? "מכין…" : "CSV"}
+            </button>
+            <button
+              type="button"
+              disabled={exporting !== null}
+              onClick={() => {
+                setExporting("xlsx");
+                void downloadCatalogXlsx(catalog, `catalog-${csvStamp()}.xlsx`)
+                  .catch(() => showToast("ייצוא Excel נכשל", "error"))
+                  .finally(() => setExporting(null));
+              }}
+              className="rounded-xl border border-white/20 bg-white/[0.06] px-3 py-2 text-xs font-semibold text-white transition hover:border-white/30 disabled:opacity-60"
+            >
+              {exporting === "xlsx" ? "מכין…" : "Excel"}
+            </button>
+            <button
+              type="button"
+              disabled={exporting !== null}
+              onClick={() => {
+                setExporting("pdf");
+                void catalogToPdfBlob(catalog)
+                  .then((blob) => downloadBlob(blob, `catalog-${csvStamp()}.pdf`))
+                  .catch(() => showToast("ייצוא PDF נכשל", "error"))
+                  .finally(() => setExporting(null));
+              }}
+              className="rounded-xl border border-white/20 bg-white/[0.06] px-3 py-2 text-xs font-semibold text-white transition hover:border-white/30 disabled:opacity-60"
+            >
+              {exporting === "pdf" ? "מכין…" : "PDF"}
+            </button>
+          </div>
         </div>
         <p className="text-xs text-ink-muted">
           {catalog.length.toLocaleString("he-IL")} מוצרים · חיפוש כולל גם מילות מפתח.
