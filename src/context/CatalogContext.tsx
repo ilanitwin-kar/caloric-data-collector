@@ -47,6 +47,8 @@ export type CatalogMeasures = {
   cupsPer100g?: number;
 };
 
+export type CatalogUsageTag = "ready" | "ingredient" | "raw" | "cooked" | "dry";
+
 export type CatalogProduct = {
   /**
    * Key in the catalog.
@@ -60,6 +62,8 @@ export type CatalogProduct = {
   brand?: string;
   /** Extra free-form search terms (slang, aliases, etc.). */
   keywords?: string[];
+  /** How this item is typically used (supports multiple tags). */
+  usageTags?: CatalogUsageTag[];
   createdAt: string;
   updatedAt: string;
   sources?: Array<{
@@ -89,6 +93,7 @@ type CatalogContextValue = {
     name: string;
     brand?: string;
     keywords?: string[];
+    usageTags?: CatalogUsageTag[];
     per100: CatalogNutritionPer100g;
     totalWeightG?: number;
     unitsPerPack?: number;
@@ -100,6 +105,7 @@ type CatalogContextValue = {
     name: string;
     brand?: string;
     keywords?: string[];
+    usageTags?: CatalogUsageTag[];
     per100: CatalogNutritionPer100g;
     totalWeightG?: number;
     unitsPerPack?: number;
@@ -214,6 +220,7 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
       name: string;
       brand?: string;
       keywords?: string[];
+      usageTags?: CatalogUsageTag[];
       per100: CatalogNutritionPer100g;
       totalWeightG?: number;
       unitsPerPack?: number;
@@ -251,6 +258,7 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
         brand: input.brand?.trim() || undefined,
         keywords:
           input.keywords?.filter((k) => k.trim()).map((k) => k.trim()) ?? undefined,
+        usageTags: input.usageTags?.length ? input.usageTags : undefined,
         createdAt: now,
         updatedAt: now,
         sources: [{ type: input.sourceType, at: now }],
@@ -286,6 +294,7 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
       name: string;
       brand?: string;
       keywords?: string[];
+      usageTags?: CatalogUsageTag[];
       per100: CatalogNutritionPer100g;
       totalWeightG?: number;
       unitsPerPack?: number;
@@ -321,6 +330,7 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
         brand: input.brand?.trim() || undefined,
         keywords:
           input.keywords?.filter((k) => k.trim()).map((k) => k.trim()) ?? undefined,
+        usageTags: input.usageTags?.length ? input.usageTags : undefined,
         createdAt: now,
         updatedAt: now,
         sources: [{ type: input.sourceType, at: now }],

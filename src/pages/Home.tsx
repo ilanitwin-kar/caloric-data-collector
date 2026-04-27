@@ -8,6 +8,16 @@ import { fmt1, parseNum } from "../utils/number";
 import { normalizeBarcode } from "../utils/openFoodFacts";
 import { WALKING_MET, walkingStepsToBurnKcal } from "../utils/walkingBurn";
 
+type UsageTag = "ready" | "ingredient" | "raw" | "cooked" | "dry";
+
+const USAGE_OPTIONS: Array<{ id: UsageTag; label: string }> = [
+  { id: "ready", label: "מוכן" },
+  { id: "ingredient", label: "חומר גלם" },
+  { id: "raw", label: "גולמי" },
+  { id: "cooked", label: "מבושל" },
+  { id: "dry", label: "יבש" },
+];
+
 function Field({
   label,
   value,
@@ -66,6 +76,7 @@ export function Home() {
   const [name, setName] = useState("");
   const [brand, setBrand] = useState("");
   const [keywordsRaw, setKeywordsRaw] = useState("");
+  const [usageTags, setUsageTags] = useState<UsageTag[]>(["ready"]);
 
   const [kcal100, setKcal100] = useState("");
   const [prot100, setProt100] = useState("");
@@ -218,6 +229,7 @@ export function Home() {
     }
 
     const keywords = parseKeywords(keywordsRaw);
+    const usage = usageTags.length ? usageTags : (isInternal ? (["ingredient"] as UsageTag[]) : (["ready"] as UsageTag[]));
 
     const totalW = pkg.totalW;
     if (!totalW) {
@@ -242,6 +254,7 @@ export function Home() {
         name: n,
         brand: brand.trim() || undefined,
         keywords,
+        usageTags: usage,
         per100,
         totalWeightG: totalW,
         unitsPerPack: units ?? (unitW ? totalW / unitW : undefined),
@@ -256,6 +269,7 @@ export function Home() {
       name: n,
       brand: brand.trim() || undefined,
       keywords,
+      usageTags: usage,
       per100,
       totalWeightG: totalW,
       unitsPerPack: units ?? (unitW ? totalW / unitW : undefined),
@@ -286,6 +300,7 @@ export function Home() {
                 const next = e.target.checked;
                 setIsInternal(next);
                 if (next) setInternalId(newInternalId());
+                setUsageTags(next ? ["ingredient"] : ["ready"]);
               }}
             />
             פריט ללא ברקוד (ירקות/בישול ביתי)
@@ -331,6 +346,38 @@ export function Home() {
               onChange={setKeywordsRaw}
               placeholder="למשל גבינה צהובה, עמק, 9 אחוז"
             />
+            <div className="space-y-1.5">
+              <p className="text-xs font-medium text-ink-muted">סוג שימוש</p>
+              <div className="flex flex-wrap gap-2">
+                {USAGE_OPTIONS.map((opt) => {
+                  const active = usageTags.includes(opt.id);
+                  return (
+                    <button
+                      key={opt.id}
+                      type="button"
+                      onClick={() =>
+                        setUsageTags((prev) =>
+                          prev.includes(opt.id)
+                            ? prev.filter((x) => x !== opt.id)
+                            : [...prev, opt.id],
+                        )
+                      }
+                      className={
+                        "rounded-full px-3 py-1.5 text-xs font-semibold transition " +
+                        (active
+                          ? "border border-emerald-300/30 bg-emerald-500/15 text-emerald-50"
+                          : "border border-white/15 bg-white/[0.06] text-ink-muted hover:border-white/25 hover:text-white")
+                      }
+                    >
+                      {opt.label}
+                    </button>
+                  );
+                })}
+              </div>
+              <p className="text-[11px] leading-snug text-ink-dim">
+                אפשר לבחור כמה. ברירת מחדל: {isInternal ? "חומר גלם" : "מוכן"}.
+              </p>
+            </div>
           </div>
         </section>
 

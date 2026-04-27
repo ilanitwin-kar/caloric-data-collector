@@ -27,12 +27,35 @@ function keywordsCell(list?: string[]) {
   return list.join(", ");
 }
 
+type UsageTag = "ready" | "ingredient" | "raw" | "cooked" | "dry";
+
+const USAGE_OPTIONS: Array<{ id: UsageTag; label: string }> = [
+  { id: "ready", label: "מוכן" },
+  { id: "ingredient", label: "חומר גלם" },
+  { id: "raw", label: "גולמי" },
+  { id: "cooked", label: "מבושל" },
+  { id: "dry", label: "יבש" },
+];
+
+function usageCell(list?: string[]) {
+  if (!list?.length) return "—";
+  const map: Record<string, string> = {
+    ready: "מוכן",
+    ingredient: "חומר גלם",
+    raw: "גולמי",
+    cooked: "מבושל",
+    dry: "יבש",
+  };
+  return list.map((x) => map[x] ?? x).join(", ");
+}
+
 type EditDraft = {
   id: string;
   gtin: string;
   name: string;
   brand: string;
   keywords: string;
+  usageTags: UsageTag[];
   totalWeightG: string;
   unitsPerPack: string;
   unitWeightG: string;
@@ -48,12 +71,14 @@ type EditDraft = {
 
 function productToDraft(p: CatalogProduct): EditDraft {
   const per = p.nutrition?.per100g;
+  const tags = (p.usageTags as UsageTag[] | undefined) ?? [];
   return {
     id: p.id,
     gtin: p.gtin ?? "",
     name: p.name ?? "",
     brand: p.brand ?? "",
     keywords: (p.keywords ?? []).join(", "),
+    usageTags: tags.length ? tags : p.id.startsWith("internal:") ? ["ingredient"] : ["ready"],
     totalWeightG: p.package?.totalWeightG != null ? String(p.package.totalWeightG) : "",
     unitsPerPack: p.package?.unitsPerPack != null ? String(p.package.unitsPerPack) : "",
     unitWeightG: p.package?.unitWeightG != null ? fmt1(p.package.unitWeightG) : "",
@@ -150,6 +175,7 @@ function EditModal({
         name,
         brand: d.brand.trim() || undefined,
         keywords: parseKeywords(d.keywords),
+        usageTags: d.usageTags.length ? d.usageTags : undefined,
         package: {
           totalWeightG: pkg.totalWeightG,
           unitsPerPack: pkg.unitsPerPack,
@@ -233,6 +259,40 @@ function EditModal({
           <Field label="שם" value={draft.name} onChange={(v) => setDraft((d) => (d ? { ...d, name: v } : d))} />
           <Field label="מותג" value={draft.brand} onChange={(v) => setDraft((d) => (d ? { ...d, brand: v } : d))} />
           <Field label="מילות חיפוש (פסיקים)" value={draft.keywords} onChange={(v) => setDraft((d) => (d ? { ...d, keywords: v } : d))} />
+          <div className="space-y-1.5">
+            <p className="text-xs font-medium text-ink-muted">סוג שימוש</p>
+            <div className="flex flex-wrap gap-2">
+              {USAGE_OPTIONS.map((opt) => {
+                const active = draft.usageTags.includes(opt.id);
+                return (
+                  <button
+                    key={opt.id}
+                    type="button"
+                    onClick={() =>
+                      setDraft((prev) =>
+                        prev
+                          ? {
+                              ...prev,
+                              usageTags: active
+                                ? prev.usageTags.filter((x) => x !== opt.id)
+                                : [...prev.usageTags, opt.id],
+                            }
+                          : prev,
+                      )
+                    }
+                    className={
+                      "rounded-full px-3 py-1.5 text-xs font-semibold transition " +
+                      (active
+                        ? "border border-emerald-300/30 bg-emerald-500/15 text-emerald-50"
+                        : "border border-white/15 bg-white/[0.06] text-ink-muted hover:border-white/25 hover:text-white")
+                    }
+                  >
+                    {opt.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
 
           <div className="grid grid-cols-2 gap-2">
             <Field label='קלוריות ל־100g' value={draft.calories100} onChange={(v) => setDraft((d) => (d ? { ...d, calories100: v } : d))} inputMode="decimal" />
@@ -316,6 +376,7 @@ export function Catalog() {
         name: r.name,
         brand: r.brand,
         keywords: r.keywords,
+        usageTags: (r.usageTags as UsageTag[] | undefined) ?? undefined,
         createdAt: now,
         updatedAt: now,
         package: { totalWeightG, unitsPerPack, unitWeightG },
@@ -469,6 +530,9 @@ export function Catalog() {
                   <p className="mt-1 font-mono text-xs text-ink-dim" dir="ltr">
                     {p.gtin ?? p.id}
                   </p>
+                  {p.usageTags?.length ? (
+                    <p className="mt-1 text-[11px] text-ink-dim">שימוש: {usageCell(p.usageTags as string[])}</p>
+                  ) : null}
                   {p.keywords?.length ? (
                     <p className="mt-2 text-[11px] text-ink-dim">מילים: {keywordsCell(p.keywords)}</p>
                   ) : null}

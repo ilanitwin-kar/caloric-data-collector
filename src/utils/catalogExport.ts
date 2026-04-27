@@ -18,6 +18,18 @@ function keywordsToText(list?: string[]): string {
   return list.join(", ");
 }
 
+function usageToText(list?: string[]): string {
+  if (!list?.length) return "";
+  const map: Record<string, string> = {
+    ready: "מוכן",
+    ingredient: "חומר גלם",
+    raw: "גולמי",
+    cooked: "מבושל",
+    dry: "יבש",
+  };
+  return list.map((x) => map[x] ?? x).join(", ");
+}
+
 export function catalogToSheetRows(items: CatalogProduct[]): Record<string, string | number>[] {
   return items.map((p) => {
     const per = p.nutrition?.per100g;
@@ -27,6 +39,7 @@ export function catalogToSheetRows(items: CatalogProduct[]): Record<string, stri
       "שם מוצר": p.name ?? "",
       מותג: p.brand ?? "",
       "מילות חיפוש": keywordsToText(p.keywords),
+      שימוש: usageToText(p.usageTags as string[] | undefined),
       "משקל אריזה (ג)": numOrEmpty(p.package?.totalWeightG),
       "יחידות באריזה": numOrEmpty(p.package?.unitsPerPack),
       "משקל יחידה (ג)": numOrEmpty(p.package?.unitWeightG),
