@@ -273,10 +273,8 @@ export function Home() {
     }
     const units = pkg.units;
     const unitW = pkg.unitW;
-    if (!units && !unitW) {
-      setError("באריזה: הזיני או יחידות באריזה או משקל יחידה — כדי שיחושב הנתון השני.");
-      return;
-    }
+    // If user provided only total weight, treat the entire package/cup as a single unit.
+    const inferredUnitsPerPack = units ?? (unitW ? totalW / unitW : 1);
 
     if (!isInternal) {
       const bc = barcodeDigits;
@@ -296,7 +294,7 @@ export function Home() {
         commonMeasures,
         per100,
         totalWeightG: totalW,
-        unitsPerPack: units ?? (unitW ? totalW / unitW : undefined),
+        unitsPerPack: inferredUnitsPerPack,
         measures,
         sourceType: "manual",
       });
@@ -317,7 +315,7 @@ export function Home() {
       commonMeasures,
       per100,
       totalWeightG: totalW,
-      unitsPerPack: units ?? (unitW ? totalW / unitW : undefined),
+      unitsPerPack: inferredUnitsPerPack,
       measures,
       sourceType: "manual",
     });
@@ -333,7 +331,7 @@ export function Home() {
             מאגר מוצרים
           </p>
           <p className="text-sm text-ink-muted">
-            שדות חובה: שם מוצר + מאקרו ל־100g + משקל אריזה. מומלץ: ברקוד.
+            שדות חובה: שם מוצר + מאקרו ל־100g + משקל אריזה. באריזה: אם לא ממלאים יחידות/משקל יחידה — זה נחשב "יחידה 1" (האריזה כולה).
           </p>
         </header>
 
