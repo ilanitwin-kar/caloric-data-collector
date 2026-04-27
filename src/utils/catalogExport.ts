@@ -53,6 +53,7 @@ export function catalogToSheetRows(items: CatalogProduct[]): Record<string, stri
       מזהה: p.id,
       ברקוד: p.gtin ?? "",
       "שם מוצר": p.name ?? "",
+      "שם קצר ליומן": p.shortName ?? "",
       מותג: p.brand ?? "",
       "מילות חיפוש": keywordsToText(p.keywords),
       קטגוריה: p.category ?? "",

@@ -14,7 +14,7 @@ function matchProduct(p: CatalogProduct, q: string): boolean {
   if (!s) return true;
   const code = normalizeBarcode(s);
   if (code.length >= 6) return (p.gtin ?? p.id).includes(code);
-  const hay = `${p.name} ${p.brand ?? ""} ${p.category ?? ""} ${(p.keywords ?? []).join(" ")}`.toLowerCase();
+  const hay = `${p.name} ${p.shortName ?? ""} ${p.brand ?? ""} ${p.category ?? ""} ${(p.keywords ?? []).join(" ")}`.toLowerCase();
   return hay.includes(s);
 }
 
@@ -62,6 +62,7 @@ type EditDraft = {
   id: string;
   gtin: string;
   name: string;
+  shortName: string;
   brand: string;
   keywords: string;
   usageTags: UsageTag[];
@@ -91,6 +92,7 @@ function productToDraft(p: CatalogProduct): EditDraft {
     id: p.id,
     gtin: p.gtin ?? "",
     name: p.name ?? "",
+    shortName: p.shortName ?? "",
     brand: p.brand ?? "",
     keywords: (p.keywords ?? []).join(", "),
     usageTags: tags.length ? tags : p.id.startsWith("internal:") ? ["ingredient"] : ["ready"],
@@ -197,6 +199,7 @@ function EditModal({
       const next: CatalogProduct = {
         ...p,
         name,
+        shortName: d.shortName.trim() || undefined,
         brand: d.brand.trim() || undefined,
         keywords: parseKeywords(d.keywords),
         category: d.category.trim() || undefined,
@@ -284,6 +287,12 @@ function EditModal({
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3 space-y-3">
           <Field label="שם" value={draft.name} onChange={(v) => setDraft((d) => (d ? { ...d, name: v } : d))} />
+          <Field
+            label="שם קצר ליומן (אופציונלי)"
+            value={draft.shortName}
+            onChange={(v) => setDraft((d) => (d ? { ...d, shortName: v } : d))}
+            placeholder="למשל עמק 9%"
+          />
           <Field label="מותג" value={draft.brand} onChange={(v) => setDraft((d) => (d ? { ...d, brand: v } : d))} />
           <Field label="קטגוריה" value={draft.category} onChange={(v) => setDraft((d) => (d ? { ...d, category: v } : d))} />
           <Field label="מילות חיפוש (פסיקים)" value={draft.keywords} onChange={(v) => setDraft((d) => (d ? { ...d, keywords: v } : d))} />
@@ -468,6 +477,7 @@ export function Catalog() {
         id: r.id,
         gtin: r.gtin,
         name: r.name,
+        shortName: (r.shortName ?? "").trim() || undefined,
         brand: r.brand,
         keywords: r.keywords,
         category: r.category,

@@ -72,7 +72,7 @@ function newInternalId(): string {
 }
 
 export function Home() {
-  const { upsertByBarcode, upsertInternal } = useCatalog();
+  const { catalog, upsertByBarcode, upsertInternal } = useCatalog();
   const { findMatches } = useVerified100();
   const bodyKg = useBodyWeightKg();
 
@@ -83,6 +83,7 @@ export function Home() {
   const barcodeDigits = useMemo(() => normalizeBarcode(barcodeRaw), [barcodeRaw]);
 
   const [name, setName] = useState("");
+  const [shortName, setShortName] = useState("");
   const [brand, setBrand] = useState("");
   const [keywordsRaw, setKeywordsRaw] = useState("");
   const [category, setCategory] = useState("");
@@ -94,6 +95,8 @@ export function Home() {
   const [prot100, setProt100] = useState("");
   const [carb100, setCarb100] = useState("");
   const [fat100, setFat100] = useState("");
+  const [verifiedPicked, setVerifiedPicked] = useState(false);
+  const [verifiedPickedSig, setVerifiedPickedSig] = useState<string | null>(null);
   const [verifiedSuggestions, setVerifiedSuggestions] = useState<
     Array<{
       name: string;
@@ -106,6 +109,12 @@ export function Home() {
     }>
   >([]);
   const [verifiedOffset, setVerifiedOffset] = useState(0);
+
+  const isAlreadyInCatalog = useMemo(() => {
+    if (isInternal) return catalog.some((p) => p.id === internalId);
+    if (!barcodeDigits) return false;
+    return catalog.some((p) => p.id === barcodeDigits || p.gtin === barcodeDigits);
+  }, [barcodeDigits, catalog, internalId, isInternal]);
 
   const [totalWeightG, setTotalWeightG] = useState("");
   const [unitsPerPack, setUnitsPerPack] = useState("");
@@ -131,6 +140,12 @@ export function Home() {
 
   // Suggest 100g macros from verified DB by best matches on name+brand (do not auto-apply).
   useEffect(() => {
+    const sig = `${name.trim()}|${brand.trim()}|${keywordsRaw.trim()}|${category.trim()}`;
+    if (isAlreadyInCatalog || (verifiedPickedSig && verifiedPickedSig === sig)) {
+      setVerifiedSuggestions([]);
+      setVerifiedOffset(0);
+      return;
+    }
     const n = name.trim();
     if (n.length < 3) {
       setVerifiedSuggestions([]);
@@ -151,7 +166,7 @@ export function Home() {
       })),
     );
     setVerifiedOffset(0);
-  }, [name, brand, keywordsRaw, category, findMatches]);
+  }, [name, brand, keywordsRaw, category, findMatches, verifiedPickedSig, isAlreadyInCatalog]);
 
   const visibleVerifiedSuggestions = useMemo(
     () => verifiedSuggestions.slice(verifiedOffset, verifiedOffset + 4),
@@ -272,6 +287,7 @@ export function Home() {
       await upsertByBarcode({
         barcode: bc,
         name: n,
+        shortName: shortName.trim() || undefined,
         brand: brand.trim() || undefined,
         keywords,
         category: category.trim() || undefined,
@@ -284,12 +300,15 @@ export function Home() {
         measures,
         sourceType: "manual",
       });
+      setVerifiedPicked(false);
+      setVerifiedPickedSig(null);
       return;
     }
 
     await upsertInternal({
       id: internalId,
       name: n,
+      shortName: shortName.trim() || undefined,
       brand: brand.trim() || undefined,
       keywords,
       category: category.trim() || undefined,
@@ -302,6 +321,8 @@ export function Home() {
       measures,
       sourceType: "manual",
     });
+    setVerifiedPicked(false);
+    setVerifiedPickedSig(null);
   }
 
   return (
@@ -367,6 +388,12 @@ export function Home() {
 
           <div className="grid grid-cols-1 gap-3">
             <Field label="שם מוצר" value={name} onChange={setName} placeholder="למשל גבינת עמק 9%" />
+            <Field
+              label="שם קצר ליומן (אופציונלי)"
+              value={shortName}
+              onChange={setShortName}
+              placeholder="למשל עמק 9%"
+            />
             <Field label="מותג" value={brand} onChange={setBrand} placeholder="למשל תנובה" />
             <Field label="קטגוריה" value={category} onChange={setCategory} placeholder="למשל שימורים" />
             <Field
@@ -375,6 +402,25 @@ export function Home() {
               onChange={setKeywordsRaw}
               placeholder="למשל גבינה צהובה, עמק, 9 אחוז"
             />
+            {verifiedPicked ? (
+              <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-emerald-400/25 bg-emerald-500/10 px-3 py-2">
+                <span className="text-[11px] font-semibold text-emerald-50">
+                  ✓ נבחרה התאמה מהמאגר המאומת
+                </span>
+                {!isAlreadyInCatalog ? (
+                  <button
+                    type="button"
+                    className="rounded-lg border border-white/15 bg-transparent px-3 py-1.5 text-[11px] font-semibold text-ink-muted hover:border-white/25 hover:text-white"
+                    onClick={() => {
+                      setVerifiedPicked(false);
+                      setVerifiedPickedSig(null);
+                    }}
+                  >
+                    הצג עוד הצעות
+                  </button>
+                ) : null}
+              </div>
+            ) : null}
             {visibleVerifiedSuggestions.length > 0 ? (
               <div className="rounded-xl border border-emerald-400/25 bg-emerald-500/10 px-3 py-2">
                 <p className="text-[11px] text-emerald-100/90">הצעות מהמאגר המאומת (למילוי 100g):</p>
@@ -388,7 +434,12 @@ export function Home() {
                         type="button"
                         className="rounded-lg bg-emerald-400/15 px-3 py-1.5 text-xs font-semibold text-emerald-50 hover:bg-emerald-400/20"
                         onClick={() => {
+                        setVerifiedPicked(true);
+                        setVerifiedPickedSig(
+                          `${sug.name.trim()}|${(sug.brand ?? "").trim()}|${keywordsRaw.trim()}|${(sug.category ?? "").trim()}`,
+                        );
                         setName(sug.name);
+                        setShortName((prev) => (prev.trim() ? prev : sug.name));
                         if (sug.brand) setBrand(sug.brand);
                         if (sug.category) setCategory(sug.category);
                           if (sug.calories100 != null) setKcal100(String(sug.calories100));
@@ -399,7 +450,7 @@ export function Home() {
                           setVerifiedOffset(0);
                         }}
                       >
-                        בחר
+                        ✓ בחר
                       </button>
                       <span className="text-[11px] text-emerald-100/90">
                         {sug.name}

@@ -69,6 +69,7 @@ export function catalogToCsv(items: CatalogProduct[]): string {
     "id",
     "gtin",
     "name",
+    "shortName",
     "brand",
     "keywords",
     "category",
@@ -94,6 +95,7 @@ export function catalogToCsv(items: CatalogProduct[]): string {
         escapeCsvCell(p.id),
         escapeCsvCell(p.gtin ?? ""),
         escapeCsvCell(p.name ?? ""),
+        escapeCsvCell(p.shortName ?? ""),
         escapeCsvCell(p.brand ?? ""),
         escapeCsvCell(keywordsToCell(p.keywords)),
         escapeCsvCell(p.category ?? ""),
@@ -120,6 +122,7 @@ export type CatalogCsvRow = {
   id: string;
   gtin?: string;
   name: string;
+  shortName?: string;
   brand?: string;
   keywords?: string[];
   category?: string;
@@ -163,6 +166,7 @@ export function parseCatalogCsv(csv: string): CatalogCsvRow[] {
     if (!id) continue;
 
     const brand = (get(cells, "brand") ?? "").trim() || undefined;
+    const shortName = (get(cells, "shortName") ?? "").trim() || undefined;
     const keywords = keywordsFromCell(get(cells, "keywords"));
     const category = (get(cells, "category") ?? "").trim() || undefined;
     const usageTags = keywordsFromCell(get(cells, "usageTags"));
@@ -172,6 +176,7 @@ export function parseCatalogCsv(csv: string): CatalogCsvRow[] {
       id,
       gtin: rawGtin && rawGtin.length >= 8 ? rawGtin : undefined,
       name,
+      shortName,
       brand,
       keywords,
       category,

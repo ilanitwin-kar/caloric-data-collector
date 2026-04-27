@@ -60,6 +60,8 @@ export type CatalogProduct = {
   /** Barcode digits when available (EAN/GTIN). */
   gtin?: string;
   name: string;
+  /** Optional shorter display name for the journal UI. */
+  shortName?: string;
   brand?: string;
   /** Extra free-form search terms (slang, aliases, etc.). */
   keywords?: string[];
@@ -98,6 +100,7 @@ type CatalogContextValue = {
   upsertByBarcode: (input: {
     barcode: string;
     name: string;
+    shortName?: string;
     brand?: string;
     keywords?: string[];
     category?: string;
@@ -113,6 +116,7 @@ type CatalogContextValue = {
   upsertInternal: (input: {
     id: string;
     name: string;
+    shortName?: string;
     brand?: string;
     keywords?: string[];
     category?: string;
@@ -231,6 +235,7 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
     async (input: {
       barcode: string;
       name: string;
+      shortName?: string;
       brand?: string;
       keywords?: string[];
       category?: string;
@@ -271,6 +276,7 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
         id,
         gtin,
         name: input.name.trim(),
+        shortName: input.shortName?.trim() || undefined,
         brand: input.brand?.trim() || undefined,
         keywords:
           input.keywords?.filter((k) => k.trim()).map((k) => k.trim()) ?? undefined,
@@ -312,6 +318,7 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
     async (input: {
       id: string;
       name: string;
+      shortName?: string;
       brand?: string;
       keywords?: string[];
       category?: string;
@@ -350,6 +357,7 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
       const payload: CatalogProduct = {
         id,
         name: input.name.trim(),
+        shortName: input.shortName?.trim() || undefined,
         brand: input.brand?.trim() || undefined,
         keywords:
           input.keywords?.filter((k) => k.trim()).map((k) => k.trim()) ?? undefined,
