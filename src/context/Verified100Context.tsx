@@ -256,7 +256,7 @@ export function Verified100Provider({ children }: { children: ReactNode }) {
         if (s >= 35) scored.push({ item: it, score: s });
       }
       scored.sort((a, b) => b.score - a.score);
-      const limit = Math.max(1, Math.min(10, opts?.limit ?? 4));
+      const limit = Math.max(1, Math.min(30, opts?.limit ?? 4));
       return scored.slice(0, limit).map((m) => m.item);
     },
     [items],

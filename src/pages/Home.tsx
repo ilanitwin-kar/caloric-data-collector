@@ -92,6 +92,7 @@ export function Home() {
       fat100?: number;
     }>
   >([]);
+  const [verifiedOffset, setVerifiedOffset] = useState(0);
 
   const [totalWeightG, setTotalWeightG] = useState("");
   const [unitsPerPack, setUnitsPerPack] = useState("");
@@ -120,12 +121,11 @@ export function Home() {
     const n = name.trim();
     if (n.length < 3) {
       setVerifiedSuggestions([]);
+      setVerifiedOffset(0);
       return;
     }
-    const matches = findMatches(
-      { name: n, brand: brand.trim() || undefined },
-      { limit: 4 },
-    );
+    const qName = `${n} ${keywordsRaw.replace(/[,]+/g, " ")}`.trim();
+    const matches = findMatches({ name: qName, brand: brand.trim() || undefined }, { limit: 12 });
     setVerifiedSuggestions(
       matches.map((m) => ({
         name: m.name,
@@ -136,7 +136,13 @@ export function Home() {
         fat100: m.fat100,
       })),
     );
-  }, [name, brand, findMatches]);
+    setVerifiedOffset(0);
+  }, [name, brand, keywordsRaw, findMatches]);
+
+  const visibleVerifiedSuggestions = useMemo(
+    () => verifiedSuggestions.slice(verifiedOffset, verifiedOffset + 4),
+    [verifiedSuggestions, verifiedOffset],
+  );
 
   // Package triad: user inputs totalWeight always; typing either units or unitWeight calculates the other.
   useEffect(() => {
@@ -346,6 +352,68 @@ export function Home() {
               onChange={setKeywordsRaw}
               placeholder="למשל גבינה צהובה, עמק, 9 אחוז"
             />
+            {visibleVerifiedSuggestions.length > 0 ? (
+              <div className="rounded-xl border border-emerald-400/25 bg-emerald-500/10 px-3 py-2">
+                <p className="text-[11px] text-emerald-100/90">הצעות מהמאגר המאומת (למילוי 100g):</p>
+                <div className="mt-2 space-y-2">
+                  {visibleVerifiedSuggestions.map((sug, idx) => (
+                    <div
+                      key={`${sug.name}|${sug.brand ?? ""}|${verifiedOffset + idx}`}
+                      className="flex flex-wrap items-center gap-2"
+                    >
+                      <button
+                        type="button"
+                        className="rounded-lg bg-emerald-400/15 px-3 py-1.5 text-xs font-semibold text-emerald-50 hover:bg-emerald-400/20"
+                        onClick={() => {
+                          if (sug.calories100 != null) setKcal100(String(sug.calories100));
+                          if (sug.protein100 != null) setProt100(String(sug.protein100));
+                          if (sug.carbs100 != null) setCarb100(String(sug.carbs100));
+                          if (sug.fat100 != null) setFat100(String(sug.fat100));
+                          setVerifiedSuggestions([]);
+                          setVerifiedOffset(0);
+                        }}
+                      >
+                        בחר
+                      </button>
+                      <span className="text-[11px] text-emerald-100/90">
+                        {sug.name}
+                        {sug.brand ? ` · ${sug.brand}` : ""}
+                        {sug.calories100 != null ? ` · ${sug.calories100} קק\"ל` : ""}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {verifiedOffset + 4 < verifiedSuggestions.length ? (
+                    <button
+                      type="button"
+                      className="rounded-lg border border-white/15 bg-transparent px-3 py-1.5 text-xs font-semibold text-ink-muted hover:border-white/25 hover:text-white"
+                      onClick={() => setVerifiedOffset((o) => Math.min(verifiedSuggestions.length, o + 4))}
+                    >
+                      לא מתאים — עוד הצעות
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      className="rounded-lg border border-white/15 bg-transparent px-3 py-1.5 text-xs font-semibold text-ink-muted hover:border-white/25 hover:text-white"
+                      onClick={() => {
+                        setVerifiedSuggestions([]);
+                        setVerifiedOffset(0);
+                      }}
+                    >
+                      התעלם
+                    </button>
+                  )}
+                </div>
+                <p className="mt-2 text-[11px] text-ink-dim">
+                  שם כללי עלול להתאים למוצר אחר — עדיף לבחור ידנית.
+                </p>
+              </div>
+            ) : (
+              <p className="text-[11px] text-ink-dim">
+                המאגר המאומת מציע התאמות לפי שם/מותג/מילות חיפוש. כדי למלא — בחרי הצעה.
+              </p>
+            )}
             <div className="space-y-1.5">
               <p className="text-xs font-medium text-ink-muted">סוג שימוש</p>
               <div className="flex flex-wrap gap-2">
@@ -389,50 +457,6 @@ export function Home() {
             <Field label="פחמימה (g)" value={carb100} onChange={setCarb100} inputMode="decimal" />
             <Field label="שומן (g)" value={fat100} onChange={setFat100} inputMode="decimal" />
           </div>
-          {verifiedSuggestions.length > 0 ? (
-            <div className="rounded-xl border border-emerald-400/25 bg-emerald-500/10 px-3 py-2">
-              <p className="text-[11px] text-emerald-100/90">הצעות מהמאגר המאומת:</p>
-              <div className="mt-2 space-y-2">
-                {verifiedSuggestions.map((sug, idx) => (
-                  <div key={`${sug.name}|${sug.brand ?? ""}|${idx}`} className="flex flex-wrap items-center gap-2">
-                    <button
-                      type="button"
-                      className="rounded-lg bg-emerald-400/15 px-3 py-1.5 text-xs font-semibold text-emerald-50 hover:bg-emerald-400/20"
-                      onClick={() => {
-                        if (sug.calories100 != null) setKcal100(String(sug.calories100));
-                        if (sug.protein100 != null) setProt100(String(sug.protein100));
-                        if (sug.carbs100 != null) setCarb100(String(sug.carbs100));
-                        if (sug.fat100 != null) setFat100(String(sug.fat100));
-                      }}
-                    >
-                      בחר {idx + 1}
-                    </button>
-                    <span className="text-[11px] text-emerald-100/90">
-                      {sug.name}
-                      {sug.brand ? ` · ${sug.brand}` : ""}
-                      {sug.calories100 != null ? ` · ${sug.calories100} קק\"ל` : ""}
-                    </span>
-                  </div>
-                ))}
-              </div>
-              <div className="mt-2 flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  className="rounded-lg border border-white/15 bg-transparent px-3 py-1.5 text-xs font-semibold text-ink-muted hover:border-white/25 hover:text-white"
-                  onClick={() => setVerifiedSuggestions([])}
-                >
-                  התעלם
-                </button>
-              </div>
-              <p className="mt-2 text-[11px] text-ink-dim">
-                שם כללי עלול להתאים למוצר אחר — עדיף לאשר ידנית.
-              </p>
-            </div>
-          ) : (
-            <p className="text-[11px] text-ink-dim">
-              המאגר המאומת מציע התאמה לפי שם+מותג. שם כללי (למשל “גבינה לבנה”) עלול להביא הצעה לא מדויקת.
-            </p>
-          )}
         </section>
 
         <section className="rounded-2xl border border-white/10 bg-white/[0.03] p-4 space-y-3">
