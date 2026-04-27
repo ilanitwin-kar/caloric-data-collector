@@ -39,6 +39,7 @@ export function catalogToSheetRows(items: CatalogProduct[]): Record<string, stri
       "שם מוצר": p.name ?? "",
       מותג: p.brand ?? "",
       "מילות חיפוש": keywordsToText(p.keywords),
+      קטגוריה: p.category ?? "",
       שימוש: usageToText(p.usageTags as string[] | undefined),
       "משקל אריזה (ג)": numOrEmpty(p.package?.totalWeightG),
       "יחידות באריזה": numOrEmpty(p.package?.unitsPerPack),

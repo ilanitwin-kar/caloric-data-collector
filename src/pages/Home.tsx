@@ -76,6 +76,7 @@ export function Home() {
   const [name, setName] = useState("");
   const [brand, setBrand] = useState("");
   const [keywordsRaw, setKeywordsRaw] = useState("");
+  const [category, setCategory] = useState("");
   const [usageTags, setUsageTags] = useState<UsageTag[]>(["ready"]);
 
   const [kcal100, setKcal100] = useState("");
@@ -86,6 +87,7 @@ export function Home() {
     Array<{
       name: string;
       brand?: string;
+      category?: string;
       calories100?: number;
       protein100?: number;
       carbs100?: number;
@@ -124,12 +126,13 @@ export function Home() {
       setVerifiedOffset(0);
       return;
     }
-    const qName = `${n} ${keywordsRaw.replace(/[,]+/g, " ")}`.trim();
+    const qName = `${n} ${keywordsRaw.replace(/[,]+/g, " ")} ${category}`.trim();
     const matches = findMatches({ name: qName, brand: brand.trim() || undefined }, { limit: 12 });
     setVerifiedSuggestions(
       matches.map((m) => ({
         name: m.name,
         brand: m.brand,
+        category: m.category,
         calories100: m.calories100,
         protein100: m.protein100,
         carbs100: m.carbs100,
@@ -137,7 +140,7 @@ export function Home() {
       })),
     );
     setVerifiedOffset(0);
-  }, [name, brand, keywordsRaw, findMatches]);
+  }, [name, brand, keywordsRaw, category, findMatches]);
 
   const visibleVerifiedSuggestions = useMemo(
     () => verifiedSuggestions.slice(verifiedOffset, verifiedOffset + 4),
@@ -260,6 +263,7 @@ export function Home() {
         name: n,
         brand: brand.trim() || undefined,
         keywords,
+        category: category.trim() || undefined,
         usageTags: usage,
         per100,
         totalWeightG: totalW,
@@ -275,6 +279,7 @@ export function Home() {
       name: n,
       brand: brand.trim() || undefined,
       keywords,
+      category: category.trim() || undefined,
       usageTags: usage,
       per100,
       totalWeightG: totalW,
@@ -346,6 +351,7 @@ export function Home() {
           <div className="grid grid-cols-1 gap-3">
             <Field label="שם מוצר" value={name} onChange={setName} placeholder="למשל גבינת עמק 9%" />
             <Field label="מותג" value={brand} onChange={setBrand} placeholder="למשל תנובה" />
+            <Field label="קטגוריה" value={category} onChange={setCategory} placeholder="למשל שימורים" />
             <Field
               label="מילות חיפוש נוספות (מופרד בפסיק)"
               value={keywordsRaw}
@@ -365,6 +371,9 @@ export function Home() {
                         type="button"
                         className="rounded-lg bg-emerald-400/15 px-3 py-1.5 text-xs font-semibold text-emerald-50 hover:bg-emerald-400/20"
                         onClick={() => {
+                        setName(sug.name);
+                        if (sug.brand) setBrand(sug.brand);
+                        if (sug.category) setCategory(sug.category);
                           if (sug.calories100 != null) setKcal100(String(sug.calories100));
                           if (sug.protein100 != null) setProt100(String(sug.protein100));
                           if (sug.carbs100 != null) setCarb100(String(sug.carbs100));
@@ -378,6 +387,7 @@ export function Home() {
                       <span className="text-[11px] text-emerald-100/90">
                         {sug.name}
                         {sug.brand ? ` · ${sug.brand}` : ""}
+                      {sug.category ? ` · ${sug.category}` : ""}
                         {sug.calories100 != null ? ` · ${sug.calories100} קק\"ל` : ""}
                       </span>
                     </div>

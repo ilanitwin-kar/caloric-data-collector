@@ -62,6 +62,8 @@ export type CatalogProduct = {
   brand?: string;
   /** Extra free-form search terms (slang, aliases, etc.). */
   keywords?: string[];
+  /** Optional category (e.g. "שימורים"). */
+  category?: string;
   /** How this item is typically used (supports multiple tags). */
   usageTags?: CatalogUsageTag[];
   createdAt: string;
@@ -93,6 +95,7 @@ type CatalogContextValue = {
     name: string;
     brand?: string;
     keywords?: string[];
+    category?: string;
     usageTags?: CatalogUsageTag[];
     per100: CatalogNutritionPer100g;
     totalWeightG?: number;
@@ -105,6 +108,7 @@ type CatalogContextValue = {
     name: string;
     brand?: string;
     keywords?: string[];
+    category?: string;
     usageTags?: CatalogUsageTag[];
     per100: CatalogNutritionPer100g;
     totalWeightG?: number;
@@ -220,6 +224,7 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
       name: string;
       brand?: string;
       keywords?: string[];
+      category?: string;
       usageTags?: CatalogUsageTag[];
       per100: CatalogNutritionPer100g;
       totalWeightG?: number;
@@ -258,6 +263,7 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
         brand: input.brand?.trim() || undefined,
         keywords:
           input.keywords?.filter((k) => k.trim()).map((k) => k.trim()) ?? undefined,
+        category: input.category?.trim() || undefined,
         usageTags: input.usageTags?.length ? input.usageTags : undefined,
         createdAt: now,
         updatedAt: now,
@@ -294,6 +300,7 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
       name: string;
       brand?: string;
       keywords?: string[];
+      category?: string;
       usageTags?: CatalogUsageTag[];
       per100: CatalogNutritionPer100g;
       totalWeightG?: number;
@@ -330,6 +337,7 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
         brand: input.brand?.trim() || undefined,
         keywords:
           input.keywords?.filter((k) => k.trim()).map((k) => k.trim()) ?? undefined,
+        category: input.category?.trim() || undefined,
         usageTags: input.usageTags?.length ? input.usageTags : undefined,
         createdAt: now,
         updatedAt: now,

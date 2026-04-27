@@ -14,7 +14,7 @@ function matchProduct(p: CatalogProduct, q: string): boolean {
   if (!s) return true;
   const code = normalizeBarcode(s);
   if (code.length >= 6) return (p.gtin ?? p.id).includes(code);
-  const hay = `${p.name} ${p.brand ?? ""} ${(p.keywords ?? []).join(" ")}`.toLowerCase();
+  const hay = `${p.name} ${p.brand ?? ""} ${p.category ?? ""} ${(p.keywords ?? []).join(" ")}`.toLowerCase();
   return hay.includes(s);
 }
 
@@ -56,6 +56,7 @@ type EditDraft = {
   brand: string;
   keywords: string;
   usageTags: UsageTag[];
+  category: string;
   totalWeightG: string;
   unitsPerPack: string;
   unitWeightG: string;
@@ -79,6 +80,7 @@ function productToDraft(p: CatalogProduct): EditDraft {
     brand: p.brand ?? "",
     keywords: (p.keywords ?? []).join(", "),
     usageTags: tags.length ? tags : p.id.startsWith("internal:") ? ["ingredient"] : ["ready"],
+    category: p.category ?? "",
     totalWeightG: p.package?.totalWeightG != null ? String(p.package.totalWeightG) : "",
     unitsPerPack: p.package?.unitsPerPack != null ? String(p.package.unitsPerPack) : "",
     unitWeightG: p.package?.unitWeightG != null ? fmt1(p.package.unitWeightG) : "",
@@ -181,6 +183,7 @@ function EditModal({
         name,
         brand: d.brand.trim() || undefined,
         keywords: parseKeywords(d.keywords),
+        category: d.category.trim() || undefined,
         usageTags: d.usageTags.length ? d.usageTags : undefined,
         package: {
           totalWeightG: pkg.totalWeightG,
@@ -264,6 +267,7 @@ function EditModal({
         <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3 space-y-3">
           <Field label="שם" value={draft.name} onChange={(v) => setDraft((d) => (d ? { ...d, name: v } : d))} />
           <Field label="מותג" value={draft.brand} onChange={(v) => setDraft((d) => (d ? { ...d, brand: v } : d))} />
+          <Field label="קטגוריה" value={draft.category} onChange={(v) => setDraft((d) => (d ? { ...d, category: v } : d))} />
           <Field label="מילות חיפוש (פסיקים)" value={draft.keywords} onChange={(v) => setDraft((d) => (d ? { ...d, keywords: v } : d))} />
           <div className="space-y-1.5">
             <p className="text-xs font-medium text-ink-muted">סוג שימוש</p>
@@ -383,6 +387,7 @@ export function Catalog() {
         name: r.name,
         brand: r.brand,
         keywords: r.keywords,
+        category: r.category,
         usageTags: (r.usageTags as UsageTag[] | undefined) ?? undefined,
         createdAt: now,
         updatedAt: now,
