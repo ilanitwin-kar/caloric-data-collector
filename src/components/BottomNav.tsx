@@ -8,14 +8,6 @@ function IconHome({ className }: { className?: string }) {
   );
 }
 
-function IconList({ className }: { className?: string }) {
-  return (
-    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} aria-hidden>
-      <path strokeLinecap="round" d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01" />
-    </svg>
-  );
-}
-
 function IconBook({ className }: { className?: string }) {
   return (
     <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} aria-hidden>
@@ -54,15 +46,6 @@ export function BottomNav() {
         >
           <IconHome className="h-6 w-6" />
           בית
-        </NavLink>
-        <NavLink
-          to="/history"
-          className={({ isActive }) =>
-            `${tab} ${isActive ? "text-white" : "text-ink-muted hover:text-white/80"}`
-          }
-        >
-          <IconList className="h-6 w-6" />
-          המוצרים שלי
         </NavLink>
         <NavLink
           to="/catalog"
