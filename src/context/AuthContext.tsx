@@ -51,7 +51,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [authError, setAuthError] = useState<string | null>(null);
-  const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+  const isIos = /iPhone|iPad|iPod/i.test(navigator.userAgent);
+  const isStandalone =
+    window.matchMedia?.("(display-mode: standalone)")?.matches === true ||
+    // iOS Safari PWA
+    ("standalone" in navigator && Boolean((navigator as unknown as { standalone?: boolean }).standalone));
 
   useEffect(() => {
     let cancelled = false;
@@ -86,8 +90,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       signIn: async () => {
         const provider = new GoogleAuthProvider();
         setAuthError(null);
-        // Mobile/PWA browsers are more reliable with redirect auth.
-        if (isMobile) {
+        // iOS and installed PWAs are often more reliable with redirect auth.
+        if (isIos || isStandalone) {
           await signInWithRedirect(auth, provider).catch((e) => {
             setAuthError(getAuthErrorMessage(e));
             throw e;
@@ -109,7 +113,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         await signOut(auth);
       },
     }),
-    [user, loading, authError, isMobile],
+    [user, loading, authError, isIos, isStandalone],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

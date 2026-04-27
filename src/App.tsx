@@ -1,9 +1,11 @@
 import { BrowserRouter, Navigate, Outlet, Route, Routes } from "react-router-dom";
 import { BottomNav } from "./components/BottomNav";
 import { AuthProvider, useAuth } from "./context/AuthContext";
+import { CatalogProvider } from "./context/CatalogContext";
 import { ProductsProvider } from "./context/ProductsContext";
 import { ToastProvider } from "./context/ToastContext";
 import { Verified100Provider } from "./context/Verified100Context";
+import { Catalog } from "./pages/Catalog";
 import { History } from "./pages/History";
 import { Home } from "./pages/Home";
 import { Settings } from "./pages/Settings";
@@ -63,16 +65,19 @@ export default function App() {
       <ToastProvider>
         <Verified100Provider>
           <ProductsProvider>
-            <BrowserRouter basename={import.meta.env.BASE_URL}>
-              <Routes>
-                <Route element={<Shell />}>
-                  <Route index element={<Home />} />
-                  <Route path="history" element={<History />} />
-                  <Route path="settings" element={<Settings />} />
-                  <Route path="*" element={<Navigate to="/" replace />} />
-                </Route>
-              </Routes>
-            </BrowserRouter>
+            <CatalogProvider>
+              <BrowserRouter basename={import.meta.env.BASE_URL}>
+                <Routes>
+                  <Route element={<Shell />}>
+                    <Route index element={<Home />} />
+                    <Route path="catalog" element={<Catalog />} />
+                    <Route path="history" element={<History />} />
+                    <Route path="settings" element={<Settings />} />
+                    <Route path="*" element={<Navigate to="/" replace />} />
+                  </Route>
+                </Routes>
+              </BrowserRouter>
+            </CatalogProvider>
           </ProductsProvider>
         </Verified100Provider>
       </ToastProvider>

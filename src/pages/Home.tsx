@@ -1,1432 +1,452 @@
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type ChangeEvent,
-  type InputHTMLAttributes,
-} from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Spinner } from "../components/Spinner";
-import { useProducts } from "../context/ProductsContext";
-import { useVerified100 } from "../context/Verified100Context";
-import {
-  countParsedFields,
-  parseNutritionFromOcrText,
-  parsePackageFromOcrText,
-  runLabelOcr,
-  type ParsedMacros,
-} from "../utils/labelOcr";
 import { BarcodeScanner } from "../components/BarcodeScanner";
-import {
-  fetchOpenFoodFactsProduct,
-  normalizeBarcode,
-  searchOpenFoodFactsProducts,
-  type OffSearchHit,
-  type OpenFoodFactsProduct,
-} from "../utils/openFoodFacts";
-import type { Product } from "../types/product";
-import { playSuccessChime } from "../utils/successChime";
+import { useCatalog } from "../context/CatalogContext";
+import { useVerified100 } from "../context/Verified100Context";
 import { useBodyWeightKg } from "../hooks/useBodyWeightKg";
 import { fmt1, parseNum } from "../utils/number";
+import { normalizeBarcode } from "../utils/openFoodFacts";
 import { WALKING_MET, walkingStepsToBurnKcal } from "../utils/walkingBurn";
-
-function BarcodeIcon({ className }: { className?: string }) {
-  return (
-    <svg
-      className={className}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth={1.75}
-      strokeLinecap="round"
-      aria-hidden
-    >
-      <path d="M5 4v16M8 4v16M11 4v16M14 4v16M17 4v16M20 4v16" />
-    </svg>
-  );
-}
-
-function CameraIcon({ className }: { className?: string }) {
-  return (
-    <svg
-      className={className}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth={1.5}
-      aria-hidden
-    >
-      <path
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        d="M6.827 6.175A2.31 2.31 0 0 1 9.17 4.5h5.66a2.31 2.31 0 0 1 2.343 1.675l.558 1.825H21a1.5 1.5 0 0 1 1.5 1.5v9a1.5 1.5 0 0 1-1.5 1.5H3a1.5 1.5 0 0 1-1.5-1.5v-9A1.5 1.5 0 0 1 3 9.5h2.27l.557-1.325Z"
-      />
-      <path
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        d="M12 17.25a4.25 4.25 0 1 0 0-8.5 4.25 4.25 0 0 0 0 8.5Z"
-      />
-    </svg>
-  );
-}
-
-function formatMacroValue(n: number): string {
-  const r = Math.round(n * 10) / 10;
-  return Number.isInteger(r) ? String(r) : r.toFixed(1);
-}
-
-function applyMacrosToFields(
-  p: ParsedMacros,
-  setters: {
-    setCals100: (v: string) => void;
-    setProt100: (v: string) => void;
-    setCarb100: (v: string) => void;
-    setSugars100: (v: string) => void;
-    setFat100: (v: string) => void;
-    setSatFat100: (v: string) => void;
-    setTransFat100: (v: string) => void;
-    setFiber100: (v: string) => void;
-    setSodiumMg100: (v: string) => void;
-    setSugarTsp100: (v: string) => void;
-  },
-) {
-  if (p.cals100 !== undefined) setters.setCals100(formatMacroValue(p.cals100));
-  if (p.prot100 !== undefined) setters.setProt100(formatMacroValue(p.prot100));
-  if (p.carb100 !== undefined) setters.setCarb100(formatMacroValue(p.carb100));
-  if (p.sugars100 !== undefined) setters.setSugars100(formatMacroValue(p.sugars100));
-  if (p.fat100 !== undefined) setters.setFat100(formatMacroValue(p.fat100));
-  if (p.satFat100 !== undefined) setters.setSatFat100(formatMacroValue(p.satFat100));
-  if (p.transFat100 !== undefined) setters.setTransFat100(formatMacroValue(p.transFat100));
-  if (p.fiber100 !== undefined) setters.setFiber100(formatMacroValue(p.fiber100));
-  if (p.sodiumMg100 !== undefined) setters.setSodiumMg100(formatMacroValue(p.sodiumMg100));
-  if (p.sugarTeaspoons100 !== undefined) {
-    setters.setSugarTsp100(formatMacroValue(p.sugarTeaspoons100));
-  }
-}
 
 function Field({
   label,
-  id,
   value,
   onChange,
   placeholder,
   inputMode,
 }: {
   label: string;
-  id: string;
   value: string;
   onChange: (v: string) => void;
   placeholder?: string;
-  inputMode?: InputHTMLAttributes<HTMLInputElement>["inputMode"];
+  inputMode?: "decimal" | "numeric" | "text";
 }) {
   return (
-    <div className="space-y-2">
-      <label
-        htmlFor={id}
-        className="block text-xs font-medium text-ink-muted"
-      >
-        {label}
-      </label>
+    <label className="flex flex-col gap-1">
+      <span className="text-xs font-medium text-ink-muted">{label}</span>
       <input
-        id={id}
-        name={id}
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
         inputMode={inputMode}
         autoComplete="off"
-        className="min-h-[52px] w-full rounded-2xl border border-white/15 bg-white/[0.06] px-4 text-lg text-white placeholder:text-ink-dim focus:border-white/35 focus:outline-none focus:ring-2 focus:ring-white/20"
+        className="min-h-[48px] w-full rounded-2xl border border-white/15 bg-white/[0.06] px-4 text-base text-white placeholder:text-ink-dim focus:border-white/35 focus:outline-none focus:ring-2 focus:ring-white/15"
       />
-    </div>
+    </label>
   );
 }
 
-type OcrUiState =
-  | { status: "idle" }
-  | { status: "loading" }
-  | { status: "success"; filled: number }
-  | { status: "partial"; filled: number }
-  | { status: "none" }
-  | { status: "error"; message: string };
+function parseKeywords(raw: string): string[] | undefined {
+  const list = raw
+    .split(/[,\n]/g)
+    .map((x) => x.trim())
+    .filter(Boolean);
+  return list.length ? list : undefined;
+}
 
-function pickLatestProductByBarcode(products: Product[], digits: string): Product | undefined {
-  const matches = products.filter(
-    (p) => p.barcode && normalizeBarcode(p.barcode) === digits,
-  );
-  if (matches.length === 0) return undefined;
-  return [...matches].sort(
-    (a, b) => new Date(b.savedAt).getTime() - new Date(a.savedAt).getTime(),
-  )[0];
+function newInternalId(): string {
+  const uuid =
+    typeof crypto !== "undefined" && "randomUUID" in crypto
+      ? (crypto as Crypto).randomUUID()
+      : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  return `internal:${uuid}`;
 }
 
 export function Home() {
-  const { addProduct, products } = useProducts();
+  const { upsertByBarcode, upsertInternal } = useCatalog();
   const { findBestMatch } = useVerified100();
-  const bodyWeightKg = useBodyWeightKg();
+  const bodyKg = useBodyWeightKg();
+
+  const [isInternal, setIsInternal] = useState(false);
+  const [internalId, setInternalId] = useState(() => newInternalId());
+
+  const [barcodeRaw, setBarcodeRaw] = useState("");
+  const barcodeDigits = useMemo(() => normalizeBarcode(barcodeRaw), [barcodeRaw]);
+
   const [name, setName] = useState("");
   const [brand, setBrand] = useState("");
-  const [barcode, setBarcode] = useState("");
-  const [cals100, setCals100] = useState("");
+  const [keywordsRaw, setKeywordsRaw] = useState("");
+
+  const [kcal100, setKcal100] = useState("");
   const [prot100, setProt100] = useState("");
   const [carb100, setCarb100] = useState("");
-  const [sugars100, setSugars100] = useState("");
   const [fat100, setFat100] = useState("");
-  const [satFat100, setSatFat100] = useState("");
-  const [transFat100, setTransFat100] = useState("");
-  const [fiber100, setFiber100] = useState("");
-  const [sodiumMg100, setSodiumMg100] = useState("");
-  const [sugarTsp100, setSugarTsp100] = useState("");
-  const [totalWeight, setTotalWeight] = useState("");
-  const [units, setUnits] = useState("");
-  const [unitWeightInput, setUnitWeightInput] = useState("");
-  const lastPackEditRef = useRef<"tw" | "units" | "uw" | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [verifiedCandidate, setVerifiedCandidate] = useState<null | {
-    name: string;
-    brand?: string;
-    calories100?: number;
-    protein100?: number;
-    carbs100?: number;
-    fat100?: number;
-  }>(null);
 
-  const cameraInputRef = useRef<HTMLInputElement>(null);
-  const lastImageRef = useRef<File | null>(null);
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
-  const [ocrUi, setOcrUi] = useState<OcrUiState>({ status: "idle" });
-  /** טקסט גולמי מ־OCR — לבדיקה כשהמילוי האוטומטי לא מזהה כלום */
-  const [ocrDebugText, setOcrDebugText] = useState<string | null>(null);
+  const [totalWeightG, setTotalWeightG] = useState("");
+  const [unitsPerPack, setUnitsPerPack] = useState("");
+  const [unitWeightG, setUnitWeightG] = useState("");
+  const lastPackEditRef = useRef<"units" | "unitWeight" | null>(null);
 
-  const ocrSectionRef = useRef<HTMLElement | null>(null);
-  /** המצלמה לברקוד — דולקת רק אחרי לחיצה על «סרוק ברקוד» */
-  const [barcodeScannerOpen, setBarcodeScannerOpen] = useState(false);
-  const [offLoading, setOffLoading] = useState(false);
-  const [offNotice, setOffNotice] = useState<
-    null | "not_found" | "network" | "success" | "from_saved"
-  >(null);
-  const [offData, setOffData] = useState<OpenFoodFactsProduct | null>(null);
-  const [highlightOcr, setHighlightOcr] = useState(false);
-  const [offSearchQuery, setOffSearchQuery] = useState("");
-  const [offSearchResults, setOffSearchResults] = useState<OffSearchHit[]>([]);
-  const [offSearchBusy, setOffSearchBusy] = useState(false);
-  const [offSearchError, setOffSearchError] = useState<string | null>(null);
-  type PortionPreset = "100" | "tbsp" | "cup" | "pack_unit" | "piece";
-  const [portionPreset, setPortionPreset] = useState<PortionPreset>("100");
   const [unitsPer100g, setUnitsPer100g] = useState("");
   const [tbspPer100g, setTbspPer100g] = useState("");
+  const [tspPer100g, setTspPer100g] = useState("");
   const [cupsPer100g, setCupsPer100g] = useState("");
 
-  const revokePreview = useCallback(() => {
-    setPreviewUrl((prev) => {
-      if (prev) URL.revokeObjectURL(prev);
-      return null;
-    });
-    lastImageRef.current = null;
-  }, []);
+  const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => () => revokePreview(), [revokePreview]);
-
+  const [scannerOpen, setScannerOpen] = useState(false);
   useEffect(() => {
-    if (!barcodeScannerOpen) return;
+    if (!scannerOpen) return;
     const prev = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     return () => {
       document.body.style.overflow = prev;
     };
-  }, [barcodeScannerOpen]);
+  }, [scannerOpen]);
 
-  const fetchAndApplyOffByCode = useCallback(
-    async (code: string, options: { closeScanner: boolean }) => {
-      if (options.closeScanner) setBarcodeScannerOpen(false);
-      setOffLoading(true);
-      setOffNotice(null);
-      setBarcode(code);
-      setOffData(null);
-      try {
-        const digits = normalizeBarcode(code);
-        const saved =
-          digits.length >= 8 ? pickLatestProductByBarcode(products, digits) : undefined;
-        if (saved) {
-          setName(saved.name);
-          setBrand(saved.brand);
-          setBarcode(saved.barcode ?? code);
-          setCals100(formatMacroValue(saved.cals100));
-          setProt100(formatMacroValue(saved.prot100));
-          setCarb100(formatMacroValue(saved.carb100));
-          setFat100(formatMacroValue(saved.fat100));
-          setSugars100(saved.sugars100 !== undefined ? formatMacroValue(saved.sugars100) : "");
-          setSatFat100(saved.satFat100 !== undefined ? formatMacroValue(saved.satFat100) : "");
-          setTransFat100(saved.transFat100 !== undefined ? formatMacroValue(saved.transFat100) : "");
-          setFiber100(saved.fiber100 !== undefined ? formatMacroValue(saved.fiber100) : "");
-          setSodiumMg100(saved.sodiumMg100 !== undefined ? formatMacroValue(saved.sodiumMg100) : "");
-          setSugarTsp100(
-            saved.sugarTeaspoons100 !== undefined ? formatMacroValue(saved.sugarTeaspoons100) : "",
-          );
-          setTotalWeight(String(saved.totalWeight));
-          setUnits(String(saved.units));
-          playSuccessChime();
-          setOffNotice("from_saved");
-          window.setTimeout(() => {
-            setOffNotice((n) => (n === "from_saved" ? null : n));
-          }, 7000);
-          return;
-        }
-
-        const result = await fetchOpenFoodFactsProduct(code);
-        if (!result.ok) {
-          setOffNotice("network");
-          return;
-        }
-        if (!result.found) {
-          setOffNotice("not_found");
-          window.setTimeout(() => {
-            ocrSectionRef.current?.scrollIntoView({
-              behavior: "smooth",
-              block: "start",
-            });
-          }, 150);
-          setHighlightOcr(true);
-          window.setTimeout(() => setHighlightOcr(false), 5000);
-          return;
-        }
-        const d = result.data;
-        setOffData(d);
-        if (d.productName) setName(d.productName);
-        if (d.brand) setBrand(d.brand);
-        const qg = d.quantityG;
-        const pu = d.packUnits;
-        const servingG = d.servingG;
-        if (typeof qg === "number" && qg > 0) {
-          setTotalWeight((prev) => (prev.trim() ? prev : String(Math.round(qg))));
-        } else if (typeof servingG === "number" && servingG > 0 && typeof pu === "number" && pu > 0) {
-          const implied = servingG * pu;
-          setTotalWeight((prev) => (prev.trim() ? prev : String(Math.round(implied))));
-        }
-        if (typeof pu === "number" && pu > 0) {
-          setUnits((prev) => (prev.trim() ? prev : String(Math.round(pu))));
-        } else {
-          setUnits((prev) => (prev.trim() ? prev : "1"));
-        }
-        if (d.cals100 !== undefined) setCals100(formatMacroValue(d.cals100));
-        if (d.prot100 !== undefined) setProt100(formatMacroValue(d.prot100));
-        if (d.carb100 !== undefined) setCarb100(formatMacroValue(d.carb100));
-        if (d.fat100 !== undefined) setFat100(formatMacroValue(d.fat100));
-        if (d.addedSugars100 !== undefined) setSugars100(formatMacroValue(d.addedSugars100));
-        else if (d.sugars100 !== undefined) setSugars100(formatMacroValue(d.sugars100));
-        if (d.satFat100 !== undefined) setSatFat100(formatMacroValue(d.satFat100));
-        if (d.transFat100 !== undefined) setTransFat100(formatMacroValue(d.transFat100));
-        if (d.fiber100 !== undefined) setFiber100(formatMacroValue(d.fiber100));
-        if (d.sodiumMg100 !== undefined) setSodiumMg100(formatMacroValue(d.sodiumMg100));
-        if (d.sugarTeaspoons100 !== undefined) {
-          setSugarTsp100(formatMacroValue(d.sugarTeaspoons100));
-        }
-        playSuccessChime();
-        setOffNotice("success");
-        window.setTimeout(() => {
-          setOffNotice((n) => (n === "success" ? null : n));
-        }, 5000);
-      } finally {
-        setOffLoading(false);
-      }
-    },
-    [products],
-  );
-
-  // Keep the optional "unit weight" input in sync when the two main fields change.
-  useEffect(() => {
-    if (lastPackEditRef.current === "uw") return;
-    const tw = parseNum(totalWeight);
-    const u = parseNum(units);
-    if (!(tw > 0) || !(u > 0)) return;
-    const uw = tw / u;
-    if (Number.isFinite(uw) && uw > 0) setUnitWeightInput(fmt1(uw));
-  }, [totalWeight, units]);
-
-  // If user types unit weight + one of the other two, fill the missing one.
-  useEffect(() => {
-    if (lastPackEditRef.current !== "uw") return;
-    const uw = parseNum(unitWeightInput);
-    if (!(uw > 0)) return;
-
-    const tw = parseNum(totalWeight);
-    const u = parseNum(units);
-
-    if (tw > 0 && (!(u > 0) || !Number.isFinite(u))) {
-      const nextUnits = tw / uw;
-      if (Number.isFinite(nextUnits) && nextUnits > 0) {
-        setUnits(String(Math.max(1, Math.round(nextUnits))));
-      }
-      return;
-    }
-
-    if (u > 0 && (!(tw > 0) || !Number.isFinite(tw))) {
-      const nextTw = uw * u;
-      if (Number.isFinite(nextTw) && nextTw > 0) {
-        setTotalWeight(String(Math.round(nextTw)));
-      }
-    }
-  }, [unitWeightInput, totalWeight, units]);
-
-  const handleBarcode = useCallback(
-    async (code: string) => {
-      await fetchAndApplyOffByCode(code, { closeScanner: true });
-    },
-    [fetchAndApplyOffByCode],
-  );
-
-  const runOffSearch = useCallback(async () => {
-    setOffSearchError(null);
-    const q = offSearchQuery.trim();
-    if (q.length < 2) {
-      setOffSearchError("נא להזין לפחות שני תווים.");
-      return;
-    }
-    setOffSearchBusy(true);
-    setOffSearchResults([]);
-    try {
-      const res = await searchOpenFoodFactsProducts(q);
-      if (!res.ok) {
-        setOffSearchError(
-          res.reason === "timeout"
-            ? "החיפוש ארך זמן רב — נסי שוב."
-            : res.reason === "blocked"
-              ? "חיפוש השם אינו זמין כרגע — נסי שוב מאוחר יותר או סרקי ברקוד."
-              : res.reason === "parse"
-                ? "תגובה לא צפויה מהמאגר — נסי שוב."
-                : "לא ניתן להתחבר למאגר — בדקי רשת ונסי שוב.",
-        );
-        return;
-      }
-      setOffSearchResults(res.results);
-      if (res.results.length === 0) {
-        setOffSearchError("לא נמצאו מוצרים — נסי מילה אחרת.");
-      }
-    } finally {
-      setOffSearchBusy(false);
-    }
-  }, [offSearchQuery]);
-
+  // Autofill 100g macros from verified DB by best match on name+brand.
   useEffect(() => {
     const n = name.trim();
-    if (!n || n.length < 3) {
-      setVerifiedCandidate(null);
-      return;
-    }
+    if (n.length < 3) return;
     const match = findBestMatch({ name: n, brand: brand.trim() || undefined });
-    if (!match) {
-      setVerifiedCandidate(null);
+    if (!match) return;
+    if (match.calories100 != null && !kcal100.trim()) setKcal100(String(match.calories100));
+    if (match.protein100 != null && !prot100.trim()) setProt100(String(match.protein100));
+    if (match.carbs100 != null && !carb100.trim()) setCarb100(String(match.carbs100));
+    if (match.fat100 != null && !fat100.trim()) setFat100(String(match.fat100));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [name, brand]);
+
+  // Package triad: user inputs totalWeight always; typing either units or unitWeight calculates the other.
+  useEffect(() => {
+    const tw = parseNum(totalWeightG);
+    if (!(tw > 0)) return;
+    const u = parseNum(unitsPerPack);
+    const uw = parseNum(unitWeightG);
+
+    if (lastPackEditRef.current === "units") {
+      if (u > 0) setUnitWeightG(fmt1(tw / u));
       return;
     }
-    setVerifiedCandidate({
-      name: match.name,
-      brand: match.brand,
-      calories100: match.calories100,
-      protein100: match.protein100,
-      carbs100: match.carbs100,
-      fat100: match.fat100,
-    });
-  }, [name, brand, findBestMatch]);
+    if (lastPackEditRef.current === "unitWeight") {
+      if (uw > 0) setUnitsPerPack(String(Math.max(1, Math.round(tw / uw))));
+    }
+  }, [totalWeightG, unitsPerPack, unitWeightG]);
 
-  useEffect(() => {
-    if (!verifiedCandidate) return;
-    if (verifiedCandidate.calories100 !== undefined) {
-      setCals100((prev) => (prev.trim() ? prev : formatMacroValue(verifiedCandidate.calories100!)));
-    }
-    if (verifiedCandidate.protein100 !== undefined) {
-      setProt100((prev) => (prev.trim() ? prev : formatMacroValue(verifiedCandidate.protein100!)));
-    }
-    if (verifiedCandidate.carbs100 !== undefined) {
-      setCarb100((prev) => (prev.trim() ? prev : formatMacroValue(verifiedCandidate.carbs100!)));
-    }
-    if (verifiedCandidate.fat100 !== undefined) {
-      setFat100((prev) => (prev.trim() ? prev : formatMacroValue(verifiedCandidate.fat100!)));
-    }
+  const per100 = useMemo(() => {
+    const kcal = parseNum(kcal100);
+    const p = parseNum(prot100);
+    const c = parseNum(carb100);
+    const f = parseNum(fat100);
+    return {
+      calories: Number.isFinite(kcal) ? kcal : undefined,
+      proteinG: Number.isFinite(p) ? p : undefined,
+      carbsG: Number.isFinite(c) ? c : undefined,
+      fatG: Number.isFinite(f) ? f : undefined,
+    };
+  }, [kcal100, prot100, carb100, fat100]);
 
-    const qg = offData?.quantityG;
-    const pu = offData?.packUnits;
-    if (typeof qg === "number" && qg > 0) {
-      setTotalWeight((prev) => (prev.trim() ? prev : String(Math.round(qg))));
-      setUnits((prev) => {
-        if (prev.trim()) return prev;
-        if (typeof pu === "number" && pu > 0) return String(Math.round(pu));
-        return "1";
-      });
-    }
-  }, [verifiedCandidate, offData?.quantityG, offData?.packUnits]);
+  const measures = useMemo(() => {
+    const u = parseNum(unitsPer100g);
+    const tb = parseNum(tbspPer100g);
+    const ts = parseNum(tspPer100g);
+    const cu = parseNum(cupsPer100g);
+    return {
+      unitsPer100g: Number.isFinite(u) && u > 0 ? u : undefined,
+      tbspPer100g: Number.isFinite(tb) && tb > 0 ? tb : undefined,
+      tspPer100g: Number.isFinite(ts) && ts > 0 ? ts : undefined,
+      cupsPer100g: Number.isFinite(cu) && cu > 0 ? cu : undefined,
+    };
+  }, [unitsPer100g, tbspPer100g, tspPer100g, cupsPer100g]);
 
-  const applyVerified = useCallback(() => {
-    if (!verifiedCandidate) return;
-    if (verifiedCandidate.calories100 !== undefined) {
-      setCals100(formatMacroValue(verifiedCandidate.calories100));
-    }
-    if (verifiedCandidate.protein100 !== undefined) {
-      setProt100(formatMacroValue(verifiedCandidate.protein100));
-    }
-    if (verifiedCandidate.carbs100 !== undefined) {
-      setCarb100(formatMacroValue(verifiedCandidate.carbs100));
-    }
-    if (verifiedCandidate.fat100 !== undefined) {
-      setFat100(formatMacroValue(verifiedCandidate.fat100));
-    }
-  }, [verifiedCandidate]);
+  const pkg = useMemo(() => {
+    const tw = parseNum(totalWeightG);
+    const u = parseNum(unitsPerPack);
+    const uw = parseNum(unitWeightG);
+    return {
+      totalW: Number.isFinite(tw) && tw > 0 ? tw : undefined,
+      units: Number.isFinite(u) && u > 0 ? u : undefined,
+      unitW: Number.isFinite(uw) && uw > 0 ? uw : undefined,
+    };
+  }, [totalWeightG, unitsPerPack, unitWeightG]);
 
-  const runOcrOnFile = useCallback(
-    async (file: File) => {
-      setOcrUi({ status: "loading" });
-      setOcrDebugText(null);
-      try {
-        const text = await runLabelOcr(file);
-        const trimmed = text.trim();
-        setOcrDebugText(trimmed.length > 0 ? trimmed : null);
-        const parsed = parseNutritionFromOcrText(text);
-        const n = countParsedFields(parsed);
-        applyMacrosToFields(parsed, {
-          setCals100,
-          setProt100,
-          setCarb100,
-          setSugars100,
-          setFat100,
-          setSatFat100,
-          setTransFat100,
-          setFiber100,
-          setSodiumMg100,
-          setSugarTsp100,
-        });
-        const pkg = parsePackageFromOcrText(text);
-        if (pkg.totalWeightG !== undefined) {
-          setTotalWeight((prev) => (prev.trim() ? prev : String(pkg.totalWeightG)));
-        }
-        if (pkg.units !== undefined) {
-          setUnits((prev) => (prev.trim() ? prev : String(pkg.units)));
-        }
-        if (n >= 4) setOcrUi({ status: "success", filled: n });
-        else if (n > 0) setOcrUi({ status: "partial", filled: n });
-        else setOcrUi({ status: "none" });
-      } catch (e) {
-        const msg =
-          e instanceof Error ? e.message : "שגיאה לא ידועה";
-        setOcrUi({ status: "error", message: msg });
-      }
+  const gramsPer = useMemo(() => {
+    const gUnit = pkg.unitW;
+    const gTbsp = measures.tbspPer100g ? 100 / measures.tbspPer100g : undefined;
+    const gTsp = measures.tspPer100g ? 100 / measures.tspPer100g : undefined;
+    const gCup = measures.cupsPer100g ? 100 / measures.cupsPer100g : undefined;
+    const gPiece = measures.unitsPer100g ? 100 / measures.unitsPer100g : undefined;
+    return { gUnit, gTbsp, gTsp, gCup, gPiece };
+  }, [measures, pkg.unitW]);
+
+  const kcalFor = useCallback(
+    (grams: number | undefined) => {
+      if (!grams || !Number.isFinite(grams) || grams <= 0) return undefined;
+      if (typeof per100.calories !== "number") return undefined;
+      return (per100.calories * grams) / 100;
     },
-    [],
+    [per100.calories],
   );
 
-  const handleCameraInputChange = useCallback(
-    (e: ChangeEvent<HTMLInputElement>) => {
-      const file = e.target.files?.[0];
-      e.target.value = "";
-      if (!file || !file.type.startsWith("image/")) return;
-
-      revokePreview();
-      const url = URL.createObjectURL(file);
-      setPreviewUrl(url);
-      lastImageRef.current = file;
-      void runOcrOnFile(file);
+  const stepsFor = useCallback(
+    (kcal: number | undefined) => {
+      if (!kcal || !Number.isFinite(kcal) || kcal <= 0) return "—";
+      if (bodyKg === null) return "הגדרות ← משקל גוף";
+      const n = walkingStepsToBurnKcal(kcal, bodyKg);
+      return n === null ? "—" : `כ־${n.toLocaleString("he-IL")} צעדים`;
     },
-    [revokePreview, runOcrOnFile],
+    [bodyKg],
   );
-
-  const handleOpenCamera = useCallback(() => {
-    cameraInputRef.current?.click();
-  }, []);
-
-  const handleRemoveImage = useCallback(() => {
-    revokePreview();
-    setOcrUi({ status: "idle" });
-    setOcrDebugText(null);
-  }, [revokePreview]);
-
-  const handleRescan = useCallback(() => {
-    const f = lastImageRef.current;
-    if (f) void runOcrOnFile(f);
-  }, [runOcrOnFile]);
-
-  const derived = useMemo(() => {
-    const tw = parseNum(totalWeight);
-    const u = parseNum(units);
-    const c100 = parseNum(cals100);
-    const p100 = parseNum(prot100);
-    const cb100 = parseNum(carb100);
-    const f100 = parseNum(fat100);
-
-    if (!(u > 0) || !Number.isFinite(tw) || !(tw > 0)) {
-      return {
-        unitWeight: NaN,
-        calsUnit: NaN,
-        protUnit: NaN,
-        carbUnit: NaN,
-        fatUnit: NaN,
-        hasPackage: false,
-      };
-    }
-
-    const unitWeight = tw / u;
-    const factor = unitWeight / 100;
-
-    return {
-      unitWeight,
-      calsUnit: Number.isFinite(c100) ? c100 * factor : NaN,
-      protUnit: Number.isFinite(p100) ? p100 * factor : NaN,
-      carbUnit: Number.isFinite(cb100) ? cb100 * factor : NaN,
-      fatUnit: Number.isFinite(f100) ? f100 * factor : NaN,
-      hasPackage: true,
-    };
-  }, [totalWeight, units, cals100, prot100, carb100, fat100]);
-
-  const PORTION_TBSP_G = 15;
-  const PORTION_CUP_G = 240;
-
-  const unitsPer100gNum = useMemo(() => {
-    const n = parseNum(unitsPer100g);
-    return Number.isFinite(n) && n > 0 ? n : undefined;
-  }, [unitsPer100g]);
-  const tbspPer100gNum = useMemo(() => {
-    const n = parseNum(tbspPer100g);
-    return Number.isFinite(n) && n > 0 ? n : undefined;
-  }, [tbspPer100g]);
-  const cupsPer100gNum = useMemo(() => {
-    const n = parseNum(cupsPer100g);
-    return Number.isFinite(n) && n > 0 ? n : undefined;
-  }, [cupsPer100g]);
-
-  const tbspGrams = useMemo(() => {
-    if (tbspPer100gNum !== undefined) return 100 / tbspPer100gNum;
-    return PORTION_TBSP_G;
-  }, [tbspPer100gNum]);
-
-  const cupGrams = useMemo(() => {
-    if (cupsPer100gNum !== undefined) return 100 / cupsPer100gNum;
-    return PORTION_CUP_G;
-  }, [cupsPer100gNum]);
-
-  const pieceGrams = useMemo(() => {
-    if (unitsPer100gNum !== undefined) return 100 / unitsPer100gNum;
-    return NaN;
-  }, [unitsPer100gNum]);
-
-  const portionGrams = useMemo(() => {
-    switch (portionPreset) {
-      case "100":
-        return 100;
-      case "tbsp":
-        return tbspGrams;
-      case "cup":
-        return cupGrams;
-      case "pack_unit":
-        if (!derived.hasPackage || !Number.isFinite(derived.unitWeight)) return NaN;
-        return derived.unitWeight;
-      case "piece":
-        return pieceGrams;
-      default:
-        return 100;
-    }
-  }, [portionPreset, derived.hasPackage, derived.unitWeight, tbspGrams, cupGrams, pieceGrams]);
-
-  const portionPreview = useMemo(() => {
-    const g = portionGrams;
-    if (!Number.isFinite(g) || g <= 0) return null;
-    const f = g / 100;
-    const c100 = parseNum(cals100);
-    const p100 = parseNum(prot100);
-    const cb100 = parseNum(carb100);
-    const f100 = parseNum(fat100);
-    return {
-      grams: g,
-      cals: Number.isFinite(c100) ? c100 * f : NaN,
-      prot: Number.isFinite(p100) ? p100 * f : NaN,
-      carb: Number.isFinite(cb100) ? cb100 * f : NaN,
-      fat: Number.isFinite(f100) ? f100 * f : NaN,
-    };
-  }, [portionGrams, cals100, prot100, carb100, fat100]);
-
-  const portionWalkSteps = useMemo(() => {
-    if (!portionPreview || !Number.isFinite(portionPreview.cals) || portionPreview.cals <= 0) {
-      return null;
-    }
-    if (bodyWeightKg === null) return null;
-    return walkingStepsToBurnKcal(portionPreview.cals, bodyWeightKg);
-  }, [portionPreview, bodyWeightKg]);
-
-  const unitWalkSteps = useMemo(() => {
-    if (
-      !derived.hasPackage ||
-      !Number.isFinite(derived.calsUnit) ||
-      derived.calsUnit <= 0
-    ) {
-      return null;
-    }
-    if (bodyWeightKg === null) return null;
-    return walkingStepsToBurnKcal(derived.calsUnit, bodyWeightKg);
-  }, [derived.hasPackage, derived.calsUnit, bodyWeightKg]);
 
   async function handleSave() {
     setError(null);
+
     const n = name.trim();
-    if (!n) {
+    if (n.length < 2) {
       setError("נא להזין שם מוצר.");
       return;
     }
-    const tw = parseNum(totalWeight);
-    const u = parseNum(units);
-    if (!(tw > 0) || !(u > 0)) {
-      setError("משקל כולל ומספר יחידות חייבים להיות מספרים חיוביים.");
+
+    const keywords = parseKeywords(keywordsRaw);
+
+    const totalW = pkg.totalW;
+    if (!totalW) {
+      setError("נא להזין משקל כולל של האריזה (גרם).");
       return;
     }
-    const c100 = parseNum(cals100);
-    if (!Number.isFinite(c100)) {
-      setError("נא להזין קלוריות ל-100 גרם.");
+    const units = pkg.units;
+    const unitW = pkg.unitW;
+    if (!units && !unitW) {
+      setError("באריזה: הזיני או יחידות באריזה או משקל יחידה — כדי שיחושב הנתון השני.");
       return;
     }
 
-    const p100 = parseNum(prot100);
-    const cb100 = parseNum(carb100);
-    const sug100 = parseNum(sugars100);
-    const f100 = parseNum(fat100);
-    const sat100 = parseNum(satFat100);
-    const trans100 = parseNum(transFat100);
-    const fib100 = parseNum(fiber100);
-    const sod100 = parseNum(sodiumMg100);
-    const tsp100 = parseNum(sugarTsp100);
-
-    const unitWeight = tw / u;
-    const factor = unitWeight / 100;
-
-    try {
-      await addProduct({
-        barcode: barcode.trim() || undefined,
+    if (!isInternal) {
+      const bc = barcodeDigits;
+      if (!bc || bc.length < 8) {
+        setError("ברקוד לא תקין (חייב לפחות 8 ספרות).");
+        return;
+      }
+      await upsertByBarcode({
+        barcode: bc,
         name: n,
-        brand: brand.trim(),
-        cals100: c100,
-        prot100: Number.isFinite(p100) ? p100 : 0,
-        carb100: Number.isFinite(cb100) ? cb100 : 0,
-        fat100: Number.isFinite(f100) ? f100 : 0,
-        sugars100: Number.isFinite(sug100) ? sug100 : undefined,
-        satFat100: Number.isFinite(sat100) ? sat100 : undefined,
-        transFat100: Number.isFinite(trans100) ? trans100 : undefined,
-        fiber100: Number.isFinite(fib100) ? fib100 : undefined,
-        sodiumMg100: Number.isFinite(sod100) ? sod100 : undefined,
-        sugarTeaspoons100: Number.isFinite(tsp100) ? tsp100 : undefined,
-        unitsPer100g: unitsPer100gNum,
-        tbspPer100g: tbspPer100gNum,
-        cupsPer100g: cupsPer100gNum,
-        totalWeight: tw,
-        units: u,
-        unitWeight,
-        calsUnit: c100 * factor,
-        protUnit: (Number.isFinite(p100) ? p100 : 0) * factor,
-        carbUnit: (Number.isFinite(cb100) ? cb100 : 0) * factor,
-        fatUnit: (Number.isFinite(f100) ? f100 : 0) * factor,
+        brand: brand.trim() || undefined,
+        keywords,
+        per100,
+        totalWeightG: totalW,
+        unitsPerPack: units ?? (unitW ? totalW / unitW : undefined),
+        measures,
+        sourceType: "manual",
       });
-    } catch (err) {
-      console.error("Home save — full error:", err);
-      const msg =
-        err instanceof Error && err.message
-          ? err.message
-          : "שמירה נכשלה. בדקי חיבור/הרשאות ונסי שוב.";
-      setError(msg);
       return;
     }
 
-    setBarcode("");
-    setOffData(null);
-    setName("");
-    setBrand("");
-    setCals100("");
-    setProt100("");
-    setCarb100("");
-    setSugars100("");
-    setFat100("");
-    setSatFat100("");
-    setTransFat100("");
-    setFiber100("");
-    setSodiumMg100("");
-    setSugarTsp100("");
-    setUnitsPer100g("");
-    setTbspPer100g("");
-    setCupsPer100g("");
-    setTotalWeight("");
-    setUnits("");
-    setUnitWeightInput("");
-    handleRemoveImage();
+    await upsertInternal({
+      id: internalId,
+      name: n,
+      brand: brand.trim() || undefined,
+      keywords,
+      per100,
+      totalWeightG: totalW,
+      unitsPerPack: units ?? (unitW ? totalW / unitW : undefined),
+      measures,
+      sourceType: "manual",
+    });
   }
 
   return (
     <>
-    <div className="space-y-8 pb-4">
-      <div className="space-y-8">
-        <header className="space-y-3 border-b border-white/10 pb-6">
+      <div className="space-y-6 pb-4">
+        <header className="space-y-2 border-b border-white/10 pb-6">
           <p className="font-display text-3xl font-semibold tracking-tight text-white md:text-4xl">
-            איסוף נתונים
+            מאגר מוצרים
           </p>
           <p className="text-sm text-ink-muted">
-            סרקי ברקוד או חפשי לפי שם, השוו לתווית, והשלימי את הערכים לפני שמירה.
+            שדות חובה: שם מוצר + מאקרו ל־100g + משקל אריזה. מומלץ: ברקוד.
           </p>
         </header>
 
-      <section className="space-y-3 rounded-2xl border border-white/10 bg-white/[0.03] p-4">
-        <div className="flex items-baseline justify-between gap-2">
-          <h2 className="text-xs font-semibold text-ink-dim">סריקת ברקוד</h2>
-          <span className="text-[10px] text-ink-dim">מאגר ציבורי עולמי</span>
-        </div>
-        <p className="text-xs text-ink-muted">
-          «סרוק ברקוד» פותח מסך מלא עם המצלמה. אם כבר שמרת את המוצר — ייטענו הנתונים
-          השמורים; אחרת יוצעו נתונים מהמאגר הציבורי לבדיקה מול התווית.
-        </p>
+        <section className="rounded-2xl border border-white/10 bg-white/[0.03] p-4 space-y-4">
+          <label className="flex items-center gap-3 text-sm text-white">
+            <input
+              type="checkbox"
+              className="h-4 w-4 rounded border-white/30 bg-black/40"
+              checked={isInternal}
+              onChange={(e) => {
+                const next = e.target.checked;
+                setIsInternal(next);
+                if (next) setInternalId(newInternalId());
+              }}
+            />
+            פריט ללא ברקוד (ירקות/בישול ביתי)
+          </label>
 
-        {offNotice === "not_found" && (
-          <p className="rounded-xl border border-white/20 bg-white/[0.06] px-4 py-3 text-sm leading-relaxed text-white">
-            מוצר לא נמצא במאגר, אנא סרקי את התווית ידנית
-          </p>
-        )}
-        {offNotice === "network" && (
-          <p className="rounded-xl border border-white/15 bg-white/[0.04] px-4 py-3 text-sm text-ink-muted">
-            לא ניתן להתחבר למאגר כרגע — ניתן למלא את השדות ידנית.
-          </p>
-        )}
-        {offNotice === "from_saved" && (
-          <p className="rounded-xl border border-emerald-400/35 bg-emerald-500/15 px-4 py-3 text-sm text-emerald-50">
-            נטען מהמוצר השמור אצלך — הנתונים לפי מה שהזנת מהתווית. אפשר לערוך למטה
-            לפני שמירה חוזרת.
-          </p>
-        )}
-        {offNotice === "success" && (
-          <p className="rounded-xl border border-white/25 bg-white/[0.08] px-4 py-3 text-sm text-white">
-            נטען מקובץ ציבורי — ודאי מול התווית: משקל אריזה, מספר יחידות וטבלת 100 גרם.
-          </p>
-        )}
+          {!isInternal ? (
+            <div className="space-y-2">
+              <Field
+                label="ברקוד"
+                value={barcodeRaw}
+                onChange={setBarcodeRaw}
+                inputMode="numeric"
+                placeholder="סרקי או הדביקי"
+              />
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setScannerOpen(true)}
+                  className="min-h-[44px] flex-1 rounded-xl bg-white text-sm font-semibold text-black transition hover:bg-neutral-200 active:scale-[0.99]"
+                >
+                  סרוק ברקוד
+                </button>
+                <div className="flex min-w-[9rem] items-center justify-center rounded-xl border border-white/10 bg-black/30 px-3 text-xs text-ink-muted">
+                  {barcodeDigits ? `מנורמל: ${barcodeDigits}` : "—"}
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="rounded-xl border border-white/10 bg-black/30 px-3 py-2">
+              <p className="text-xs text-ink-muted">מזהה פנימי</p>
+              <p className="mt-1 font-mono text-xs text-white" dir="ltr">
+                {internalId}
+              </p>
+            </div>
+          )}
 
-        {offLoading ? (
-          <div
-            className="flex min-h-[200px] flex-col items-center justify-center gap-4 rounded-2xl border border-white/10 bg-black/50 px-4 py-10 animate-fade-in"
-            key="off-loading"
-          >
-            <Spinner />
-            <p className="text-sm text-ink-muted">טוען נתונים מהמאגר…</p>
+          <div className="grid grid-cols-1 gap-3">
+            <Field label="שם מוצר" value={name} onChange={setName} placeholder="למשל גבינת עמק 9%" />
+            <Field label="מותג" value={brand} onChange={setBrand} placeholder="למשל תנובה" />
+            <Field
+              label="מילות חיפוש נוספות (מופרד בפסיק)"
+              value={keywordsRaw}
+              onChange={setKeywordsRaw}
+              placeholder="למשל גבינה צהובה, עמק, 9 אחוז"
+            />
+          </div>
+        </section>
+
+        <section className="rounded-2xl border border-white/10 bg-white/[0.03] p-4 space-y-3">
+          <p className="text-sm font-semibold text-white">ל־100 גרם</p>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label='קלוריות (קק"ל)' value={kcal100} onChange={setKcal100} inputMode="decimal" />
+            <Field label="חלבון (g)" value={prot100} onChange={setProt100} inputMode="decimal" />
+            <Field label="פחמימה (g)" value={carb100} onChange={setCarb100} inputMode="decimal" />
+            <Field label="שומן (g)" value={fat100} onChange={setFat100} inputMode="decimal" />
+          </div>
+          <p className="text-[11px] text-ink-dim">
+            מקור אוטומטי: המאגר המאומת שלך (בהתאם לשם+מותג). אפשר תמיד לשנות ידנית.
+          </p>
+        </section>
+
+        <section className="rounded-2xl border border-white/10 bg-white/[0.03] p-4 space-y-3">
+          <p className="text-sm font-semibold text-white">אריזה</p>
+          <div className="grid grid-cols-1 gap-3">
+            <Field
+              label="משקל כולל של האריזה (גרם)"
+              value={totalWeightG}
+              onChange={(v) => {
+                setTotalWeightG(v);
+              }}
+              inputMode="decimal"
+              placeholder="למשל 400"
+            />
+            <div className="grid grid-cols-2 gap-3">
+              <Field
+                label="יחידות באריזה"
+                value={unitsPerPack}
+                onChange={(v) => {
+                  lastPackEditRef.current = "units";
+                  setUnitsPerPack(v);
+                  window.setTimeout(() => {
+                    if (lastPackEditRef.current === "units") lastPackEditRef.current = null;
+                  }, 0);
+                }}
+                inputMode="decimal"
+                placeholder="למשל 4"
+              />
+              <Field
+                label="משקל יחידה (גרם)"
+                value={unitWeightG}
+                onChange={(v) => {
+                  lastPackEditRef.current = "unitWeight";
+                  setUnitWeightG(v);
+                  window.setTimeout(() => {
+                    if (lastPackEditRef.current === "unitWeight") lastPackEditRef.current = null;
+                  }, 0);
+                }}
+                inputMode="decimal"
+                placeholder="למשל 100"
+              />
+            </div>
+          </div>
+          <div className="rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-xs text-ink-muted">
+            משקל יחידה מחושב לפי \( \u200fמשקל כולל ÷ יחידות \u200f\) (או להפך).
+          </div>
+        </section>
+
+        <section className="rounded-2xl border border-white/10 bg-white/[0.03] p-4 space-y-3">
+          <p className="text-sm font-semibold text-white">מידות (אופציונלי)</p>
+          <p className="text-[11px] leading-snug text-ink-dim">
+            הזיני כמה יחידות/כפות/כפיות/כוסות יש ב־100g. לדוגמה: אם 1 כף ≈ 15g, אז כפות ב־100g ≈ 6.67.
+          </p>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="יחידות ב־100g" value={unitsPer100g} onChange={setUnitsPer100g} inputMode="decimal" />
+            <Field label="כפות ב־100g" value={tbspPer100g} onChange={setTbspPer100g} inputMode="decimal" />
+            <Field label="כפיות ב־100g" value={tspPer100g} onChange={setTspPer100g} inputMode="decimal" />
+            <Field label="כוסות ב־100g" value={cupsPer100g} onChange={setCupsPer100g} inputMode="decimal" />
+          </div>
+        </section>
+
+        <section className="rounded-2xl border border-white/10 bg-white/[0.03] p-4 space-y-3">
+          <p className="text-sm font-semibold text-white">צעדים לקיזוז (MET {WALKING_MET})</p>
+          <div className="grid grid-cols-2 gap-3 text-sm">
+            <div className="rounded-xl border border-white/10 bg-black/30 px-3 py-2">
+              <p className="text-xs text-ink-muted">ל־100g</p>
+              <p className="mt-1 font-medium tabular-nums text-white">
+                {stepsFor(per100.calories)}
+              </p>
+            </div>
+            <div className="rounded-xl border border-white/10 bg-black/30 px-3 py-2">
+              <p className="text-xs text-ink-muted">ליחידה (אריזה)</p>
+              <p className="mt-1 font-medium tabular-nums text-white">
+                {stepsFor(kcalFor(gramsPer.gUnit))}
+              </p>
+            </div>
+            <div className="rounded-xl border border-white/10 bg-black/30 px-3 py-2">
+              <p className="text-xs text-ink-muted">לכף</p>
+              <p className="mt-1 font-medium tabular-nums text-white">
+                {stepsFor(kcalFor(gramsPer.gTbsp))}
+              </p>
+            </div>
+            <div className="rounded-xl border border-white/10 bg-black/30 px-3 py-2">
+              <p className="text-xs text-ink-muted">לכפית</p>
+              <p className="mt-1 font-medium tabular-nums text-white">
+                {stepsFor(kcalFor(gramsPer.gTsp))}
+              </p>
+            </div>
+            <div className="rounded-xl border border-white/10 bg-black/30 px-3 py-2">
+              <p className="text-xs text-ink-muted">לכוס</p>
+              <p className="mt-1 font-medium tabular-nums text-white">
+                {stepsFor(kcalFor(gramsPer.gCup))}
+              </p>
+            </div>
+            <div className="rounded-xl border border-white/10 bg-black/30 px-3 py-2">
+              <p className="text-xs text-ink-muted">ליחידה (לפי 100g)</p>
+              <p className="mt-1 font-medium tabular-nums text-white">
+                {stepsFor(kcalFor(gramsPer.gPiece))}
+              </p>
+            </div>
+          </div>
+          <p className="text-[11px] text-ink-dim">
+            אם צעדים יוצאים “—” לרוב חסר משקל גוף ב־הגדרות, או שחסר מידע על המידה (גרמים).
+          </p>
+        </section>
+
+        {error ? (
+          <div className="rounded-2xl border border-red-400/30 bg-red-500/10 px-4 py-3">
+            <p className="text-sm text-red-200">{error}</p>
           </div>
         ) : null}
 
-        {!offLoading && !barcodeScannerOpen ? (
-          <button
-            key="barcode-idle-btn"
-            type="button"
-            onClick={() => {
-              setBarcodeScannerOpen(true);
-              setOffNotice(null);
-            }}
-            className="flex min-h-[52px] w-full animate-fade-in items-center justify-center gap-3 rounded-2xl border border-white/25 bg-white/[0.09] text-lg font-semibold text-white transition hover:bg-white/[0.12] active:scale-[0.99]"
-          >
-            <BarcodeIcon className="h-7 w-7 shrink-0 opacity-90" />
-            סרוק ברקוד
-          </button>
-        ) : null}
-
-      </section>
-
-      <section className="space-y-3 rounded-2xl border border-white/10 bg-white/[0.03] p-4">
-        <h2 className="text-xs font-semibold text-ink-dim">חיפוש במאגר (שם / מותג)</h2>
-        <p className="text-xs text-ink-muted">
-          אותה לוגיקה כמו אחרי סריקת ברקוד: קודם מה שנשמר אצלך, אחרת מהמאגר.
-        </p>
-        <div className="flex flex-col gap-2 sm:flex-row">
-          <input
-            type="search"
-            value={offSearchQuery}
-            onChange={(e) => setOffSearchQuery(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") void runOffSearch();
-            }}
-            placeholder="למשל: תלמה מיונז"
-            className="min-h-[48px] flex-1 rounded-xl border border-white/15 bg-black/40 px-4 text-sm text-white placeholder:text-ink-dim focus:border-white/35 focus:outline-none"
-            dir="rtl"
-            autoComplete="off"
-          />
-          <button
-            type="button"
-            onClick={() => void runOffSearch()}
-            disabled={offSearchBusy || offLoading}
-            className="min-h-[48px] shrink-0 rounded-xl border border-white/25 bg-white/[0.09] px-6 text-sm font-semibold text-white transition enabled:active:scale-[0.99] enabled:hover:bg-white/[0.12] disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            {offSearchBusy ? "מחפש…" : "חיפוש"}
-          </button>
-        </div>
-        {offSearchError ? (
-          <p className="text-sm text-amber-200/90">{offSearchError}</p>
-        ) : null}
-        {offSearchResults.length > 0 ? (
-          <ul className="max-h-64 space-y-2 overflow-y-auto rounded-xl border border-white/10 bg-black/30 p-2">
-            {offSearchResults.map((h) => (
-              <li key={h.code}>
-                <button
-                  type="button"
-                  disabled={offLoading}
-                  onClick={() => void fetchAndApplyOffByCode(h.code, { closeScanner: false })}
-                  className="w-full rounded-lg border border-white/10 bg-white/[0.04] px-3 py-2.5 text-right text-sm transition enabled:hover:border-white/20 enabled:hover:bg-white/[0.07] disabled:cursor-not-allowed disabled:opacity-40"
-                >
-                  <span className="font-medium text-white">{h.productName}</span>
-                  {h.brand ? (
-                    <span className="text-ink-muted"> · {h.brand}</span>
-                  ) : null}
-                  <span className="mt-0.5 block font-mono text-[11px] text-ink-dim" dir="ltr">
-                    {h.code}
-                  </span>
-                  {h.quantityText ? (
-                    <span className="mt-0.5 block text-xs text-ink-dim">{h.quantityText}</span>
-                  ) : null}
-                </button>
-              </li>
-            ))}
-          </ul>
-        ) : null}
-      </section>
-
-      <section
-        ref={ocrSectionRef}
-        id="label-scan-section"
-        className="space-y-3 rounded-2xl border border-white/10 bg-white/[0.03] p-4"
-      >
-        <h2 className="text-xs font-semibold text-ink-dim">סריקת תווית</h2>
-        <p className="text-xs text-ink-muted">
-          צלמו רק את טבלת התזונה ל-100 גרם — תאורה יציבה וקרוב לתווית. אם לא זוהה כלום,
-          אפשר לראות למטה את הטקסט שחולץ מהתמונה.
-        </p>
-        <input
-          ref={cameraInputRef}
-          type="file"
-          accept="image/*"
-          capture="environment"
-          className="sr-only"
-          onChange={handleCameraInputChange}
-        />
         <button
           type="button"
-          onClick={() => {
-            setHighlightOcr(false);
-            handleOpenCamera();
-          }}
-          disabled={ocrUi.status === "loading"}
-          className={`flex min-h-[52px] w-full items-center justify-center gap-2 rounded-2xl border border-white/20 bg-white/[0.08] text-lg font-semibold text-white transition enabled:active:scale-[0.99] disabled:opacity-50 ${
-            highlightOcr
-              ? "ring-2 ring-white/80 ring-offset-2 ring-offset-black"
-              : ""
-          }`}
+          onClick={() => void handleSave()}
+          className="min-h-[52px] w-full rounded-2xl bg-white text-base font-semibold text-black transition hover:bg-neutral-200 active:scale-[0.99]"
         >
-          <CameraIcon className="h-7 w-7 shrink-0" />
-          סרוק תווית
+          שמור מוצר למאגר
         </button>
-
-        {previewUrl ? (
-          <div className="flex flex-wrap items-start gap-4 pt-2">
-            <div className="relative shrink-0 overflow-hidden rounded-xl border border-white/15">
-              <img
-                src={previewUrl}
-                alt="תצוגה מקדימה של תווית"
-                className="h-28 w-28 object-cover"
-              />
-              {ocrUi.status === "loading" ? (
-                <div className="absolute inset-0 flex items-center justify-center bg-black/55">
-                  <Spinner />
-                </div>
-              ) : null}
-            </div>
-            <div className="min-w-0 flex-1 space-y-2 text-sm">
-              {ocrUi.status === "loading" && (
-                <p className="text-ink-muted">מעבד תמונה ומחלץ טקסט…</p>
-              )}
-              {ocrUi.status === "success" && (
-                <p className="text-white">
-                  זוהו ארבעת הערכים — מומלץ לוודא מול התווית לפני השמירה.
-                </p>
-              )}
-              {ocrUi.status === "partial" && (
-                <p className="text-ink-muted">
-                  זוהו {ocrUi.filled} מתוך 4 שדות — ניתן לערוך ידנית את השדות
-                  שלמטה לפני השמירה.
-                </p>
-              )}
-              {ocrUi.status === "none" && (
-                <p className="text-ink-muted">
-                  לא זוהו ערכים — נסו צילום חד, תאורה חזקה, או מלאו ידנית את השדות
-                  שלמטה.
-                </p>
-              )}
-              {ocrUi.status === "error" && (
-                <p className="text-white">
-                  שגיאת סריקה: {ocrUi.message}
-                </p>
-              )}
-              <div className="flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  onClick={handleRescan}
-                  disabled={ocrUi.status === "loading"}
-                  className="rounded-xl border border-white/20 px-3 py-2 text-xs font-medium text-white disabled:opacity-40"
-                >
-                  סרוק שוב
-                </button>
-                <button
-                  type="button"
-                  onClick={handleRemoveImage}
-                  className="rounded-xl border border-white/10 px-3 py-2 text-xs text-ink-muted"
-                >
-                  הסר תמונה
-                </button>
-              </div>
-              {ocrDebugText && ocrUi.status !== "loading" ? (
-                <details className="mt-2 rounded-xl border border-white/10 bg-black/25 px-3 py-2 text-xs text-ink-muted">
-                  <summary className="cursor-pointer select-none text-ink-muted">
-                    טקסט שזוהה מהתמונה
-                  </summary>
-                  <pre
-                    className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap rounded-lg bg-black/40 p-2 text-[11px] text-white/75"
-                    dir="ltr"
-                  >
-                    {ocrDebugText.length > 12000
-                      ? `${ocrDebugText.slice(0, 12000)}\n…`
-                      : ocrDebugText}
-                  </pre>
-                </details>
-              ) : null}
-            </div>
-          </div>
-        ) : null}
-      </section>
       </div>
 
-      <section className="space-y-8 border-t border-white/10 pt-8" aria-label="השלמת פרטים ושמירה">
-        <h2 className="text-xs font-semibold text-ink-dim">
-          השלמת פרטים ושמירה
-        </h2>
-
-      <section className="space-y-4">
-        <h2 className="text-xs font-semibold text-ink-dim">
-          מוצר
-        </h2>
-        <Field
-          id="barcode"
-          label="ברקוד (מומלץ לזיהוי ולייצוא)"
-          value={barcode}
-          onChange={setBarcode}
-          placeholder="לדוגמה: 7290000000000"
-          inputMode="numeric"
-        />
-        <Field
-          id="product-name"
-          label="שם המוצר"
-          value={name}
-          onChange={setName}
-          placeholder="לדוגמה: יוגורט יווני"
-        />
-        <Field
-          id="brand"
-          label="מותג"
-          value={brand}
-          onChange={setBrand}
-          placeholder="לא חובה"
-        />
-      </section>
-
-      {verifiedCandidate ? (
-        <section className="rounded-2xl border border-emerald-400/25 bg-emerald-500/10 p-4">
-          <p className="text-sm font-semibold text-white">נמצא מוצר מאומת דומה</p>
-          <p className="mt-1 text-xs text-ink-muted">
-            {verifiedCandidate.name}
-            {verifiedCandidate.brand ? ` · ${verifiedCandidate.brand}` : ""}
-            {" — "}מילוי ערכי 100g מאומתים?
-          </p>
-          <button
-            type="button"
-            onClick={applyVerified}
-            className="mt-3 min-h-[44px] w-full rounded-2xl bg-white text-sm font-semibold text-black transition active:scale-[0.99]"
-          >
-            החל ערכים מאומתים
-          </button>
-        </section>
-      ) : null}
-
-      <section className="space-y-4">
-        <h2 className="text-xs font-semibold text-ink-dim">
-          ל-100 גרם
-        </h2>
-        {(ocrUi.status === "partial" || ocrUi.status === "none") && (
-          <p className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-100/95">
-            הזיהוי אינו מלא — נא לבדוק ולערוך ידנית את השדות לפני השמירה.
-          </p>
-        )}
-        {ocrUi.status === "success" && (
-          <p className="rounded-xl border border-white/15 bg-white/[0.04] px-4 py-3 text-sm text-ink-muted">
-            הזיהוי אינו מושלם תמיד — מומלץ לוודא את הערכים מול התווית לפני השמירה.
-          </p>
-        )}
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <Field
-            id="cals100"
-            label="קלוריות ל-100 גרם"
-            value={cals100}
-            onChange={setCals100}
-            inputMode="decimal"
-          />
-          <Field
-            id="prot100"
-            label="חלבון (גרם)"
-            value={prot100}
-            onChange={setProt100}
-            inputMode="decimal"
-          />
-          <Field
-            id="carb100"
-            label="פחמימות (גרם)"
-            value={carb100}
-            onChange={setCarb100}
-            inputMode="decimal"
-          />
-          <Field
-            id="sugars100"
-            label="סוכרים מוספים (גרם) — אם אין, זה יתמלא מסוכרים כלליים"
-            value={sugars100}
-            onChange={setSugars100}
-            inputMode="decimal"
-          />
-          <Field
-            id="fat100"
-            label="שומן (גרם)"
-            value={fat100}
-            onChange={setFat100}
-            inputMode="decimal"
-          />
-          <Field
-            id="satfat100"
-            label="שומן רווי (גרם)"
-            value={satFat100}
-            onChange={setSatFat100}
-            inputMode="decimal"
-          />
-          <Field
-            id="transfat100"
-            label="שומן טראנס (גרם)"
-            value={transFat100}
-            onChange={setTransFat100}
-            inputMode="decimal"
-          />
-          <Field
-            id="fiber100"
-            label="סיבים תזונתיים (גרם)"
-            value={fiber100}
-            onChange={setFiber100}
-            inputMode="decimal"
-          />
-          <Field
-            id="sodium100"
-            label="נתרן (מ״ג)"
-            value={sodiumMg100}
-            onChange={setSodiumMg100}
-            inputMode="decimal"
-          />
-          <Field
-            id="sugar-tsp-100"
-            label="כפיות סוכר (ל־100 גרם)"
-            value={sugarTsp100}
-            onChange={setSugarTsp100}
-            inputMode="decimal"
-          />
-        </div>
-      </section>
-
-      <section className="space-y-4">
-        <h2 className="text-xs font-semibold text-ink-dim">
-          אריזה
-        </h2>
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <Field
-            id="total-weight"
-            label="משקל כולל של האריזה (גרם)"
-            value={totalWeight}
-            onChange={(v) => {
-              lastPackEditRef.current = "tw";
-              setTotalWeight(v);
-              window.setTimeout(() => {
-                if (lastPackEditRef.current === "tw") lastPackEditRef.current = null;
-              }, 0);
-            }}
-            inputMode="decimal"
-          />
-          <Field
-            id="units"
-            label="יחידות באריזה (כמה פריטים בפנים)"
-            value={units}
-            onChange={(v) => {
-              lastPackEditRef.current = "units";
-              setUnits(v);
-              window.setTimeout(() => {
-                if (lastPackEditRef.current === "units") lastPackEditRef.current = null;
-              }, 0);
-            }}
-            inputMode="numeric"
-          />
-        </div>
-        <div className="mt-3">
-          <Field
-            id="unit-weight"
-            label="משקל יחידה (גרם) — אופציונלי"
-            value={unitWeightInput}
-            onChange={(v) => {
-              lastPackEditRef.current = "uw";
-              setUnitWeightInput(v);
-            }}
-            inputMode="decimal"
-            placeholder="לדוגמה: 12.5"
-          />
-          <p className="mt-2 text-[11px] leading-snug text-ink-dim">
-            אפשר להזין שני שדות בלבד: (משקל כולל + יחידות) או (משקל כולל + משקל יחידה) או (יחידות + משקל יחידה) —
-            והשדה השלישי יתמלא אוטומטית.
-          </p>
-        </div>
-        <p className="text-xs text-ink-dim">
-          &quot;משקל כולל&quot; הוא כל האריזה; &quot;יחידות באריזה&quot; מתייחס לרב־חבילה (למשל 6) ולא למשקל של יחידה בודדת.
-        </p>
-      </section>
-
-      <section className="rounded-2xl border border-white/10 bg-gradient-to-b from-white/[0.07] to-transparent p-5">
-        <h2 className="mb-4 text-xs font-semibold text-ink-dim">
-          ליחידה בודדת
-        </h2>
-        <div className="mb-4 border-b border-white/10 pb-4">
-          <h3 className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-ink-dim">
-            מנה לתצוגה
-          </h3>
-          <p className="mb-3 text-xs text-ink-muted">
-            בחרי 100 גרם, כף, כוס או יחידה מהאריזה — התצוגה והצעדים מתעדכנים; השמירה נשארת
-            לפי השדות למעלה.
-          </p>
-          <div className="flex flex-wrap gap-2">
-            {(
-              [
-                { id: "100" as const, label: "100 גרם" },
-                { id: "tbsp" as const, label: `כף (${fmt1(tbspGrams)}g)` },
-                { id: "cup" as const, label: `כוס (${fmt1(cupGrams)}g)` },
-                { id: "pack_unit" as const, label: "יחידה מהאריזה" },
-                { id: "piece" as const, label: "יחידה (לפי 100g)" },
-              ] as const
-            ).map(({ id, label }) => {
-              const disabled =
-                (id === "pack_unit" && !derived.hasPackage) ||
-                (id === "piece" && unitsPer100gNum === undefined);
-              const active = portionPreset === id;
-              return (
-                <button
-                  key={id}
-                  type="button"
-                  disabled={disabled}
-                  onClick={() => setPortionPreset(id)}
-                  className={`rounded-full border px-3 py-1.5 text-xs font-medium transition ${
-                    active
-                      ? "border-white/40 bg-white/15 text-white"
-                      : "border-white/15 bg-white/[0.04] text-ink-muted enabled:hover:border-white/25 enabled:hover:text-white"
-                  } disabled:cursor-not-allowed disabled:opacity-35`}
-                >
-                  {label}
-                </button>
-              );
-            })}
-          </div>
-          <div className="mt-4 rounded-xl border border-white/10 bg-black/25 px-3 py-3">
-            <p className="text-[11px] font-semibold text-ink-dim">המרות לפי 100 גרם (אופציונלי)</p>
-            <p className="mt-1 text-xs text-ink-muted">
-              לדוגמה: ענבים — כמה יחידות ב־100 גרם. אורז — כמה כפות ב־100 גרם.
-            </p>
-            <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-3">
-              <div className="space-y-1.5">
-                <label className="block text-xs font-medium text-ink-muted" htmlFor="units-100g">
-                  יחידות ב־100 גרם
-                </label>
-                <input
-                  id="units-100g"
-                  value={unitsPer100g}
-                  onChange={(e) => setUnitsPer100g(e.target.value)}
-                  inputMode="decimal"
-                  placeholder="למשל 20"
-                  className="min-h-[44px] w-full rounded-xl border border-white/15 bg-black/40 px-3 text-sm text-white placeholder:text-ink-dim focus:border-white/35 focus:outline-none"
-                />
-                {unitsPer100gNum !== undefined ? (
-                  <p className="text-[11px] text-ink-dim">יחידה ≈ {fmt1(100 / unitsPer100gNum)}g</p>
-                ) : null}
-              </div>
-              <div className="space-y-1.5">
-                <label className="block text-xs font-medium text-ink-muted" htmlFor="tbsp-100g">
-                  כפות ב־100 גרם
-                </label>
-                <input
-                  id="tbsp-100g"
-                  value={tbspPer100g}
-                  onChange={(e) => setTbspPer100g(e.target.value)}
-                  inputMode="decimal"
-                  placeholder="למשל 6.5"
-                  className="min-h-[44px] w-full rounded-xl border border-white/15 bg-black/40 px-3 text-sm text-white placeholder:text-ink-dim focus:border-white/35 focus:outline-none"
-                />
-                {tbspPer100gNum !== undefined ? (
-                  <p className="text-[11px] text-ink-dim">כף ≈ {fmt1(100 / tbspPer100gNum)}g</p>
-                ) : (
-                  <p className="text-[11px] text-ink-dim">ברירת מחדל: {PORTION_TBSP_G}g</p>
-                )}
-              </div>
-              <div className="space-y-1.5">
-                <label className="block text-xs font-medium text-ink-muted" htmlFor="cups-100g">
-                  כוסות ב־100 גרם
-                </label>
-                <input
-                  id="cups-100g"
-                  value={cupsPer100g}
-                  onChange={(e) => setCupsPer100g(e.target.value)}
-                  inputMode="decimal"
-                  placeholder="למשל 0.55"
-                  className="min-h-[44px] w-full rounded-xl border border-white/15 bg-black/40 px-3 text-sm text-white placeholder:text-ink-dim focus:border-white/35 focus:outline-none"
-                />
-                {cupsPer100gNum !== undefined ? (
-                  <p className="text-[11px] text-ink-dim">כוס ≈ {fmt1(100 / cupsPer100gNum)}g</p>
-                ) : (
-                  <p className="text-[11px] text-ink-dim">ברירת מחדל: {PORTION_CUP_G}g</p>
-                )}
-              </div>
-            </div>
-          </div>
-          {portionPreview ? (
-            <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
-              <div className="col-span-2">
-                <dt className="text-ink-muted">משקל המנה</dt>
-                <dd className="font-medium tabular-nums text-white">
-                  {fmt1(portionPreview.grams)} גרם
-                </dd>
-              </div>
-              <div>
-                <dt className="text-ink-muted">קלוריות</dt>
-                <dd className="font-medium tabular-nums text-white">
-                  {fmt1(portionPreview.cals)} קק&quot;ל
-                </dd>
-              </div>
-              <div>
-                <dt className="text-ink-muted">חלבון</dt>
-                <dd className="font-medium tabular-nums text-white">
-                  {fmt1(portionPreview.prot)} גרם
-                </dd>
-              </div>
-              <div>
-                <dt className="text-ink-muted">פחמימות</dt>
-                <dd className="font-medium tabular-nums text-white">
-                  {fmt1(portionPreview.carb)} גרם
-                </dd>
-              </div>
-              <div>
-                <dt className="text-ink-muted">שומן</dt>
-                <dd className="font-medium tabular-nums text-white">
-                  {fmt1(portionPreview.fat)} גרם
-                </dd>
-              </div>
-              {Number.isFinite(portionPreview.cals) && portionPreview.cals > 0 ? (
-                <div className="col-span-2 border-t border-white/10 pt-3">
-                  <dt className="text-ink-muted">הליכה — צעדים משוערים להוצאת המנה</dt>
-                  <dd className="mt-0.5 text-sm font-medium tabular-nums text-white">
-                    {bodyWeightKg !== null && portionWalkSteps !== null ? (
-                      <>
-                        כ־{portionWalkSteps.toLocaleString("he-IL")} צעדים
-                        <span className="mt-1 block text-[11px] font-normal text-ink-dim">
-                          MET {WALKING_MET}, משקל {bodyWeightKg} ק״ג (מ«הגדרות»)
-                        </span>
-                      </>
-                    ) : (
-                      <span className="font-normal text-ink-muted">
-                        הזיני משקל גוף ב«הגדרות» לחישוב צעדים.
-                      </span>
-                    )}
-                  </dd>
-                </div>
-              ) : null}
-            </dl>
-          ) : portionPreset === "pack_unit" && !derived.hasPackage ? (
-            <p className="mt-3 text-xs text-ink-dim">
-              הזיני משקל כולל ויחידות כדי לחשב &quot;יחידה מהאריזה&quot;.
-            </p>
-          ) : portionPreset === "piece" && unitsPer100gNum === undefined ? (
-            <p className="mt-3 text-xs text-ink-dim">
-              הזיני &quot;יחידות ב־100 גרם&quot; כדי לחשב יחידה לפי 100 גרם.
-            </p>
-          ) : null}
-        </div>
-        <dl className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm">
-          <div>
-            <dt className="text-ink-muted">משקל יחידה</dt>
-            <dd className="font-medium tabular-nums text-white">
-              {fmt1(derived.unitWeight)} גרם
-            </dd>
-          </div>
-          <div>
-            <dt className="text-ink-muted">קלוריות</dt>
-            <dd className="font-medium tabular-nums text-white">
-              {fmt1(derived.calsUnit)} קק&quot;ל
-            </dd>
-          </div>
-          <div>
-            <dt className="text-ink-muted">חלבון</dt>
-            <dd className="font-medium tabular-nums text-white">
-              {fmt1(derived.protUnit)} גרם
-            </dd>
-          </div>
-          <div>
-            <dt className="text-ink-muted">פחמימות</dt>
-            <dd className="font-medium tabular-nums text-white">
-              {fmt1(derived.carbUnit)} גרם
-            </dd>
-          </div>
-          <div className="col-span-2">
-            <dt className="text-ink-muted">שומן</dt>
-            <dd className="font-medium tabular-nums text-white">
-              {fmt1(derived.fatUnit)} גרם
-            </dd>
-          </div>
-          {derived.hasPackage && Number.isFinite(derived.calsUnit) && derived.calsUnit > 0 ? (
-            <div className="col-span-2 border-t border-white/10 pt-3">
-              <dt className="text-ink-muted">הליכה — צעדים ליחידה אחת</dt>
-              <dd className="mt-0.5 text-sm font-medium tabular-nums text-white">
-                {bodyWeightKg !== null && unitWalkSteps !== null ? (
-                  <>
-                    כ־{unitWalkSteps.toLocaleString("he-IL")} צעדים
-                    <span className="mt-1 block text-[11px] font-normal text-ink-dim">
-                      MET {WALKING_MET}, משקל {bodyWeightKg} ק״ג
-                    </span>
-                  </>
-                ) : (
-                  <span className="font-normal text-ink-muted">
-                    הזיני משקל גוף ב«הגדרות» לחישוב צעדים.
-                  </span>
-                )}
-              </dd>
-            </div>
-          ) : null}
-        </dl>
-        {!derived.hasPackage && (
-          <p className="mt-3 text-xs text-ink-dim">
-            הזן משקל כולל ומספר יחידות כדי לחשב ערכים ליחידה.
-          </p>
-        )}
-      </section>
-
-      {error && (
-        <p className="rounded-xl border border-white/20 bg-white/5 px-4 py-3 text-sm text-white">
-          {error}
-        </p>
-      )}
-
-      <button
-        type="button"
-        onClick={handleSave}
-        className="min-h-[56px] w-full rounded-2xl bg-white text-lg font-semibold text-black shadow-lg shadow-white/10 transition active:scale-[0.99] active:bg-neutral-200"
-      >
-        שמור מוצר
-      </button>
-      </section>
-    </div>
-
-      {typeof document !== "undefined" && barcodeScannerOpen
+      {scannerOpen
         ? createPortal(
             <div
               className="fixed inset-0 z-[220] flex flex-col bg-black text-white"
@@ -1435,15 +455,12 @@ export function Home() {
               aria-labelledby="barcode-fullscreen-title"
             >
               <header className="flex shrink-0 items-center justify-between gap-3 border-b border-white/15 px-4 py-3 pt-[max(0.75rem,env(safe-area-inset-top))]">
-                <p
-                  id="barcode-fullscreen-title"
-                  className="min-w-0 text-lg font-semibold tracking-tight"
-                >
+                <p id="barcode-fullscreen-title" className="min-w-0 text-lg font-semibold tracking-tight">
                   סריקת ברקוד
                 </p>
                 <button
                   type="button"
-                  onClick={() => setBarcodeScannerOpen(false)}
+                  onClick={() => setScannerOpen(false)}
                   className="shrink-0 rounded-xl border border-white/20 bg-white/10 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-white/15 active:scale-[0.98]"
                 >
                   סגור
@@ -1457,7 +474,10 @@ export function Home() {
                   <BarcodeScanner
                     isActive
                     mode="fullscreen"
-                    onScan={handleBarcode}
+                    onScan={(code) => {
+                      setBarcodeRaw(code);
+                      setScannerOpen(false);
+                    }}
                   />
                 </div>
               </div>
@@ -1468,3 +488,4 @@ export function Home() {
     </>
   );
 }
+
