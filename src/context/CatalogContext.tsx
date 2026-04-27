@@ -354,6 +354,9 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
       const unitWeightG =
         totalW !== undefined && units !== undefined ? totalW / units : undefined;
 
+      const inferredDefaultMeasure: CatalogMeasureKey =
+        units !== undefined && totalW !== undefined ? "unit" : "g100";
+
       const payload: CatalogProduct = {
         id,
         name: input.name.trim(),
@@ -363,9 +366,12 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
           input.keywords?.filter((k) => k.trim()).map((k) => k.trim()) ?? undefined,
         category: input.category?.trim() || undefined,
         usageTags: input.usageTags?.length ? input.usageTags : undefined,
-        defaultMeasure: input.defaultMeasure ?? "g100",
-        commonMeasures:
-          input.commonMeasures?.length ? input.commonMeasures : [input.defaultMeasure ?? "g100", "unit"],
+        defaultMeasure: input.defaultMeasure ?? inferredDefaultMeasure,
+        commonMeasures: input.commonMeasures?.length
+          ? input.commonMeasures
+          : (Array.from(
+              new Set<CatalogMeasureKey>([input.defaultMeasure ?? inferredDefaultMeasure, "unit", "g100"]),
+            ).slice(0, 4) as CatalogMeasureKey[]),
         createdAt: now,
         updatedAt: now,
         sources: [{ type: input.sourceType, at: now }],
