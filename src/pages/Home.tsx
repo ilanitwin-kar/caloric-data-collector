@@ -71,6 +71,14 @@ export function Home() {
   const [prot100, setProt100] = useState("");
   const [carb100, setCarb100] = useState("");
   const [fat100, setFat100] = useState("");
+  const [verifiedSuggestion, setVerifiedSuggestion] = useState<null | {
+    name: string;
+    brand?: string;
+    calories100?: number;
+    protein100?: number;
+    carbs100?: number;
+    fat100?: number;
+  }>(null);
 
   const [totalWeightG, setTotalWeightG] = useState("");
   const [unitsPerPack, setUnitsPerPack] = useState("");
@@ -94,18 +102,27 @@ export function Home() {
     };
   }, [scannerOpen]);
 
-  // Autofill 100g macros from verified DB by best match on name+brand.
+  // Suggest 100g macros from verified DB by best match on name+brand (do not auto-apply).
   useEffect(() => {
     const n = name.trim();
-    if (n.length < 3) return;
+    if (n.length < 3) {
+      setVerifiedSuggestion(null);
+      return;
+    }
     const match = findBestMatch({ name: n, brand: brand.trim() || undefined });
-    if (!match) return;
-    if (match.calories100 != null && !kcal100.trim()) setKcal100(String(match.calories100));
-    if (match.protein100 != null && !prot100.trim()) setProt100(String(match.protein100));
-    if (match.carbs100 != null && !carb100.trim()) setCarb100(String(match.carbs100));
-    if (match.fat100 != null && !fat100.trim()) setFat100(String(match.fat100));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [name, brand]);
+    if (!match) {
+      setVerifiedSuggestion(null);
+      return;
+    }
+    setVerifiedSuggestion({
+      name: match.name,
+      brand: match.brand,
+      calories100: match.calories100,
+      protein100: match.protein100,
+      carbs100: match.carbs100,
+      fat100: match.fat100,
+    });
+  }, [name, brand, findBestMatch]);
 
   // Package triad: user inputs totalWeight always; typing either units or unitWeight calculates the other.
   useEffect(() => {
@@ -322,9 +339,42 @@ export function Home() {
             <Field label="פחמימה (g)" value={carb100} onChange={setCarb100} inputMode="decimal" />
             <Field label="שומן (g)" value={fat100} onChange={setFat100} inputMode="decimal" />
           </div>
-          <p className="text-[11px] text-ink-dim">
-            מקור אוטומטי: המאגר המאומת שלך (בהתאם לשם+מותג). אפשר תמיד לשנות ידנית.
-          </p>
+          {verifiedSuggestion ? (
+            <div className="rounded-xl border border-emerald-400/25 bg-emerald-500/10 px-3 py-2">
+              <p className="text-[11px] text-emerald-100/90">
+                הצעה מהמאגר המאומת: {verifiedSuggestion.name}
+                {verifiedSuggestion.brand ? ` · ${verifiedSuggestion.brand}` : ""}
+              </p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  className="rounded-lg bg-emerald-400/15 px-3 py-1.5 text-xs font-semibold text-emerald-50 hover:bg-emerald-400/20"
+                  onClick={() => {
+                    if (verifiedSuggestion.calories100 != null) setKcal100(String(verifiedSuggestion.calories100));
+                    if (verifiedSuggestion.protein100 != null) setProt100(String(verifiedSuggestion.protein100));
+                    if (verifiedSuggestion.carbs100 != null) setCarb100(String(verifiedSuggestion.carbs100));
+                    if (verifiedSuggestion.fat100 != null) setFat100(String(verifiedSuggestion.fat100));
+                  }}
+                >
+                  מלא מאקרו ל־100g
+                </button>
+                <button
+                  type="button"
+                  className="rounded-lg border border-white/15 bg-transparent px-3 py-1.5 text-xs font-semibold text-ink-muted hover:border-white/25 hover:text-white"
+                  onClick={() => setVerifiedSuggestion(null)}
+                >
+                  התעלם
+                </button>
+              </div>
+              <p className="mt-2 text-[11px] text-ink-dim">
+                שם כללי עלול להתאים למוצר אחר — עדיף לאשר ידנית.
+              </p>
+            </div>
+          ) : (
+            <p className="text-[11px] text-ink-dim">
+              המאגר המאומת מציע התאמה לפי שם+מותג. שם כללי (למשל “גבינה לבנה”) עלול להביא הצעה לא מדויקת.
+            </p>
+          )}
         </section>
 
         <section className="rounded-2xl border border-white/10 bg-white/[0.03] p-4 space-y-3">
