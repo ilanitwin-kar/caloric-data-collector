@@ -28,6 +28,7 @@ function keywordsCell(list?: string[]) {
 }
 
 type UsageTag = "ready" | "ingredient" | "raw" | "cooked" | "dry";
+type MeasureKey = "unit" | "tbsp" | "tsp" | "cup" | "g100";
 
 const USAGE_OPTIONS: Array<{ id: UsageTag; label: string }> = [
   { id: "ready", label: "מוכן" },
@@ -35,6 +36,14 @@ const USAGE_OPTIONS: Array<{ id: UsageTag; label: string }> = [
   { id: "raw", label: "גולמי" },
   { id: "cooked", label: "מבושל" },
   { id: "dry", label: "יבש" },
+];
+
+const MEASURE_OPTIONS: Array<{ id: MeasureKey; label: string }> = [
+  { id: "unit", label: "יחידה" },
+  { id: "tbsp", label: "כף" },
+  { id: "tsp", label: "כפית" },
+  { id: "cup", label: "כוס" },
+  { id: "g100", label: "100g" },
 ];
 
 function usageCell(list?: string[]) {
@@ -57,6 +66,8 @@ type EditDraft = {
   keywords: string;
   usageTags: UsageTag[];
   category: string;
+  defaultMeasure: MeasureKey;
+  commonMeasures: MeasureKey[];
   totalWeightG: string;
   unitsPerPack: string;
   unitWeightG: string;
@@ -73,6 +84,9 @@ type EditDraft = {
 function productToDraft(p: CatalogProduct): EditDraft {
   const per = p.nutrition?.per100g;
   const tags = (p.usageTags as UsageTag[] | undefined) ?? [];
+  const dm = (p.defaultMeasure as MeasureKey | undefined) ?? (p.id.startsWith("internal:") ? "g100" : "unit");
+  const cmRaw = (p.commonMeasures as MeasureKey[] | undefined) ?? [dm, "g100"];
+  const cm = Array.from(new Set([dm, ...cmRaw])).slice(0, 4);
   return {
     id: p.id,
     gtin: p.gtin ?? "",
@@ -81,6 +95,8 @@ function productToDraft(p: CatalogProduct): EditDraft {
     keywords: (p.keywords ?? []).join(", "),
     usageTags: tags.length ? tags : p.id.startsWith("internal:") ? ["ingredient"] : ["ready"],
     category: p.category ?? "",
+    defaultMeasure: dm,
+    commonMeasures: cm,
     totalWeightG: p.package?.totalWeightG != null ? String(p.package.totalWeightG) : "",
     unitsPerPack: p.package?.unitsPerPack != null ? String(p.package.unitsPerPack) : "",
     unitWeightG: p.package?.unitWeightG != null ? fmt1(p.package.unitWeightG) : "",
@@ -185,6 +201,8 @@ function EditModal({
         keywords: parseKeywords(d.keywords),
         category: d.category.trim() || undefined,
         usageTags: d.usageTags.length ? d.usageTags : undefined,
+        defaultMeasure: d.defaultMeasure,
+        commonMeasures: d.commonMeasures,
         package: {
           totalWeightG: pkg.totalWeightG,
           unitsPerPack: pkg.unitsPerPack,
@@ -303,6 +321,71 @@ function EditModal({
               })}
             </div>
           </div>
+          <div className="space-y-1.5">
+            <p className="text-xs font-medium text-ink-muted">ברירת מחדל ביומן</p>
+            <div className="flex flex-wrap gap-2">
+              {MEASURE_OPTIONS.map((opt) => {
+                const active = draft.defaultMeasure === opt.id;
+                return (
+                  <button
+                    key={opt.id}
+                    type="button"
+                    onClick={() =>
+                      setDraft((prev) =>
+                        prev
+                          ? {
+                              ...prev,
+                              defaultMeasure: opt.id,
+                              commonMeasures: Array.from(new Set([opt.id, ...prev.commonMeasures])).slice(0, 4),
+                            }
+                          : prev,
+                      )
+                    }
+                    className={
+                      "rounded-full px-3 py-1.5 text-xs font-semibold transition " +
+                      (active
+                        ? "border border-sky-300/30 bg-sky-500/15 text-sky-50"
+                        : "border border-white/15 bg-white/[0.06] text-ink-muted hover:border-white/25 hover:text-white")
+                    }
+                  >
+                    {opt.label}
+                  </button>
+                );
+              })}
+            </div>
+            <p className="mt-2 text-xs font-medium text-ink-muted">מידות נפוצות</p>
+            <div className="flex flex-wrap gap-2">
+              {MEASURE_OPTIONS.map((opt) => {
+                const active = draft.commonMeasures.includes(opt.id);
+                return (
+                  <button
+                    key={`cm-${opt.id}`}
+                    type="button"
+                    onClick={() =>
+                      setDraft((prev) => {
+                        if (!prev) return prev;
+                        const next = prev.commonMeasures.includes(opt.id)
+                          ? prev.commonMeasures.filter((x) => x !== opt.id)
+                          : [...prev.commonMeasures, opt.id];
+                        const withDefault = next.includes(prev.defaultMeasure)
+                          ? next
+                          : [prev.defaultMeasure, ...next];
+                        return { ...prev, commonMeasures: withDefault.slice(0, 4) };
+                      })
+                    }
+                    className={
+                      "rounded-full px-3 py-1.5 text-xs font-semibold transition " +
+                      (active
+                        ? "border border-white/20 bg-white/[0.12] text-white"
+                        : "border border-white/15 bg-white/[0.06] text-ink-muted hover:border-white/25 hover:text-white")
+                    }
+                  >
+                    {opt.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
 
           <div className="grid grid-cols-2 gap-2">
             <Field label='קלוריות ל־100g' value={draft.calories100} onChange={(v) => setDraft((d) => (d ? { ...d, calories100: v } : d))} inputMode="decimal" />
@@ -389,6 +472,8 @@ export function Catalog() {
         keywords: r.keywords,
         category: r.category,
         usageTags: (r.usageTags as UsageTag[] | undefined) ?? undefined,
+        defaultMeasure: (r.defaultMeasure as MeasureKey | undefined) ?? undefined,
+        commonMeasures: (r.commonMeasures as MeasureKey[] | undefined) ?? undefined,
         createdAt: now,
         updatedAt: now,
         package: { totalWeightG, unitsPerPack, unitWeightG },

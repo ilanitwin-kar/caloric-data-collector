@@ -9,6 +9,7 @@ import { normalizeBarcode } from "../utils/openFoodFacts";
 import { WALKING_MET, walkingStepsToBurnKcal } from "../utils/walkingBurn";
 
 type UsageTag = "ready" | "ingredient" | "raw" | "cooked" | "dry";
+type MeasureKey = "unit" | "tbsp" | "tsp" | "cup" | "g100";
 
 const USAGE_OPTIONS: Array<{ id: UsageTag; label: string }> = [
   { id: "ready", label: "מוכן" },
@@ -16,6 +17,14 @@ const USAGE_OPTIONS: Array<{ id: UsageTag; label: string }> = [
   { id: "raw", label: "גולמי" },
   { id: "cooked", label: "מבושל" },
   { id: "dry", label: "יבש" },
+];
+
+const MEASURE_OPTIONS: Array<{ id: MeasureKey; label: string }> = [
+  { id: "unit", label: "יחידה" },
+  { id: "tbsp", label: "כף" },
+  { id: "tsp", label: "כפית" },
+  { id: "cup", label: "כוס" },
+  { id: "g100", label: "100g" },
 ];
 
 function Field({
@@ -78,6 +87,8 @@ export function Home() {
   const [keywordsRaw, setKeywordsRaw] = useState("");
   const [category, setCategory] = useState("");
   const [usageTags, setUsageTags] = useState<UsageTag[]>(["ready"]);
+  const [defaultMeasure, setDefaultMeasure] = useState<MeasureKey>("unit");
+  const [commonMeasures, setCommonMeasures] = useState<MeasureKey[]>(["unit", "g100"]);
 
   const [kcal100, setKcal100] = useState("");
   const [prot100, setProt100] = useState("");
@@ -265,6 +276,8 @@ export function Home() {
         keywords,
         category: category.trim() || undefined,
         usageTags: usage,
+        defaultMeasure,
+        commonMeasures,
         per100,
         totalWeightG: totalW,
         unitsPerPack: units ?? (unitW ? totalW / unitW : undefined),
@@ -281,6 +294,8 @@ export function Home() {
       keywords,
       category: category.trim() || undefined,
       usageTags: usage,
+      defaultMeasure,
+      commonMeasures,
       per100,
       totalWeightG: totalW,
       unitsPerPack: units ?? (unitW ? totalW / unitW : undefined),
@@ -312,6 +327,8 @@ export function Home() {
                 setIsInternal(next);
                 if (next) setInternalId(newInternalId());
                 setUsageTags(next ? ["ingredient"] : ["ready"]);
+                setDefaultMeasure(next ? "g100" : "unit");
+                setCommonMeasures(next ? ["g100", "unit"] : ["unit", "g100"]);
               }}
             />
             פריט ללא ברקוד (ירקות/בישול ביתי)
@@ -454,6 +471,70 @@ export function Home() {
               </div>
               <p className="text-[11px] leading-snug text-ink-dim">
                 אפשר לבחור כמה. ברירת מחדל: {isInternal ? "חומר גלם" : "מוכן"}.
+              </p>
+            </div>
+            <div className="space-y-1.5">
+              <p className="text-xs font-medium text-ink-muted">ברירת מחדל ביומן</p>
+              <div className="flex flex-wrap gap-2">
+                {MEASURE_OPTIONS.map((opt) => {
+                  const active = defaultMeasure === opt.id;
+                  return (
+                    <button
+                      key={opt.id}
+                      type="button"
+                      onClick={() => {
+                        setDefaultMeasure(opt.id);
+                        setCommonMeasures((prev) => {
+                          const next = prev.includes(opt.id) ? prev : [opt.id, ...prev];
+                          return next.slice(0, 4);
+                        });
+                      }}
+                      className={
+                        "rounded-full px-3 py-1.5 text-xs font-semibold transition " +
+                        (active
+                          ? "border border-sky-300/30 bg-sky-500/15 text-sky-50"
+                          : "border border-white/15 bg-white/[0.06] text-ink-muted hover:border-white/25 hover:text-white")
+                      }
+                    >
+                      {opt.label}
+                    </button>
+                  );
+                })}
+              </div>
+              <p className="mt-2 text-xs font-medium text-ink-muted">מידות נפוצות (ליומן)</p>
+              <div className="flex flex-wrap gap-2">
+                {MEASURE_OPTIONS.map((opt) => {
+                  const active = commonMeasures.includes(opt.id);
+                  return (
+                    <button
+                      key={`cm-${opt.id}`}
+                      type="button"
+                      onClick={() =>
+                        setCommonMeasures((prev) => {
+                          const next = prev.includes(opt.id)
+                            ? prev.filter((x) => x !== opt.id)
+                            : [...prev, opt.id];
+                          // Keep default measure always included
+                          const withDefault = next.includes(defaultMeasure)
+                            ? next
+                            : [defaultMeasure, ...next];
+                          return withDefault.slice(0, 4);
+                        })
+                      }
+                      className={
+                        "rounded-full px-3 py-1.5 text-xs font-semibold transition " +
+                        (active
+                          ? "border border-white/20 bg-white/[0.12] text-white"
+                          : "border border-white/15 bg-white/[0.06] text-ink-muted hover:border-white/25 hover:text-white")
+                      }
+                    >
+                      {opt.label}
+                    </button>
+                  );
+                })}
+              </div>
+              <p className="text-[11px] leading-snug text-ink-dim">
+                ביומן יוצגו הכפתורים לפי “מידות נפוצות”. מומלץ 2–4.
               </p>
             </div>
           </div>

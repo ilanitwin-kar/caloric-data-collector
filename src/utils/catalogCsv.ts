@@ -73,6 +73,8 @@ export function catalogToCsv(items: CatalogProduct[]): string {
     "keywords",
     "category",
     "usageTags",
+    "defaultMeasure",
+    "commonMeasures",
     "totalWeightG",
     "unitsPerPack",
     "calories100",
@@ -96,6 +98,8 @@ export function catalogToCsv(items: CatalogProduct[]): string {
         escapeCsvCell(keywordsToCell(p.keywords)),
         escapeCsvCell(p.category ?? ""),
         escapeCsvCell((p.usageTags ?? []).join("|")),
+        escapeCsvCell(p.defaultMeasure ?? ""),
+        escapeCsvCell((p.commonMeasures ?? []).join("|")),
         String(p.package?.totalWeightG ?? ""),
         String(p.package?.unitsPerPack ?? ""),
         String(per?.calories ?? ""),
@@ -120,6 +124,8 @@ export type CatalogCsvRow = {
   keywords?: string[];
   category?: string;
   usageTags?: string[];
+  defaultMeasure?: string;
+  commonMeasures?: string[];
   totalWeightG?: number;
   unitsPerPack?: number;
   calories100?: number;
@@ -160,6 +166,8 @@ export function parseCatalogCsv(csv: string): CatalogCsvRow[] {
     const keywords = keywordsFromCell(get(cells, "keywords"));
     const category = (get(cells, "category") ?? "").trim() || undefined;
     const usageTags = keywordsFromCell(get(cells, "usageTags"));
+    const defaultMeasure = (get(cells, "defaultMeasure") ?? "").trim() || undefined;
+    const commonMeasures = keywordsFromCell(get(cells, "commonMeasures"));
     rows.push({
       id,
       gtin: rawGtin && rawGtin.length >= 8 ? rawGtin : undefined,
@@ -168,6 +176,8 @@ export function parseCatalogCsv(csv: string): CatalogCsvRow[] {
       keywords,
       category,
       usageTags,
+      defaultMeasure,
+      commonMeasures,
       totalWeightG: toNum(get(cells, "totalWeightG")),
       unitsPerPack: toNum(get(cells, "unitsPerPack")),
       calories100: toNum(get(cells, "calories100")),

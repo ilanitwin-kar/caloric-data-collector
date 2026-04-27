@@ -30,6 +30,22 @@ function usageToText(list?: string[]): string {
   return list.map((x) => map[x] ?? x).join(", ");
 }
 
+function measureToText(m?: string): string {
+  const map: Record<string, string> = {
+    unit: "יחידה",
+    tbsp: "כף",
+    tsp: "כפית",
+    cup: "כוס",
+    g100: "100g",
+  };
+  return m ? map[m] ?? m : "";
+}
+
+function measuresToText(list?: string[]): string {
+  if (!list?.length) return "";
+  return list.map(measureToText).join(", ");
+}
+
 export function catalogToSheetRows(items: CatalogProduct[]): Record<string, string | number>[] {
   return items.map((p) => {
     const per = p.nutrition?.per100g;
@@ -41,6 +57,8 @@ export function catalogToSheetRows(items: CatalogProduct[]): Record<string, stri
       "מילות חיפוש": keywordsToText(p.keywords),
       קטגוריה: p.category ?? "",
       שימוש: usageToText(p.usageTags as string[] | undefined),
+      "ברירת מחדל": measureToText(p.defaultMeasure as string | undefined),
+      "מידות נפוצות": measuresToText(p.commonMeasures as string[] | undefined),
       "משקל אריזה (ג)": numOrEmpty(p.package?.totalWeightG),
       "יחידות באריזה": numOrEmpty(p.package?.unitsPerPack),
       "משקל יחידה (ג)": numOrEmpty(p.package?.unitWeightG),
