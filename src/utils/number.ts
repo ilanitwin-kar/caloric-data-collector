@@ -5,5 +5,6 @@ export function parseNum(s: string): number {
 
 export function fmt1(n: number): string {
   if (!Number.isFinite(n)) return "—";
-  return n.toFixed(1);
+  const r = Math.round(n * 10) / 10;
+  return Number.isInteger(r) ? String(r) : r.toFixed(1);
 }

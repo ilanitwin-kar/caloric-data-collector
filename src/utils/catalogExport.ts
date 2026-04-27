@@ -49,6 +49,10 @@ export async function downloadCatalogXlsx(items: CatalogProduct[], filename: str
   const ws = XLSX.utils.json_to_sheet(rows);
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, "מאגר");
+  // Hint Excel to open workbook right-to-left for Hebrew.
+  (wb as unknown as { Workbook?: { Views?: Array<{ RTL?: boolean }> } }).Workbook = {
+    Views: [{ RTL: true }],
+  };
   XLSX.writeFile(wb, filename);
 }
 
