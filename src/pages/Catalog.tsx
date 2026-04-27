@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Spinner } from "../components/Spinner";
 import { useCatalog, type CatalogProduct } from "../context/CatalogContext";
 import { useToast } from "../context/ToastContext";
@@ -155,6 +155,12 @@ function EditModal({
   const [draft, setDraft] = useState<EditDraft | null>(product ? productToDraft(product) : null);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
+
+  // Keep the draft in sync with the currently edited product.
+  // The modal component stays mounted, so we must update draft when `product` changes.
+  useEffect(() => {
+    setDraft(product ? productToDraft(product) : null);
+  }, [product]);
 
   if (!product || !draft) return null;
 
@@ -348,7 +354,8 @@ function EditModal({
 }
 
 export function Catalog() {
-  const { catalog, loading, error, cloudSyncPaused, pauseCloudSync, resumeCloudSync, bulkUpsert } = useCatalog();
+  const { catalog, loading, error, cloudSyncPaused, pauseCloudSync, resumeCloudSync, bulkUpsert, deleteProduct } =
+    useCatalog();
   const { showToast } = useToast();
   const [q, setQ] = useState("");
   const [editing, setEditing] = useState<CatalogProduct | null>(null);
@@ -537,13 +544,25 @@ export function Catalog() {
                     <p className="mt-2 text-[11px] text-ink-dim">מילים: {keywordsCell(p.keywords)}</p>
                   ) : null}
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setEditing(p)}
-                  className="shrink-0 rounded-xl border border-white/15 bg-white/[0.06] px-3 py-2 text-xs font-semibold text-white transition hover:border-white/30"
-                >
-                  עריכה
-                </button>
+                <div className="shrink-0 flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setEditing(p)}
+                    className="rounded-xl border border-white/15 bg-white/[0.06] px-3 py-2 text-xs font-semibold text-white transition hover:border-white/30"
+                  >
+                    עריכה
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!window.confirm("למחוק מוצר מהמאגר?")) return;
+                      void deleteProduct(p.id).catch(() => showToast("מחיקה נכשלה", "error"));
+                    }}
+                    className="rounded-xl border border-red-400/30 bg-red-500/10 px-3 py-2 text-xs font-semibold text-red-200 transition hover:border-red-400/45 hover:bg-red-500/15"
+                  >
+                    מחק
+                  </button>
+                </div>
               </div>
 
               <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
