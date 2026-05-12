@@ -6,7 +6,10 @@ import { ToastProvider } from "./context/ToastContext";
 import { Verified100Provider } from "./context/Verified100Context";
 import { Catalog } from "./pages/Catalog";
 import { Home } from "./pages/Home";
+import { PendingEdits } from "./pages/PendingEdits";
 import { Settings } from "./pages/Settings";
+import { SupermarketNewTrip } from "./pages/SupermarketNewTrip";
+import { SupermarketQuickFill } from "./pages/SupermarketQuickFill";
 
 function Shell() {
   const { user, loading, authError, signIn, signOut } = useAuth();
@@ -67,6 +70,9 @@ export default function App() {
               <Routes>
                 <Route element={<Shell />}>
                   <Route index element={<Home />} />
+                  <Route path="supermarket" element={<SupermarketNewTrip />} />
+                  <Route path="supermarket/:tripId" element={<SupermarketQuickFill />} />
+                  <Route path="pending-edits" element={<PendingEdits />} />
                   <Route path="catalog" element={<Catalog />} />
                   <Route path="settings" element={<Settings />} />
                   <Route path="*" element={<Navigate to="/" replace />} />

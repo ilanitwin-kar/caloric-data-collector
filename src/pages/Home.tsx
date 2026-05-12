@@ -7,7 +7,8 @@ import { useBodyWeightKg } from "../hooks/useBodyWeightKg";
 import { fmt1, parseNum } from "../utils/number";
 import { normalizeBarcode } from "../utils/openFoodFacts";
 import { WALKING_MET, walkingStepsToBurnKcal } from "../utils/walkingBurn";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
+import { useToast } from "../context/ToastContext";
 
 type UsageTag = "ready" | "ingredient" | "raw" | "cooked" | "dry";
 type MeasureKey = "unit" | "tbsp" | "tsp" | "cup" | "g100";
@@ -74,10 +75,22 @@ function newInternalId(): string {
 
 export function Home() {
   const navigate = useNavigate();
-  const { catalog, upsertByBarcode, upsertInternal } = useCatalog();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const draftParam = searchParams.get("draft");
+  const {
+    catalog,
+    upsertByBarcode,
+    upsertInternal,
+    supermarketDrafts,
+    supermarketDraftsReady,
+    deleteSupermarketDraft,
+  } = useCatalog();
+  const { showToast } = useToast();
   const { findMatches } = useVerified100();
   const bodyKg = useBodyWeightKg();
 
+  const hydratedDraftParamRef = useRef<string | null>(null);
+  const [pendingDraftId, setPendingDraftId] = useState<string | null>(null);
   const [isInternal, setIsInternal] = useState(false);
   const [internalId, setInternalId] = useState(() => newInternalId());
 
@@ -251,6 +264,81 @@ export function Home() {
     }
   }, [totalWeightG, unitsPerPack, unitWeightG]);
 
+  useEffect(() => {
+    if (!draftParam) {
+      hydratedDraftParamRef.current = null;
+    }
+  }, [draftParam]);
+
+  useEffect(() => {
+    if (!draftParam || !supermarketDraftsReady) return;
+    const d = supermarketDrafts.find((x) => x.id === draftParam);
+    if (!d) {
+      showToast("הטיוטה לא נמצאה", "error");
+      setSearchParams(
+        (prev) => {
+          const next = new URLSearchParams(prev);
+          next.delete("draft");
+          return next;
+        },
+        { replace: true },
+      );
+      return;
+    }
+    if (hydratedDraftParamRef.current === draftParam) return;
+    hydratedDraftParamRef.current = draftParam;
+
+    setPendingDraftId(draftParam);
+    const internal = Boolean(d.isInternal);
+    setIsInternal(internal);
+    if (internal && d.internalId?.startsWith("internal:")) {
+      setInternalId(d.internalId);
+    } else if (internal) {
+      setInternalId(newInternalId());
+    }
+    setBarcodeRaw(d.barcodeRaw ?? "");
+    setName(d.name);
+    setShortName(d.shortName ?? "");
+    setBrand(d.brand ?? "");
+    setKeywordsRaw(d.keywordsRaw ?? "");
+    setCategory(d.category ?? "");
+    if (d.usageTags?.length) setUsageTags(d.usageTags as UsageTag[]);
+    else setUsageTags(internal ? ["ingredient"] : ["ready"]);
+    if (d.defaultMeasure) setDefaultMeasure(d.defaultMeasure as MeasureKey);
+    else setDefaultMeasure(internal ? "g100" : "unit");
+    if (d.commonMeasures?.length) setCommonMeasures(d.commonMeasures.slice(0, 4) as MeasureKey[]);
+    else setCommonMeasures(internal ? ["g100", "unit"] : ["unit", "g100"]);
+    setPer100Basis(d.per100Basis === "ml" ? "ml" : "g");
+    setKcal100(d.calories100 != null ? String(d.calories100) : "");
+    setProt100(d.protein100 != null ? String(d.protein100) : "");
+    setCarb100(d.carbs100 != null ? String(d.carbs100) : "");
+    setFat100(d.fat100 != null ? String(d.fat100) : "");
+    setTotalWeightG(d.totalWeightG != null && d.totalWeightG > 0 ? fmt1(d.totalWeightG) : "");
+    setUnitsPerPack(d.unitsPerPack != null && d.unitsPerPack > 0 ? String(d.unitsPerPack) : "");
+    setUnitWeightG(d.unitWeightG != null && d.unitWeightG > 0 ? fmt1(d.unitWeightG) : "");
+    const meas = d.measures;
+    setUnitsPer100g(meas?.unitsPer100g != null && meas.unitsPer100g > 0 ? String(meas.unitsPer100g) : "");
+    setTbspPer100g(meas?.tbspPer100g != null && meas.tbspPer100g > 0 ? String(meas.tbspPer100g) : "");
+    setTspPer100g(meas?.tspPer100g != null && meas.tspPer100g > 0 ? String(meas.tspPer100g) : "");
+    setCupsPer100g(meas?.cupsPer100g != null && meas.cupsPer100g > 0 ? String(meas.cupsPer100g) : "");
+
+    setVerifiedPicked(false);
+    setVerifiedPickedSig(null);
+    setCatalogMatchIgnoredSig(null);
+    setCatalogMatchCheckedIds({});
+    setExistingBarcodeDismissed(null);
+    setError(null);
+
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        next.delete("draft");
+        return next;
+      },
+      { replace: true },
+    );
+  }, [draftParam, supermarketDraftsReady, supermarketDrafts, setSearchParams, showToast]);
+
   const per100 = useMemo(() => {
     const kcal = parseNum(kcal100);
     const p = parseNum(prot100);
@@ -361,6 +449,10 @@ export function Home() {
         measures,
         sourceType: "manual",
       });
+      if (pendingDraftId) {
+        await deleteSupermarketDraft(pendingDraftId);
+        setPendingDraftId(null);
+      }
       setVerifiedPicked(false);
       setVerifiedPickedSig(null);
       return;
@@ -383,6 +475,10 @@ export function Home() {
       measures,
       sourceType: "manual",
     });
+    if (pendingDraftId) {
+      await deleteSupermarketDraft(pendingDraftId);
+      setPendingDraftId(null);
+    }
     setVerifiedPicked(false);
     setVerifiedPickedSig(null);
   }
@@ -390,13 +486,26 @@ export function Home() {
   return (
     <>
       <div className="space-y-6 pb-4">
-        <header className="space-y-2 border-b border-white/10 pb-6">
+        <header className="space-y-4 border-b border-white/10 pb-6">
           <p className="font-display text-3xl font-semibold tracking-tight text-white md:text-4xl">
             מאגר מוצרים
           </p>
-          <p className="text-sm text-ink-muted">
-            שדות חובה: שם מוצר + מאקרו ל־{per100Basis === "ml" ? "100ml" : "100g"} + משקל אריזה. באריזה: אם לא ממלאים יחידות/משקל יחידה — זה נחשב "יחידה 1" (האריזה כולה).
-          </p>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => navigate("/supermarket")}
+              className="min-h-[48px] flex-1 rounded-2xl bg-white px-4 text-sm font-semibold text-black transition hover:bg-neutral-200 active:scale-[0.99]"
+            >
+              סופר
+            </button>
+            <button
+              type="button"
+              onClick={() => navigate("/pending-edits")}
+              className="min-h-[48px] flex-1 rounded-2xl border border-white/15 bg-white/[0.06] px-4 text-sm font-semibold text-white transition hover:border-white/25 hover:bg-white/[0.09]"
+            >
+              מוצרים לעריכה
+            </button>
+          </div>
         </header>
 
         <section className="rounded-2xl border border-white/10 bg-white/[0.03] p-4 space-y-4">
