@@ -7,7 +7,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { onValue, ref, remove, set, update, type DataSnapshot } from "firebase/database";
+import { onValue, push, ref, remove, set, update, type DataSnapshot } from "firebase/database";
 import { db } from "../firebase";
 import { useAuth } from "./AuthContext";
 import { useToast } from "./ToastContext";
@@ -91,6 +91,46 @@ export type CatalogProduct = {
   };
 };
 
+export type SupermarketTrip = {
+  id: string;
+  name: string;
+  category: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+/** Partial catalog row saved from the supermarket quick screen for later completion on Home. */
+export type SupermarketDraft = {
+  id: string;
+  tripId: string;
+  tripNameSnapshot?: string;
+  tripCategorySnapshot?: string;
+  barcodeRaw: string;
+  isInternal?: boolean;
+  internalId?: string;
+  name: string;
+  shortName?: string;
+  brand?: string;
+  keywordsRaw?: string;
+  category?: string;
+  usageTags?: CatalogUsageTag[];
+  defaultMeasure?: CatalogMeasureKey;
+  commonMeasures?: CatalogMeasureKey[];
+  per100Basis: CatalogPer100Basis;
+  calories100?: number;
+  protein100?: number;
+  carbs100?: number;
+  fat100?: number;
+  totalWeightG?: number;
+  unitsPerPack?: number;
+  unitWeightG?: number;
+  measures?: CatalogMeasures;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type SupermarketDraftPayload = Omit<SupermarketDraft, "id" | "createdAt" | "updatedAt">;
+
 type CatalogSourceType = NonNullable<CatalogProduct["sources"]>[number]["type"];
 
 type CatalogContextValue = {
@@ -138,6 +178,15 @@ type CatalogContextValue = {
   updateProduct: (product: CatalogProduct) => Promise<void>;
   bulkUpsert: (products: CatalogProduct[], opts?: { chunkSize?: number; onProgress?: (done: number, total: number) => void }) => Promise<void>;
   deleteProduct: (id: string) => Promise<void>;
+  supermarketTrips: SupermarketTrip[];
+  supermarketDrafts: SupermarketDraft[];
+  /** True after first RTDB snapshot for supermarket trips. */
+  supermarketTripsReady: boolean;
+  /** True after the first RTDB snapshot for supermarket drafts (even if empty). */
+  supermarketDraftsReady: boolean;
+  createSupermarketTrip: (input: { name: string; category: string }) => Promise<string | null>;
+  addSupermarketDraft: (payload: SupermarketDraftPayload) => Promise<string | null>;
+  deleteSupermarketDraft: (id: string) => Promise<void>;
 };
 
 const CatalogContext = createContext<CatalogContextValue | null>(null);
@@ -167,6 +216,10 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
   const { showToast } = useToast();
   const [catalog, setCatalog] = useState<CatalogProduct[]>([]);
+  const [supermarketTrips, setSupermarketTrips] = useState<SupermarketTrip[]>([]);
+  const [supermarketTripsReady, setSupermarketTripsReady] = useState(false);
+  const [supermarketDrafts, setSupermarketDrafts] = useState<SupermarketDraft[]>([]);
+  const [supermarketDraftsReady, setSupermarketDraftsReady] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [stuckHint, setStuckHint] = useState<string | null>(null);
@@ -186,6 +239,9 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!user) {
       setCatalog([]);
+      setSupermarketTrips([]);
+      setSupermarketDrafts([]);
+      setSupermarketDraftsReady(false);
       setLoading(false);
       setError(null);
       setStuckHint(null);
@@ -234,6 +290,46 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
     return () => {
       window.clearTimeout(stuckTimer);
       unsub();
+    };
+  }, [user, cloudSyncPaused]);
+
+  useEffect(() => {
+    if (!user || cloudSyncPaused) {
+      setSupermarketTrips([]);
+      setSupermarketDrafts([]);
+      setSupermarketTripsReady(false);
+      setSupermarketDraftsReady(false);
+      return;
+    }
+    const rt = ref(db, `users/${user.uid}/catalog/supermarketTrips`);
+    const rd = ref(db, `users/${user.uid}/catalog/supermarketDrafts`);
+    const unsubTrips = onValue(rt, (snap: DataSnapshot) => {
+      setSupermarketTripsReady(true);
+      const v = snap.val() as Record<string, Omit<SupermarketTrip, "id">> | null;
+      const list: SupermarketTrip[] = v
+        ? Object.entries(v).map(([id, rest]) => ({ id, ...rest } as SupermarketTrip))
+        : [];
+      list.sort(
+        (a, b) =>
+          new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
+      );
+      setSupermarketTrips(list);
+    });
+    const unsubDrafts = onValue(rd, (snap: DataSnapshot) => {
+      setSupermarketDraftsReady(true);
+      const v = snap.val() as Record<string, Omit<SupermarketDraft, "id">> | null;
+      const list: SupermarketDraft[] = v
+        ? Object.entries(v).map(([id, rest]) => ({ id, ...rest } as SupermarketDraft))
+        : [];
+      list.sort(
+        (a, b) =>
+          new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
+      );
+      setSupermarketDrafts(list);
+    });
+    return () => {
+      unsubTrips();
+      unsubDrafts();
     };
   }, [user, cloudSyncPaused]);
 
@@ -489,6 +585,69 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
     [user, showToast],
   );
 
+  const createSupermarketTrip = useCallback(
+    async (input: { name: string; category: string }) => {
+      if (!user) {
+        showToast("צריך להתחבר", "error");
+        return null;
+      }
+      const name = input.name.trim();
+      const category = input.category.trim();
+      if (name.length < 1 || category.length < 1) {
+        showToast("נא למלא שם וקטגוריה למעבר", "error");
+        return null;
+      }
+      const now = new Date().toISOString();
+      const newRef = push(ref(db, `users/${user.uid}/catalog/supermarketTrips`));
+      const key = newRef.key;
+      if (!key) {
+        showToast("שגיאה ביצירת מעבר", "error");
+        return null;
+      }
+      await set(newRef, cleanForRtdb({ name, category, createdAt: now, updatedAt: now }));
+      return key;
+    },
+    [user, showToast],
+  );
+
+  const addSupermarketDraft = useCallback(
+    async (payload: SupermarketDraftPayload) => {
+      if (!user) {
+        showToast("צריך להתחבר", "error");
+        return null;
+      }
+      const now = new Date().toISOString();
+      const newRef = push(ref(db, `users/${user.uid}/catalog/supermarketDrafts`));
+      const key = newRef.key;
+      if (!key) {
+        showToast("שגיאה בשמירת טיוטה", "error");
+        return null;
+      }
+      await set(
+        newRef,
+        cleanForRtdb({
+          ...payload,
+          createdAt: now,
+          updatedAt: now,
+        }),
+      );
+      showToast("נשמר לעריכה בהמשך", "success");
+      return key;
+    },
+    [user, showToast],
+  );
+
+  const deleteSupermarketDraft = useCallback(
+    async (id: string) => {
+      if (!user) {
+        showToast("צריך להתחבר", "error");
+        return;
+      }
+      await remove(ref(db, `users/${user.uid}/catalog/supermarketDrafts/${id}`));
+    },
+    [user, showToast],
+  );
+
   const value = useMemo<CatalogContextValue>(
     () => ({
       catalog,
@@ -502,6 +661,13 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
       updateProduct,
       bulkUpsert,
       deleteProduct,
+      supermarketTrips,
+      supermarketDrafts,
+      supermarketTripsReady,
+      supermarketDraftsReady,
+      createSupermarketTrip,
+      addSupermarketDraft,
+      deleteSupermarketDraft,
     }),
     [
       catalog,
@@ -516,6 +682,13 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
       updateProduct,
       bulkUpsert,
       deleteProduct,
+      supermarketTrips,
+      supermarketDrafts,
+      supermarketTripsReady,
+      supermarketDraftsReady,
+      createSupermarketTrip,
+      addSupermarketDraft,
+      deleteSupermarketDraft,
     ],
   );
 
