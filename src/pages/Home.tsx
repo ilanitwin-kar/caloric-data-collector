@@ -490,18 +490,18 @@ export function Home() {
           <p className="font-display text-3xl font-semibold tracking-tight text-white md:text-4xl">
             מאגר מוצרים
           </p>
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
             <button
               type="button"
               onClick={() => navigate("/supermarket")}
-              className="min-h-[48px] flex-1 rounded-2xl bg-white px-4 text-sm font-semibold text-black transition hover:bg-neutral-200 active:scale-[0.99]"
+              className="min-h-[48px] touch-manipulation flex-1 rounded-2xl bg-white px-3 py-2 text-sm font-semibold text-black transition hover:bg-neutral-200 active:scale-[0.99] sm:px-4"
             >
               סופר
             </button>
             <button
               type="button"
               onClick={() => navigate("/pending-edits")}
-              className="min-h-[48px] flex-1 rounded-2xl border border-white/15 bg-white/[0.06] px-4 text-sm font-semibold text-white transition hover:border-white/25 hover:bg-white/[0.09]"
+              className="min-h-[48px] touch-manipulation flex-1 rounded-2xl border border-white/15 bg-white/[0.06] px-3 py-2 text-center text-sm font-semibold leading-snug text-white transition hover:border-white/25 hover:bg-white/[0.09] active:scale-[0.99] sm:px-4"
             >
               מוצרים לעריכה
             </button>

@@ -617,21 +617,24 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
         return null;
       }
       const now = new Date().toISOString();
-      const newRef = push(ref(db, `users/${user.uid}/catalog/supermarketDrafts`));
+      const draftsRoot = `users/${user.uid}/catalog/supermarketDrafts`;
+      const newRef = push(ref(db, draftsRoot));
       const key = newRef.key;
       if (!key) {
         showToast("שגיאה בשמירת טיוטה", "error");
         return null;
       }
-      await set(
-        newRef,
-        cleanForRtdb({
+      const draftPath = `${draftsRoot}/${key}`;
+      const tripTouchPath = `users/${user.uid}/catalog/supermarketTrips/${payload.tripId}/updatedAt`;
+      await update(ref(db), {
+        [draftPath]: cleanForRtdb({
           ...payload,
           createdAt: now,
           updatedAt: now,
         }),
-      );
-      showToast("נשמר לעריכה בהמשך", "success");
+        [tripTouchPath]: now,
+      });
+      showToast("נשמר — אפשר להמשיך למוצר הבא באותו מעבר", "success");
       return key;
     },
     [user, showToast],
