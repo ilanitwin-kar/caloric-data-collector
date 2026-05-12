@@ -419,21 +419,35 @@ export function SupermarketQuickFill() {
   return (
     <>
       <div className="space-y-6 pb-4">
-        <header className="space-y-2 border-b border-white/10 pb-6">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <p className="font-display text-xl font-semibold tracking-tight text-white md:text-2xl">מילוי מהיר</p>
-            <button
-              type="button"
-              onClick={() => navigate("/")}
-              className="rounded-xl border border-white/15 px-3 py-2 text-xs font-semibold text-ink-muted hover:text-white"
-            >
-              סגור
-            </button>
+        <header className="space-y-3 border-b border-white/10 pb-6">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <p className="font-display text-xl font-semibold tracking-tight text-white sm:text-2xl">מילוי מהיר</p>
+            <div className="flex w-full gap-2 sm:w-auto sm:shrink-0">
+              <button
+                type="button"
+                onClick={() => navigate("/supermarket")}
+                className="min-h-[44px] touch-manipulation flex-1 rounded-xl border border-white/15 px-3 py-2 text-xs font-semibold text-white transition hover:border-white/25 hover:bg-white/[0.06] active:scale-[0.99] sm:flex-none sm:px-4"
+              >
+                מעבר אחר
+              </button>
+              <button
+                type="button"
+                onClick={() => navigate("/")}
+                className="min-h-[44px] touch-manipulation flex-1 rounded-xl border border-white/15 px-3 py-2 text-xs font-semibold text-ink-muted transition hover:text-white active:scale-[0.99] sm:flex-none sm:px-4"
+              >
+                בית
+              </button>
+            </div>
           </div>
           {tripMeta ? (
-            <p className="text-sm text-ink-muted">
-              מעבר: <span className="text-white">{tripMeta.name}</span> · {tripMeta.category}
-            </p>
+            <>
+              <p className="break-words text-sm text-ink-muted">
+                מעבר: <span className="text-white">{tripMeta.name}</span> · {tripMeta.category}
+              </p>
+              <p className="text-[11px] leading-relaxed text-ink-dim sm:text-xs">
+                אחרי לחיצה על &quot;שמור והמשך&quot; המוצר נשמר לעריכה מאוחרת והטופס מתרוקן — אותו מעבר ואותה קטגוריה, מוצר נוסף.
+              </p>
+            </>
           ) : showLoadingTrip ? (
             <p className="text-sm text-ink-muted">טוען פרטי מעבר…</p>
           ) : null}
@@ -448,16 +462,18 @@ export function SupermarketQuickFill() {
             <section className="rounded-2xl border border-white/10 bg-white/[0.03] p-4 space-y-4">
               <div className="space-y-2">
                 <Field label="ברקוד" value={barcodeRaw} onChange={setBarcodeRaw} inputMode="numeric" placeholder="סרקי או הדביקי" />
-                <div className="flex gap-2">
+                <div className="flex flex-col gap-2 sm:flex-row">
                   <button
                     type="button"
                     onClick={() => setScannerOpen(true)}
-                    className="min-h-[44px] flex-1 rounded-xl bg-white text-sm font-semibold text-black transition hover:bg-neutral-200 active:scale-[0.99]"
+                    className="min-h-[44px] touch-manipulation w-full flex-1 rounded-xl bg-white text-sm font-semibold text-black transition hover:bg-neutral-200 active:scale-[0.99] sm:w-auto"
                   >
                     סרוק ברקוד
                   </button>
-                  <div className="flex min-w-[9rem] items-center justify-center rounded-xl border border-white/10 bg-black/30 px-3 text-xs text-ink-muted">
-                    {barcodeDigits ? `מנורמל: ${barcodeDigits}` : "—"}
+                  <div className="flex min-h-[44px] min-w-0 items-center justify-center rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-xs text-ink-muted sm:min-w-[9rem]">
+                    <span className="truncate" dir="ltr" title={barcodeDigits || undefined}>
+                      {barcodeDigits ? `מנורמל: ${barcodeDigits}` : "—"}
+                    </span>
                   </div>
                 </div>
               </div>
@@ -669,9 +685,9 @@ export function SupermarketQuickFill() {
             <button
               type="button"
               onClick={() => void handleSaveDraft()}
-              className="min-h-[52px] w-full rounded-2xl border border-white/20 bg-white/[0.08] text-base font-semibold text-white transition hover:bg-white/[0.12] active:scale-[0.99]"
+              className="min-h-[52px] w-full touch-manipulation rounded-2xl border border-white/20 bg-white/[0.08] px-4 py-3 text-center text-sm font-semibold leading-snug text-white transition hover:bg-white/[0.12] active:scale-[0.99] sm:text-base"
             >
-              שמור לעריכה בהמשך
+              שמור והמשך למוצר נוסף
             </button>
           </>
         )}
