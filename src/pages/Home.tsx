@@ -4,6 +4,7 @@ import { BarcodeScanner } from "../components/BarcodeScanner";
 import { useCatalog } from "../context/CatalogContext";
 import { useVerified100 } from "../context/Verified100Context";
 import { useBodyWeightKg } from "../hooks/useBodyWeightKg";
+import { useOffBarcodeLookup } from "../hooks/useOffBarcodeLookup";
 import { fmt1, parseNum } from "../utils/number";
 import { normalizeBarcode } from "../utils/openFoodFacts";
 import { WALKING_MET, walkingStepsToBurnKcal } from "../utils/walkingBurn";
@@ -86,7 +87,7 @@ export function Home() {
     deleteSupermarketDraft,
   } = useCatalog();
   const { showToast } = useToast();
-  const { findMatches } = useVerified100();
+  const { findMatches, items: verifiedItems } = useVerified100();
   const bodyKg = useBodyWeightKg();
 
   const hydratedDraftParamRef = useRef<string | null>(null);
@@ -189,6 +190,28 @@ export function Home() {
   const [unitsPerPack, setUnitsPerPack] = useState("");
   const [unitWeightG, setUnitWeightG] = useState("");
   const lastPackEditRef = useRef<"units" | "unitWeight" | null>(null);
+
+  const { offLoading } = useOffBarcodeLookup({
+    barcodeDigits,
+    enabled: !isInternal,
+    skipLookup: isInternal || isAlreadyInCatalog,
+    verifiedItems,
+    setters: {
+      setName,
+      setBrand,
+      setCategory,
+      setPer100Basis,
+      setKcal100,
+      setProt100,
+      setCarb100,
+      setFat100,
+      setTotalWeightG,
+      setUnitsPerPack,
+      setUnitWeightG,
+      setVerifiedPicked,
+      setVerifiedPickedSig,
+    },
+  });
 
   const [unitsPer100g, setUnitsPer100g] = useState("");
   const [tbspPer100g, setTbspPer100g] = useState("");
@@ -544,7 +567,7 @@ export function Home() {
                   סרוק ברקוד
                 </button>
                 <div className="flex min-w-[9rem] items-center justify-center rounded-xl border border-white/10 bg-black/30 px-3 text-xs text-ink-muted">
-                  {barcodeDigits ? `מנורמל: ${barcodeDigits}` : "—"}
+                  {offLoading ? "טוען OFF…" : barcodeDigits ? `מנורמל: ${barcodeDigits}` : "—"}
                 </div>
               </div>
               {existingByBarcode && existingBarcodeDismissed !== barcodeDigits ? (

@@ -146,6 +146,40 @@ export function parseVerifiedTsv(text: string): Verified100Row[] {
   return rows;
 }
 
+/** Match score for verified row vs query (same logic as Verified100Context). */
+export function scoreVerifiedMatch(
+  item: Verified100Row,
+  q: { name: string; brand?: string },
+): number {
+  const nameQ = normalizeText(q.name);
+  const brandQ = normalizeText(q.brand ?? "");
+  const nameI = normalizeText(item.name);
+  const brandI = normalizeText(item.brand ?? "");
+
+  if (!nameQ) return 0;
+  let score = 0;
+
+  const tokens = nameQ.split(" ").filter(Boolean);
+  let hit = 0;
+  for (const t of tokens) {
+    if (t.length < 2) continue;
+    if (nameI.includes(t)) hit += 1;
+  }
+  score += Math.min(6, hit) * 10;
+
+  if (nameI.includes(nameQ) || nameQ.includes(nameI)) score += 25;
+
+  if (brandQ && brandI) {
+    if (brandI === brandQ) score += 18;
+    else if (brandI.includes(brandQ) || brandQ.includes(brandI)) score += 10;
+  }
+
+  return score;
+}
+
+/** Minimum score to auto-apply verified nutrition over OFF on import. */
+export const VERIFIED_AUTO_APPLY_MIN_SCORE = 55;
+
 export function normalizeText(s: string): string {
   return s
     .toLowerCase()

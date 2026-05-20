@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Spinner } from "../components/Spinner";
+import { useCatalog } from "../context/CatalogContext";
 import { useVerified100 } from "../context/Verified100Context";
 import {
   clearBodyWeightKg,
@@ -8,13 +9,28 @@ import {
 } from "../utils/bodyWeightStorage";
 import { STEPS_PER_MINUTE, WALKING_MET } from "../utils/walkingBurn";
 
+type OffImportProgress = {
+  phase: "fetch" | "write";
+  page?: number;
+  scanned: number;
+  skipped: number;
+  queued: number;
+  written: number;
+};
+
 export function Settings() {
+  const { catalog, importOpenFoodFactsIsrael } = useCatalog();
   const { items, loading, importTsv } = useVerified100();
   const [importing, setImporting] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const [bodyKgInput, setBodyKgInput] = useState("");
   const [bodySavedAt, setBodySavedAt] = useState<number | null>(null);
   const [bodyError, setBodyError] = useState<string | null>(null);
+
+  const [offImporting, setOffImporting] = useState(false);
+  const [offProgress, setOffProgress] = useState<OffImportProgress | null>(null);
+  const [offResult, setOffResult] = useState<string | null>(null);
+  const offAbortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     const w = readBodyWeightKg();
@@ -26,6 +42,34 @@ export function Settings() {
     const t = window.setTimeout(() => setBodySavedAt(null), 2200);
     return () => window.clearTimeout(t);
   }, [bodySavedAt]);
+
+  async function handleOffImport() {
+    if (offImporting) return;
+    const ctrl = new AbortController();
+    offAbortRef.current = ctrl;
+    setOffImporting(true);
+    setOffResult(null);
+    setOffProgress({ phase: "fetch", scanned: 0, skipped: 0, queued: 0, written: 0 });
+    try {
+      const res = await importOpenFoodFactsIsrael(items, {
+        signal: ctrl.signal,
+        onProgress: setOffProgress,
+      });
+      setOffResult(
+        `נסרקו ${res.scanned.toLocaleString("he-IL")} · נוספו ${res.added.toLocaleString("he-IL")} · דולגו ${res.skipped.toLocaleString("he-IL")} · תזונה מהמאומת: ${res.verifiedOverrides.toLocaleString("he-IL")}`,
+      );
+    } catch {
+      setOffResult("ייבוא נכשל");
+    } finally {
+      setOffImporting(false);
+      setOffProgress(null);
+      offAbortRef.current = null;
+    }
+  }
+
+  function cancelOffImport() {
+    offAbortRef.current?.abort();
+  }
 
   return (
     <div className="space-y-8 pb-4">
@@ -94,8 +138,8 @@ export function Settings() {
       <section className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
         <h2 className="text-sm font-semibold text-white">מאגר מאומת (100g)</h2>
         <p className="mt-1 text-xs text-ink-muted">
-          קובץ TSV/CSV למילוי אוטומטי בשדות בבית (לפי שם מוצר). הנתונים נשמרים בענן תחת
-          החשבון שלך.
+          קובץ TSV/CSV (קטגוריה, מותג, שם, חלבון, שומן, פחמימה, קלוריות). משמש להצעות ולעדיפות
+          תזונה בייבוא OFF.
         </p>
         <div className="mt-3 flex flex-wrap items-center gap-2">
           {loading ? (
@@ -130,6 +174,55 @@ export function Settings() {
             }}
           />
         </div>
+      </section>
+
+      <section className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+        <h2 className="text-sm font-semibold text-white">ייבוא Open Food Facts (ישראל)</h2>
+        <p className="mt-1 text-xs leading-relaxed text-ink-muted">
+          מוסיף לקטלוג מוצרים עם ברקוד מ־OFF (ישראל + תזונה). לא דורס מוצרים שכבר בקטלוג או שנשמרו
+          ידנית. אם שם+מותג תואמים למאגר המאומת ({items.length.toLocaleString("he-IL")} פריטים) —
+          נשמרת התזונה המאומתת.
+        </p>
+        <p className="mt-2 text-xs text-ink-dim">
+          בקטלוג כרגע: {catalog.length.toLocaleString("he-IL")} מוצרים
+        </p>
+        <div className="mt-3 flex flex-wrap gap-2">
+          <button
+            type="button"
+            disabled={offImporting || loading}
+            onClick={() => void handleOffImport()}
+            className="min-h-[44px] rounded-xl bg-white px-4 text-sm font-semibold text-black transition hover:bg-neutral-200 disabled:opacity-50"
+          >
+            {offImporting ? "מייבא OFF…" : "ייבא מוצרי OFF לישראל"}
+          </button>
+          {offImporting ? (
+            <button
+              type="button"
+              onClick={cancelOffImport}
+              className="min-h-[44px] rounded-xl border border-white/20 px-4 text-sm font-semibold text-white"
+            >
+              ביטול
+            </button>
+          ) : null}
+        </div>
+        {offProgress ? (
+          <div className="mt-3 rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-xs text-ink-muted">
+            {offProgress.phase === "fetch" ? (
+              <p>
+                שלב איסוף
+                {offProgress.page != null ? ` · עמוד ${offProgress.page}` : ""} · נסרקו{" "}
+                {offProgress.scanned.toLocaleString("he-IL")} · דולגו{" "}
+                {offProgress.skipped.toLocaleString("he-IL")} · בתור{" "}
+                {offProgress.queued.toLocaleString("he-IL")}
+              </p>
+            ) : (
+              <p>
+                שלב שמירה · נכתבו {offProgress.written.toLocaleString("he-IL")}
+              </p>
+            )}
+          </div>
+        ) : null}
+        {offResult ? <p className="mt-2 text-xs text-emerald-200">{offResult}</p> : null}
       </section>
     </div>
   );

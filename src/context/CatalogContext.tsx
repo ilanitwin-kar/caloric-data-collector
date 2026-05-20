@@ -12,6 +12,12 @@ import { db } from "../firebase";
 import { useAuth } from "./AuthContext";
 import { useToast } from "./ToastContext";
 import { normalizeBarcode } from "../utils/openFoodFacts";
+import {
+  buildCatalogProductFromOffRecord,
+  catalogEntryBlocksOffImport,
+} from "../utils/offCatalog";
+import { fetchOffIsraelProductPages } from "../utils/offIsraelImport";
+import type { Verified100Row } from "../utils/verifiedTsv";
 
 export type CatalogNutritionPer100g = {
   calories?: number;
@@ -80,7 +86,7 @@ export type CatalogProduct = {
   createdAt: string;
   updatedAt: string;
   sources?: Array<{
-    type: "barcode_openfoodfacts" | "ocr" | "manual";
+    type: "barcode_openfoodfacts" | "ocr" | "manual" | "verified100";
     at: string;
   }>;
   package?: CatalogPackage;
@@ -176,7 +182,28 @@ type CatalogContextValue = {
     sourceType: CatalogSourceType;
   }) => Promise<void>;
   updateProduct: (product: CatalogProduct) => Promise<void>;
-  bulkUpsert: (products: CatalogProduct[], opts?: { chunkSize?: number; onProgress?: (done: number, total: number) => void }) => Promise<void>;
+  bulkUpsert: (
+    products: CatalogProduct[],
+    opts?: {
+      chunkSize?: number;
+      silent?: boolean;
+      onProgress?: (done: number, total: number) => void;
+    },
+  ) => Promise<void>;
+  importOpenFoodFactsIsrael: (
+    verifiedItems: Verified100Row[],
+    opts?: {
+      signal?: AbortSignal;
+      onProgress?: (p: {
+        phase: "fetch" | "write";
+        page?: number;
+        scanned: number;
+        skipped: number;
+        queued: number;
+        written: number;
+      }) => void;
+    },
+  ) => Promise<{ scanned: number; skipped: number; added: number; verifiedOverrides: number }>;
   deleteProduct: (id: string) => Promise<void>;
   supermarketTrips: SupermarketTrip[];
   supermarketDrafts: SupermarketDraft[];
@@ -532,7 +559,11 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
   const bulkUpsert = useCallback(
     async (
       products: CatalogProduct[],
-      opts?: { chunkSize?: number; onProgress?: (done: number, total: number) => void },
+      opts?: {
+        chunkSize?: number;
+        silent?: boolean;
+        onProgress?: (done: number, total: number) => void;
+      },
     ) => {
       if (!user) {
         showToast("צריך להתחבר כדי לשמור לקטלוג", "error");
@@ -563,9 +594,134 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
         done = Math.min(total, i + chunk.length);
         opts?.onProgress?.(done, total);
       }
-      showToast("הייבוא הסתיים", "success");
+      if (!opts?.silent) showToast("הייבוא הסתיים", "success");
     },
     [user, showToast],
+  );
+
+  const importOpenFoodFactsIsrael = useCallback(
+    async (
+      verifiedItems: Verified100Row[],
+      opts?: {
+        signal?: AbortSignal;
+        onProgress?: (p: {
+          phase: "fetch" | "write";
+          page?: number;
+          scanned: number;
+          skipped: number;
+          queued: number;
+          written: number;
+        }) => void;
+      },
+    ) => {
+      if (!user) {
+        showToast("צריך להתחבר כדי לייבא", "error");
+        return { scanned: 0, skipped: 0, added: 0, verifiedOverrides: 0 };
+      }
+
+      const existingById = new Map<string, CatalogProduct>();
+      for (const p of catalog) {
+        const key = p.id.startsWith("internal:")
+          ? p.id
+          : normalizeBarcode(p.gtin ?? p.id);
+        if (key.length >= 6) existingById.set(key, p);
+      }
+
+      let scanned = 0;
+      let skipped = 0;
+      let added = 0;
+      let written = 0;
+      let verifiedOverrides = 0;
+      const pending: CatalogProduct[] = [];
+      const seenGtin = new Set<string>();
+
+      const flushPending = async () => {
+        if (pending.length === 0) return;
+        const batch = pending.splice(0, pending.length);
+        await bulkUpsert(batch, {
+          silent: true,
+          onProgress: (done) => {
+            written = done;
+            opts?.onProgress?.({
+              phase: "write",
+              scanned,
+              skipped,
+              queued: pending.length,
+              written,
+            });
+          },
+        });
+      };
+
+      try {
+        for await (const page of fetchOffIsraelProductPages({
+          signal: opts?.signal,
+          onPage: ({ page }) => {
+            opts?.onProgress?.({
+              phase: "fetch",
+              page,
+              scanned,
+              skipped,
+              queued: pending.length,
+              written,
+            });
+          },
+        })) {
+          for (const record of page) {
+            scanned += 1;
+            const built = buildCatalogProductFromOffRecord(record, verifiedItems);
+            if (!built) {
+              skipped += 1;
+              continue;
+            }
+            const gtin = built.product.id;
+            if (seenGtin.has(gtin)) {
+              skipped += 1;
+              continue;
+            }
+            seenGtin.add(gtin);
+
+            if (catalogEntryBlocksOffImport(existingById.get(gtin))) {
+              skipped += 1;
+              continue;
+            }
+
+            if (built.usedVerified) verifiedOverrides += 1;
+            pending.push(built.product);
+            added += 1;
+
+            if (pending.length >= 250) await flushPending();
+
+            if (scanned % 50 === 0) {
+              opts?.onProgress?.({
+                phase: "fetch",
+                scanned,
+                skipped,
+                queued: pending.length,
+                written,
+              });
+            }
+          }
+        }
+
+        await flushPending();
+
+        showToast(
+          `ייבוא OFF: נוספו ${added.toLocaleString("he-IL")} מוצרים (${skipped.toLocaleString("he-IL")} דולגו)`,
+          "success",
+        );
+        return { scanned, skipped, added, verifiedOverrides };
+      } catch (e) {
+        if (e instanceof DOMException && e.name === "AbortError") {
+          showToast("ייבוא OFF בוטל", "error");
+          return { scanned, skipped, added, verifiedOverrides };
+        }
+        const msg = e instanceof Error ? e.message : "שגיאה בייבוא OFF";
+        showToast(msg, "error");
+        return { scanned, skipped, added, verifiedOverrides };
+      }
+    },
+    [user, catalog, bulkUpsert, showToast],
   );
 
   const deleteProduct = useCallback(
@@ -663,6 +819,7 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
       upsertInternal,
       updateProduct,
       bulkUpsert,
+      importOpenFoodFactsIsrael,
       deleteProduct,
       supermarketTrips,
       supermarketDrafts,
@@ -684,6 +841,7 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
       upsertInternal,
       updateProduct,
       bulkUpsert,
+      importOpenFoodFactsIsrael,
       deleteProduct,
       supermarketTrips,
       supermarketDrafts,

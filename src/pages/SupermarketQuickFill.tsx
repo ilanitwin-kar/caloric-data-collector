@@ -6,6 +6,7 @@ import { useAuth } from "../context/AuthContext";
 import type { CatalogProduct } from "../context/CatalogContext";
 import { useCatalog } from "../context/CatalogContext";
 import { useVerified100 } from "../context/Verified100Context";
+import { useOffBarcodeLookup } from "../hooks/useOffBarcodeLookup";
 import { fmt1, parseNum } from "../utils/number";
 import { normalizeBarcode } from "../utils/openFoodFacts";
 
@@ -95,7 +96,7 @@ export function SupermarketQuickFill() {
   const { tripId } = useParams<{ tripId: string }>();
   const { user } = useAuth();
   const { catalog, supermarketTrips, supermarketTripsReady, addSupermarketDraft } = useCatalog();
-  const { findMatches } = useVerified100();
+  const { findMatches, items: verifiedItems } = useVerified100();
 
   const locState = (location.state as { tripName?: string; tripCategory?: string } | null) ?? null;
 
@@ -203,6 +204,28 @@ export function SupermarketQuickFill() {
     if (!barcodeDigits) return false;
     return catalog.some((p) => p.id === barcodeDigits || p.gtin === barcodeDigits);
   }, [barcodeDigits, catalog]);
+
+  const { offLoading } = useOffBarcodeLookup({
+    barcodeDigits,
+    enabled: Boolean(user),
+    skipLookup: isAlreadyInCatalog,
+    verifiedItems,
+    setters: {
+      setName,
+      setBrand,
+      setCategory,
+      setPer100Basis,
+      setKcal100,
+      setProt100,
+      setCarb100,
+      setFat100,
+      setTotalWeightG,
+      setUnitsPerPack,
+      setUnitWeightG,
+      setVerifiedPicked,
+      setVerifiedPickedSig,
+    },
+  });
 
   useEffect(() => {
     if (per100Basis === "ml") {
@@ -472,7 +495,11 @@ export function SupermarketQuickFill() {
                   </button>
                   <div className="flex min-h-[44px] min-w-0 items-center justify-center rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-xs text-ink-muted sm:min-w-[9rem]">
                     <span className="truncate" dir="ltr" title={barcodeDigits || undefined}>
-                      {barcodeDigits ? `מנורמל: ${barcodeDigits}` : "—"}
+                      {offLoading
+                        ? "טוען OFF…"
+                        : barcodeDigits
+                          ? `מנורמל: ${barcodeDigits}`
+                          : "—"}
                     </span>
                   </div>
                 </div>
