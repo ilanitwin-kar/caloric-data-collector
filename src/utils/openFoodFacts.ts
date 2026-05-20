@@ -1,4 +1,4 @@
-const OFF_API_ORIGINS = [
+export const OFF_API_ORIGINS = [
   "https://ssl-api.openfoodfacts.org",
   "https://us.openfoodfacts.org",
   "https://world.openfoodfacts.org",
@@ -6,7 +6,7 @@ const OFF_API_ORIGINS = [
 
 const OFF_PRODUCT_PATH = "/api/v0/product";
 
-const OFF_REQUEST_HEADERS: HeadersInit = {
+export const OFF_REQUEST_HEADERS: HeadersInit = {
   Accept: "application/json",
   "User-Agent":
     "CaloricIntelligence/1.0 (+https://github.com/ilanitwin-kar/caloric-data-collector)",
@@ -277,10 +277,13 @@ function nutrimentsFromProduct(product: Record<string, unknown>): OpenFoodFactsP
     sugarBaseG !== undefined ? sugarBaseG / 4.2 : undefined;
 
   const nameRaw =
-    (typeof product.product_name === "string" && product.product_name) ||
-    (typeof product.product_name_en === "string" && product.product_name_en) ||
-    (typeof product.generic_name === "string" && product.generic_name) ||
-    "";
+    readStr(product, [
+      "product_name_he",
+      "product_name",
+      "product_name_en",
+      "generic_name_he",
+      "generic_name",
+    ]) ?? "";
 
   const brandsRaw = typeof product.brands === "string" ? product.brands : "";
   const brand =
@@ -342,6 +345,20 @@ function nutrimentsFromProduct(product: Record<string, unknown>): OpenFoodFactsP
 
 export function normalizeBarcode(raw: string): string {
   return raw.replace(/\D/g, "");
+}
+
+/** Parse a search/API product object into normalized OFF fields. */
+export function parseOffProductRecord(product: Record<string, unknown>): OpenFoodFactsProduct {
+  return nutrimentsFromProduct(product);
+}
+
+export function offProductHasNutrition(data: OpenFoodFactsProduct): boolean {
+  return (
+    (typeof data.cals100 === "number" && Number.isFinite(data.cals100)) ||
+    (typeof data.prot100 === "number" && Number.isFinite(data.prot100)) ||
+    (typeof data.carb100 === "number" && Number.isFinite(data.carb100)) ||
+    (typeof data.fat100 === "number" && Number.isFinite(data.fat100))
+  );
 }
 
 export type OffSearchHit = {

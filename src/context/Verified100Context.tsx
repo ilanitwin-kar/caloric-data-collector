@@ -12,8 +12,8 @@ import { db } from "../firebase";
 import { useAuth } from "./AuthContext";
 import { useToast } from "./ToastContext";
 import {
-  normalizeText,
   parseVerifiedTsv,
+  scoreVerifiedMatch,
   stableId,
   type Verified100Row,
 } from "../utils/verifiedTsv";
@@ -59,36 +59,6 @@ async function readFileTextWithFallback(file: File): Promise<string> {
     }
   }
   return new TextDecoder("utf-8").decode(bytes);
-}
-
-function scoreMatch(item: Verified100Item, q: { name: string; brand?: string }): number {
-  const nameQ = normalizeText(q.name);
-  const brandQ = normalizeText(q.brand ?? "");
-  const nameI = normalizeText(item.name);
-  const brandI = normalizeText(item.brand ?? "");
-
-  if (!nameQ) return 0;
-  let score = 0;
-
-  // Name token overlap
-  const tokens = nameQ.split(" ").filter(Boolean);
-  let hit = 0;
-  for (const t of tokens) {
-    if (t.length < 2) continue;
-    if (nameI.includes(t)) hit += 1;
-  }
-  score += Math.min(6, hit) * 10;
-
-  // Full substring bonus
-  if (nameI.includes(nameQ) || nameQ.includes(nameI)) score += 25;
-
-  // Brand bonus
-  if (brandQ && brandI) {
-    if (brandI === brandQ) score += 18;
-    else if (brandI.includes(brandQ) || brandQ.includes(brandI)) score += 10;
-  }
-
-  return score;
 }
 
 export function Verified100Provider({ children }: { children: ReactNode }) {
@@ -238,7 +208,7 @@ export function Verified100Provider({ children }: { children: ReactNode }) {
       if (!q.name.trim() || items.length === 0) return null;
       const scored: Match[] = [];
       for (const it of items) {
-        const s = scoreMatch(it, q);
+        const s = scoreVerifiedMatch(it, q);
         if (s >= 35) scored.push({ item: it, score: s });
       }
       scored.sort((a, b) => b.score - a.score);
@@ -252,7 +222,7 @@ export function Verified100Provider({ children }: { children: ReactNode }) {
       if (!q.name.trim() || items.length === 0) return [];
       const scored: Match[] = [];
       for (const it of items) {
-        const s = scoreMatch(it, q);
+        const s = scoreVerifiedMatch(it, q);
         if (s >= 35) scored.push({ item: it, score: s });
       }
       scored.sort((a, b) => b.score - a.score);
