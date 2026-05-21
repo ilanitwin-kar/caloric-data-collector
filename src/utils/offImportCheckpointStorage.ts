@@ -3,12 +3,16 @@ import { offImportCheckpointIsResumable } from "./offImportProgress";
 
 const KEY_PREFIX = "off-import-checkpoint:";
 
-export function readLocalOffImportCheckpoint(uid: string): OffImportCheckpoint | null {
+export function readLocalOffImportCheckpoint(
+  uid: string,
+  opts?: { allowNonResumable?: boolean },
+): OffImportCheckpoint | null {
   try {
     const raw = localStorage.getItem(`${KEY_PREFIX}${uid}`);
     if (!raw) return null;
     const v = JSON.parse(raw) as OffImportCheckpoint;
-    if (!offImportCheckpointIsResumable(v)) return null;
+    if (!opts?.allowNonResumable && !offImportCheckpointIsResumable(v)) return null;
+    if (typeof v.nextPage !== "number" || v.nextPage < 1) return null;
     return v;
   } catch {
     return null;
