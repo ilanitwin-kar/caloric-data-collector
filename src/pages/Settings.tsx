@@ -5,6 +5,10 @@ import { useCatalog } from "../context/CatalogContext";
 import { useVerified100 } from "../context/Verified100Context";
 import { countOffImportedCatalogProducts } from "../utils/offCatalogPolicy";
 import {
+  offImportExpectedLastPage,
+  offImportResumePage,
+} from "../utils/offImportProgress";
+import {
   clearBodyWeightKg,
   readBodyWeightKg,
   writeBodyWeightKg,
@@ -59,9 +63,19 @@ export function Settings() {
   }, [bodySavedAt]);
 
   const resumePage =
-    offImportCheckpointReady && offImportCheckpoint && offImportCheckpoint.nextPage >= 2
-      ? offImportCheckpoint.nextPage
-      : null;
+    offImportCheckpointReady && offImportCheckpoint ?
+      offImportResumePage(offImportCheckpoint)
+    : null;
+
+  const importProgressHint = useMemo(() => {
+    if (!offImportCheckpoint || !resumePage) return null;
+    const last = offImportCheckpoint.lastPageFetched;
+    const expected = offImportExpectedLastPage(offImportCheckpoint.totalOffReported);
+    if (last != null && expected != null) {
+      return `התקדמות: עמוד ${last} מתוך ~${expected} ב-OFF`;
+    }
+    return `המשך מעמוד ${resumePage}`;
+  }, [offImportCheckpoint, resumePage]);
 
   async function runOffImport(resume: boolean) {
     if (offImporting) return;
@@ -247,9 +261,11 @@ export function Settings() {
         </p>
 
         {resumePage && !offImporting ? (
-          <p className="rounded-xl border border-amber-400/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-100">
-            ייבוא לא הסתיים — לחצי «המשך ייבוא (מעמוד {resumePage})» כדי לסרוק ולייבא עד העצירה
-            הבאה (~6 שניות בין עמודים).
+          <p className="rounded-xl border border-amber-400/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-100 leading-relaxed">
+            ייבוא לא הסתיים — לחצי «המשך ייבוא (מעמוד {resumePage})».
+            {importProgressHint ? ` ${importProgressHint}.` : ""}
+            {" "}
+            (~6 שניות בין עמודים). «ייבא OFF» מאפס רק אחרי אישור.
           </p>
         ) : null}
 
