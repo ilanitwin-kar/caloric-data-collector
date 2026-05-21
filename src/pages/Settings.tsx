@@ -4,6 +4,10 @@ import { Spinner } from "../components/Spinner";
 import { useAuth } from "../context/AuthContext";
 import { useCatalog } from "../context/CatalogContext";
 import { useVerified100 } from "../context/Verified100Context";
+import {
+  computeOffPendingGaps,
+  computeVerifiedGaps,
+} from "../utils/catalogGaps";
 import { readLocalOffImportCheckpoint } from "../utils/offImportCheckpointStorage";
 import { countOffImportedCatalogProducts } from "../utils/offCatalogPolicy";
 import {
@@ -55,6 +59,14 @@ export function Settings() {
   const offAbortRef = useRef<AbortController | null>(null);
 
   const offInCatalogCount = useMemo(() => countOffImportedCatalogProducts(catalog), [catalog]);
+
+  const gapPreview = useMemo(() => {
+    if (!offPendingReady || loading) return null;
+    return {
+      verifiedMissing: computeVerifiedGaps(items, catalog).length,
+      offMissing: computeOffPendingGaps(offPendingReviews, catalog).length,
+    };
+  }, [catalog, items, offPendingReviews, offPendingReady, loading]);
 
   useEffect(() => {
     const w = readBodyWeightKg();
@@ -226,6 +238,37 @@ export function Settings() {
         {bodySavedAt ? (
           <p className="mt-2 text-xs text-emerald-200">נשמר</p>
         ) : null}
+      </section>
+
+      <section className="rounded-2xl border border-white/10 bg-white/[0.03] p-4 space-y-3">
+        <h2 className="text-sm font-semibold text-white">מה חסר במאגר</h2>
+        <p className="text-xs leading-relaxed text-ink-muted">
+          השוואה למאגר המאומת (שם/מותג) ולמוצרים שכבר ב־<button type="button" className="text-sky-300 underline" onClick={() => navigate("/off-review")}>בדיקת OFF</button> — בלי לשנות את ייבוא OFF.
+        </p>
+        {gapPreview ? (
+          <p className="text-xs text-ink-dim">
+            חסרים:{" "}
+            <span className="text-violet-200">
+              {gapPreview.verifiedMissing.toLocaleString("he-IL")} מאומת
+            </span>
+            {" · "}
+            <span className="text-sky-200">
+              {gapPreview.offMissing.toLocaleString("he-IL")} OFF (pending)
+            </span>
+          </p>
+        ) : loading || !offPendingReady ? (
+          <p className="inline-flex items-center gap-2 text-xs text-ink-muted">
+            <Spinner className="!h-4 !w-4" />
+            מחשב…
+          </p>
+        ) : null}
+        <button
+          type="button"
+          onClick={() => navigate("/catalog-gaps")}
+          className="min-h-[44px] w-full rounded-xl border border-emerald-400/35 bg-emerald-500/10 px-4 text-sm font-semibold text-emerald-100 transition hover:bg-emerald-500/20 sm:w-auto"
+        >
+          דוח חוסרים — מאומת ו־OFF
+        </button>
       </section>
 
       <section className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">

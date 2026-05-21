@@ -8,6 +8,7 @@ import { Catalog } from "./pages/Catalog";
 import { Home } from "./pages/Home";
 import { PendingEdits } from "./pages/PendingEdits";
 import { PendingOffReview } from "./pages/PendingOffReview";
+import { CatalogGaps } from "./pages/CatalogGaps";
 import { Settings } from "./pages/Settings";
 import { SupermarketNewTrip } from "./pages/SupermarketNewTrip";
 import { SupermarketQuickFill } from "./pages/SupermarketQuickFill";
@@ -77,6 +78,8 @@ export default function App() {
                   <Route path="off-review" element={<PendingOffReview />} />
                   <Route path="catalog" element={<Catalog />} />
                   <Route path="settings" element={<Settings />} />
+                  <Route path="catalog-gaps" element={<CatalogGaps />} />
+                  <Route path="catalog-gaps" element={<CatalogGaps />} />
                   <Route path="*" element={<Navigate to="/" replace />} />
                 </Route>
               </Routes>
