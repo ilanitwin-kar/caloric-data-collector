@@ -1,6 +1,9 @@
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { OffVerifiedComparePanel } from "../components/OffVerifiedComparePanel";
+import {
+  OffVerifiedComparePanel,
+  offReviewNutritionSources,
+} from "../components/OffVerifiedComparePanel";
 import { useAuth } from "../context/AuthContext";
 import { useCatalog } from "../context/CatalogContext";
 import type { OffPendingReview } from "../utils/offCatalog";
@@ -69,6 +72,7 @@ function OffReviewRow({
   const link = item.offReviewMeta.verifiedLink;
   const offName = item.offReviewMeta.offName || item.name;
   const offBrand = item.offReviewMeta.offBrand || item.brand;
+  const nutrition = offReviewNutritionSources(item);
 
   return (
     <div
@@ -100,6 +104,9 @@ function OffReviewRow({
             <p className="mt-1 text-[11px] leading-snug text-ink-muted">
               {offName}
               {offBrand ? ` · ${offBrand}` : ""}
+              {nutrition.offOnlyPer100?.calories != null ?
+                ` · ${nutrition.offOnlyPer100.calories} קק״ל/100${nutrition.basis === "ml" ? "מ״ל" : "g"}`
+              : null}
             </p>
           )}
         </button>
@@ -115,7 +122,11 @@ function OffReviewRow({
           <OffVerifiedComparePanel
             gtin={item.gtin ?? item.id}
             link={link}
-            appliedPer100={item.nutrition?.per100g}
+            offName={offName}
+            offBrand={offBrand}
+            offPer100={nutrition.offOnlyPer100}
+            per100Basis={item.per100Basis === "ml" ? "ml" : "g"}
+            appliedPer100={nutrition.staged}
           />
           <div className="flex flex-wrap gap-2">
             <button

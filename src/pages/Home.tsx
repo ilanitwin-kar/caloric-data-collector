@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { BarcodeScanner } from "../components/BarcodeScanner";
-import { OffVerifiedComparePanel } from "../components/OffVerifiedComparePanel";
+import {
+  OffVerifiedComparePanel,
+  offReviewNutritionSources,
+} from "../components/OffVerifiedComparePanel";
 import {
   VerifiedSuggestionsCollapsible,
   type VerifiedSuggestionPick,
@@ -684,6 +687,10 @@ export function Home() {
             <OffVerifiedComparePanel
               gtin={offReviewItem.gtin ?? offReviewItem.id}
               link={offReviewItem.offReviewMeta.verifiedLink}
+              offName={offReviewItem.offReviewMeta.offName}
+              offBrand={offReviewItem.offReviewMeta.offBrand}
+              offPer100={offReviewNutritionSources(offReviewItem).offOnlyPer100}
+              per100Basis={offReviewItem.per100Basis === "ml" ? "ml" : "g"}
               appliedPer100={appliedPer100FromForm}
               showFormHint
             />

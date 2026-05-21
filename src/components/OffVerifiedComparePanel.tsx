@@ -1,15 +1,47 @@
-import type { CatalogNutritionPer100g } from "../context/CatalogContext";
+import type { CatalogNutritionPer100g, CatalogPer100Basis } from "../context/CatalogContext";
+import type { OffPendingReview } from "../utils/offCatalog";
 import type { OffVerifiedLinkMeta } from "../utils/offCatalog";
 import { VERIFIED_AUTO_APPLY_MIN_SCORE } from "../utils/verifiedTsv";
 
-function formatPer100(per?: CatalogNutritionPer100g): string {
-  if (!per) return "—";
-  const parts: string[] = [];
-  if (per.calories != null) parts.push(`${per.calories} קק״ל`);
-  if (per.proteinG != null) parts.push(`חלבון ${per.proteinG}g`);
-  if (per.carbsG != null) parts.push(`פחמ׳ ${per.carbsG}g`);
-  if (per.fatG != null) parts.push(`שומן ${per.fatG}g`);
-  return parts.length ? parts.join(" · ") : "—";
+function formatMacro(v: number | undefined, suffix = ""): string {
+  if (v == null || !Number.isFinite(v)) return "—";
+  return `${v}${suffix}`;
+}
+
+function NutritionMacroTable({
+  per,
+  basis = "g",
+}: {
+  per?: CatalogNutritionPer100g;
+  basis?: CatalogPer100Basis;
+}) {
+  const unitLabel = basis === "ml" ? "100 מ״ל" : "100 גרם";
+  const rows: Array<{ label: string; value: string }> = [
+    { label: "קלוריות", value: formatMacro(per?.calories, " קק״ל") },
+    { label: "חלבון", value: formatMacro(per?.proteinG, " g") },
+    { label: "שומן", value: formatMacro(per?.fatG, " g") },
+    { label: "פחמימות", value: formatMacro(per?.carbsG, " g") },
+  ];
+  const hasAny = rows.some((r) => r.value !== "—");
+
+  return (
+    <div className="mt-2 overflow-hidden rounded-lg border border-white/10 bg-black/25">
+      <p className="border-b border-white/10 bg-white/[0.04] px-2 py-1 text-[10px] font-medium text-ink-dim">
+        תזונה ל־{unitLabel}
+        {!hasAny ? " · אין נתונים" : ""}
+      </p>
+      <table className="w-full text-[11px]">
+        <tbody>
+          {rows.map((r) => (
+            <tr key={r.label} className="border-b border-white/5 last:border-0">
+              <td className="w-[38%] px-2 py-1.5 text-ink-dim">{r.label}</td>
+              <td className="px-2 py-1.5 font-medium text-white tabular-nums">{r.value}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
 }
 
 function SourceColumn({
@@ -19,6 +51,7 @@ function SourceColumn({
   brand,
   category,
   nutrition,
+  basis,
   accent,
 }: {
   title: string;
@@ -27,6 +60,7 @@ function SourceColumn({
   brand?: string;
   category?: string;
   nutrition?: CatalogNutritionPer100g;
+  basis?: CatalogPer100Basis;
   accent: "sky" | "emerald";
 }) {
   const border =
@@ -51,19 +85,36 @@ function SourceColumn({
             <dd className="text-white/90">{category}</dd>
           </div>
         ) : null}
-        <div>
-          <dt className="text-ink-dim">תזונה ל־100g</dt>
-          <dd className="text-white/90 leading-snug">{formatPer100(nutrition)}</dd>
-        </div>
       </dl>
+      <NutritionMacroTable per={nutrition} basis={basis} />
     </div>
   );
+}
+
+/** Resolve OFF / verified macros for items imported before offPer100 was stored. */
+export function offReviewNutritionSources(item: OffPendingReview) {
+  const link = item.offReviewMeta.verifiedLink;
+  const basis = item.per100Basis === "ml" ? "ml" : "g";
+  const staged = item.nutrition?.per100g;
+
+  const offPer100 =
+    link?.offPer100 ??
+    (link?.nutritionFromVerified ? undefined : staged);
+  const verifiedPer100 =
+    link?.verifiedPer100 ?? (link?.nutritionFromVerified ? staged : undefined);
+
+  const offOnlyPer100 = link ? offPer100 : staged;
+
+  return { link, basis, offPer100, verifiedPer100, offOnlyPer100, staged };
 }
 
 type OffVerifiedComparePanelProps = {
   gtin?: string;
   link?: OffVerifiedLinkMeta;
-  /** Current staged/saved nutrition (what the form uses). */
+  offName?: string;
+  offBrand?: string;
+  offPer100?: CatalogNutritionPer100g;
+  per100Basis?: CatalogPer100Basis;
   appliedPer100?: CatalogNutritionPer100g;
   showFormHint?: boolean;
 };
@@ -71,30 +122,52 @@ type OffVerifiedComparePanelProps = {
 export function OffVerifiedComparePanel({
   gtin,
   link,
+  offName,
+  offBrand,
+  offPer100,
+  per100Basis = "g",
   appliedPer100,
   showFormHint,
 }: OffVerifiedComparePanelProps) {
+  const displayOffName = link?.offName ?? offName ?? "—";
+  const displayOffBrand = link?.offBrand ?? offBrand;
+  const offNutrition = link?.offPer100 ?? offPer100;
+
   if (!link) {
     return (
-      <div className="rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-[11px] leading-relaxed text-ink-muted">
-        <p className="font-semibold text-amber-100/95">אין התאמה למאגר המאומת</p>
-        <p className="mt-1">
-          רק נתוני OFF (ברקוד {gtin ?? "—"}). בדקי שם ומותג לפני הוספה למאגר.
+      <div className="space-y-2">
+        <p className="text-[11px] font-semibold text-amber-100/95">
+          Open Food Facts — אין התאמה למאגר המאומת
+        </p>
+        <SourceColumn
+          title="Open Food Facts"
+          subtitle={gtin ? `ברקוד ${gtin}` : "מקור ברקוד"}
+          name={displayOffName}
+          brand={displayOffBrand}
+          nutrition={offNutrition}
+          basis={per100Basis}
+          accent="sky"
+        />
+        <p className="text-[10px] text-ink-dim leading-relaxed">
+          בדקי שם, מותג ותזונה לפני «הוסף למאגר». «ערוך» מאפשר חיפוש במאגר המאומת לפי שם/מותג.
         </p>
       </div>
     );
   }
 
+  const verifiedNutrition = link.verifiedPer100;
+
   return (
     <div className="space-y-2">
-      <p className="text-[11px] font-semibold text-violet-100">השוואה לפני החלטה — שם ומותג (לא ברקוד)</p>
+      <p className="text-[11px] font-semibold text-violet-100">השוואה לפני החלטה (לא לפי ברקוד)</p>
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
         <SourceColumn
           title="Open Food Facts"
           subtitle={gtin ? `ברקוד ${gtin}` : "מקור ברקוד"}
           name={link.offName}
           brand={link.offBrand}
-          nutrition={link.offPer100}
+          nutrition={offNutrition}
+          basis={per100Basis}
           accent="sky"
         />
         <SourceColumn
@@ -103,18 +176,24 @@ export function OffVerifiedComparePanel({
           name={link.verifiedName}
           brand={link.verifiedBrand}
           category={link.verifiedCategory}
-          nutrition={link.verifiedPer100}
+          nutrition={verifiedNutrition}
+          basis="g"
           accent="emerald"
         />
       </div>
       <p className="text-[10px] text-ink-dim leading-relaxed">
         ציון התאמה: {link.matchScore} (אוטו מ־{VERIFIED_AUTO_APPLY_MIN_SCORE}+) · תזונה בטופס:{" "}
-        {link.nutritionFromVerified ? "מהמאומת" : "מ־OFF"}
-        {appliedPer100 ? ` · ${formatPer100(appliedPer100)}` : ""}
+        {link.nutritionFromVerified ? "מהמאומת (100g)" : "מ־OFF"}
+        {appliedPer100 ?
+          ` · נבחר: ${formatMacro(appliedPer100.calories, " קק״ל")}, ח${formatMacro(appliedPer100.proteinG, "g")}, ש${formatMacro(appliedPer100.fatG, "g")}, פ${formatMacro(appliedPer100.carbsG, "g")}`
+        : null}
+        {!offNutrition && !verifiedNutrition ?
+          " · חלק מהערכים חסרים בייבוא ישן"
+        : null}
       </p>
       {showFormHint ? (
         <p className="rounded-lg border border-white/10 bg-white/[0.04] px-2.5 py-2 text-[10px] text-ink-muted leading-relaxed">
-          השדות למטה = מה שיישמר במאגר. אם השם/מותג לא תואמים — ערכי בטופס לפני «הוסף למאגר».
+          השדות בעריכה = מה שיישמר במאגר. אם השם/מותג לא תואמים — תקני לפני «הוסף למאגר».
         </p>
       ) : null}
     </div>
