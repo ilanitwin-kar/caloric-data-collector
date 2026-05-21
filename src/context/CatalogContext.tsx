@@ -7,7 +7,16 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { onValue, push, ref, remove, set, update, type DataSnapshot } from "firebase/database";
+import {
+  get,
+  onValue,
+  push,
+  ref,
+  remove,
+  set,
+  update,
+  type DataSnapshot,
+} from "firebase/database";
 import { db } from "../firebase";
 import { useAuth } from "./AuthContext";
 import { useToast } from "./ToastContext";
@@ -38,6 +47,7 @@ import {
   offImportCheckpointIsResumable,
   offImportIsFullyComplete,
   OFF_IMPORT_PAGE_SIZE,
+  OFF_IMPORT_PAGES_PER_RUN,
 } from "../utils/offImportProgress";
 
 export type CatalogNutritionPer100g = {
@@ -367,10 +377,15 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
   }, [user, cloudSyncPaused]);
 
   useEffect(() => {
-    if (user && !cloudSyncPaused) {
-      const local = readLocalOffImportCheckpoint(user.uid);
-      if (local) setOffImportCheckpoint(local);
-    }
+    if (!user || cloudSyncPaused) return;
+    const local = readLocalOffImportCheckpoint(user.uid);
+    if (!local || !offImportCheckpointIsResumable(local)) return;
+    setOffImportCheckpoint(local);
+    void get(ref(db, `users/${user.uid}/catalog/meta/offImportCheckpoint`)).then((snap) => {
+      if (!snap.val() && offImportCheckpointIsResumable(local)) {
+        void set(ref(db, `users/${user.uid}/catalog/meta/offImportCheckpoint`), local);
+      }
+    });
   }, [user, cloudSyncPaused]);
 
   useEffect(() => {
@@ -426,16 +441,18 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
     const unsubCk = onValue(rck, (snap: DataSnapshot) => {
       setOffImportCheckpointReady(true);
       const v = snap.val() as OffImportCheckpoint | null;
-      const ck =
-        v && offImportCheckpointIsResumable(v) ?
-          v
-        : v?.stopReason === "complete" && !offImportCheckpointIsResumable(v) ?
-          null
-        : v && v.nextPage >= 1 ?
-          v
-        : null;
-      setOffImportCheckpoint(ck);
-      writeLocalOffImportCheckpoint(user.uid, ck);
+      if (v && offImportCheckpointIsResumable(v)) {
+        setOffImportCheckpoint(v);
+        writeLocalOffImportCheckpoint(user.uid, v);
+        return;
+      }
+      const local = readLocalOffImportCheckpoint(user.uid);
+      if (local) {
+        setOffImportCheckpoint(local);
+        return;
+      }
+      setOffImportCheckpoint(null);
+      writeLocalOffImportCheckpoint(user.uid, null);
     });
     return () => {
       unsubTrips();
@@ -726,9 +743,19 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
           : normalizeBarcode(p.gtin ?? p.id);
         if (key.length >= 6) existingById.set(key, p);
       }
-      const existingOffPending = new Set(
-        offPendingReviews.map((p) => normalizeBarcode(p.gtin ?? p.id)).filter((k) => k.length >= 8),
+      const pendingSnap = await get(
+        ref(db, `users/${user.uid}/catalog/offPendingReview`),
       );
+      const pendingVal = pendingSnap.val() as Record<string, unknown> | null;
+      const existingOffPending = new Set<string>();
+      for (const key of Object.keys(pendingVal ?? {})) {
+        const k = normalizeBarcode(key);
+        if (k.length >= 8) existingOffPending.add(k);
+      }
+      for (const p of offPendingReviews) {
+        const k = normalizeBarcode(p.gtin ?? p.id);
+        if (k.length >= 8) existingOffPending.add(k);
+      }
 
       let scanned = 0;
       let skipped = 0;
@@ -810,8 +837,10 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
         });
 
         let iter = await gen.next();
+        let pagesProcessedThisRun = 0;
         while (!iter.done) {
           const page = iter.value;
+          pagesProcessedThisRun += 1;
           for (const record of page) {
             scanned += 1;
             const built = buildCatalogProductFromOffRecord(record, verifiedItems);
@@ -847,6 +876,32 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
               });
             }
           }
+
+          if (pagesProcessedThisRun >= OFF_IMPORT_PAGES_PER_RUN) {
+            await flushPending();
+            const nextPage = lastPageFetched + 1;
+            await persistCheckpoint(nextPage, "paused", lastPageFetched);
+            const expectedLast = totalOffReported
+              ? Math.ceil(totalOffReported / OFF_IMPORT_PAGE_SIZE)
+              : null;
+            showToast(
+              queued > 0
+                ? `נעצר אחרי ${OFF_IMPORT_PAGES_PER_RUN} עמודים — המשך מעמוד ${nextPage}${expectedLast ? ` (מתוך ~${expectedLast})` : ""}`
+                : `נסרקו ${scanned.toLocaleString("he-IL")} (רובם כבר ברשימה) — המשך מעמוד ${nextPage}${expectedLast ? ` (מתוך ~${expectedLast})` : ""}`,
+              "success",
+            );
+            return {
+              scanned,
+              skipped,
+              queued,
+              verifiedOverrides,
+              completed: false,
+              stoppedEarly: true,
+              resumeNextPage: nextPage,
+              totalOffReported,
+            };
+          }
+
           iter = await gen.next();
         }
 

@@ -15,6 +15,9 @@ export type OffImportCheckpoint = {
 
 export const OFF_IMPORT_PAGE_SIZE = 100;
 
+/** OFF rate-limits browsers — only a few pages per button click. */
+export const OFF_IMPORT_PAGES_PER_RUN = 4;
+
 export function offImportExpectedLastPage(
   totalReported?: number,
   pageSize = OFF_IMPORT_PAGE_SIZE,

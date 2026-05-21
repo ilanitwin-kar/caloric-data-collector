@@ -1,12 +1,16 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Spinner } from "../components/Spinner";
+import { useAuth } from "../context/AuthContext";
 import { useCatalog } from "../context/CatalogContext";
 import { useVerified100 } from "../context/Verified100Context";
+import { readLocalOffImportCheckpoint } from "../utils/offImportCheckpointStorage";
 import { countOffImportedCatalogProducts } from "../utils/offCatalogPolicy";
 import {
+  offImportCheckpointIsResumable,
   offImportExpectedLastPage,
   offImportResumePage,
+  OFF_IMPORT_PAGES_PER_RUN,
 } from "../utils/offImportProgress";
 import {
   clearBodyWeightKg,
@@ -26,6 +30,7 @@ type OffImportProgress = {
 
 export function Settings() {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const {
     catalog,
     importOpenFoodFactsIsrael,
@@ -62,20 +67,29 @@ export function Settings() {
     return () => window.clearTimeout(t);
   }, [bodySavedAt]);
 
-  const resumePage =
-    offImportCheckpointReady && offImportCheckpoint ?
-      offImportResumePage(offImportCheckpoint)
-    : null;
+  const effectiveCheckpoint = useMemo(() => {
+    if (!offImportCheckpointReady) return null;
+    if (offImportCheckpoint && offImportCheckpointIsResumable(offImportCheckpoint)) {
+      return offImportCheckpoint;
+    }
+    if (user) return readLocalOffImportCheckpoint(user.uid);
+    return offImportCheckpoint;
+  }, [offImportCheckpointReady, offImportCheckpoint, user]);
+
+  const resumePage = useMemo(
+    () => offImportResumePage(effectiveCheckpoint),
+    [effectiveCheckpoint],
+  );
 
   const importProgressHint = useMemo(() => {
-    if (!offImportCheckpoint || !resumePage) return null;
-    const last = offImportCheckpoint.lastPageFetched;
-    const expected = offImportExpectedLastPage(offImportCheckpoint.totalOffReported);
+    if (!effectiveCheckpoint || !resumePage) return null;
+    const last = effectiveCheckpoint.lastPageFetched;
+    const expected = offImportExpectedLastPage(effectiveCheckpoint.totalOffReported);
     if (last != null && expected != null) {
       return `התקדמות: עמוד ${last} מתוך ~${expected} ב-OFF`;
     }
     return `המשך מעמוד ${resumePage}`;
-  }, [offImportCheckpoint, resumePage]);
+  }, [effectiveCheckpoint, resumePage]);
 
   async function runOffImport(resume: boolean) {
     if (offImporting) return;
@@ -96,7 +110,7 @@ export function Settings() {
     try {
       const res = await importOpenFoodFactsIsrael(items, {
         signal: ctrl.signal,
-        startPage: resume ? resumePage! : 1,
+        startPage: resume && resumePage ? resumePage : 1,
         onProgress: setOffProgress,
       });
       const parts = [
@@ -252,7 +266,8 @@ export function Settings() {
         <h2 className="text-sm font-semibold text-white">ייבוא Open Food Facts (ישראל)</h2>
         <p className="text-xs leading-relaxed text-ink-muted">
           שלב 1: מוצרים נכנסים ל־<button type="button" className="text-sky-300 underline" onClick={() => navigate("/off-review")}>בדיקת OFF</button> (לא ישר למאגר).
-          שלב 2: אחרי &quot;הוסף למאגר&quot; — נכנס לקטלוג. מוצרים ידניים לא נמחקים.
+          שלב 2: אחרי &quot;הוסף למאגר&quot; — נכנס לקטלוג. כל לחיצה סורקת עד {OFF_IMPORT_PAGES_PER_RUN} עמודים — אז «המשך ייבוא».
+          0 חדשים = רוב הברקודים כבר ברשימת הבדיקה; עדיין צריך להמשיך לעמודים הבאים.
         </p>
         <p className="text-xs text-ink-dim">
           במאגר: {catalog.length.toLocaleString("he-IL")} · מ־OFF (למחיקה):{" "}
@@ -260,13 +275,21 @@ export function Settings() {
           {offPendingReady ? offPendingReviews.length.toLocaleString("he-IL") : "…"}
         </p>
 
-        {resumePage && !offImporting ? (
-          <p className="rounded-xl border border-amber-400/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-100 leading-relaxed">
-            ייבוא לא הסתיים — לחצי «המשך ייבוא (מעמוד {resumePage})».
-            {importProgressHint ? ` ${importProgressHint}.` : ""}
-            {" "}
-            (~6 שניות בין עמודים). «ייבא OFF» מאפס רק אחרי אישור.
-          </p>
+        {offImportCheckpointReady && !offImporting ? (
+          resumePage ? (
+            <p className="rounded-xl border border-amber-400/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-100 leading-relaxed">
+              ייבוא לא הסתיים — לחצי «המשך ייבוא (מעמוד {resumePage})».
+              {importProgressHint ? ` ${importProgressHint}.` : ""}
+              {" "}
+              (~6 שניות בין עמודים). «ייבא OFF» מאפס רק אחרי אישור.
+            </p>
+          ) : (
+            <p className="rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-xs text-ink-muted leading-relaxed">
+              {offImportCheckpoint && !offImportCheckpointIsResumable(offImportCheckpoint) ?
+                `סריקת OFF הגיעה לסוף (עמוד ${offImportCheckpoint.lastPageFetched ?? "?"}). אין המשך — או «ייבא OFF» מחדש מאושר.`
+              : "אין התקדמות שמורה — «ייבא OFF» מתחיל מעמוד 1 (עד 4 עמודים בכל פעם)."}
+            </p>
+          )
         ) : null}
 
         <div className="flex flex-wrap gap-2">
