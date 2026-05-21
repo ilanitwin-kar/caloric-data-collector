@@ -7,6 +7,7 @@ import {
 } from "./openFoodFacts";
 import {
   scoreVerifiedMatch,
+  stableId,
   VERIFIED_AUTO_APPLY_MIN_SCORE,
   type Verified100Row,
 } from "./verifiedTsv";
@@ -38,10 +39,55 @@ export type OffCatalogBuildInput = {
   now?: string;
 };
 
+export type OffVerifiedLinkMeta = {
+  verifiedId: string;
+  verifiedName: string;
+  verifiedBrand?: string;
+  verifiedCategory?: string;
+  matchScore: number;
+  offName: string;
+  offBrand?: string;
+  nutritionFromVerified: boolean;
+};
+
+/** Product staged for review before entering the main catalog. */
+export type OffPendingReview = CatalogProduct & {
+  offReviewMeta: {
+    offName: string;
+    offBrand?: string;
+    verifiedLink?: OffVerifiedLinkMeta;
+  };
+};
+
 export type OffCatalogBuildResult = {
   product: CatalogProduct;
   usedVerified: boolean;
+  off: OpenFoodFactsProduct;
+  verifiedHit: { item: Verified100Row; score: number } | null;
 };
+
+export function toOffPendingReview(built: OffCatalogBuildResult): OffPendingReview {
+  const offName = built.off.productName.trim() || "ללא שם";
+  const offBrand = built.off.brand.trim() || undefined;
+  let verifiedLink: OffVerifiedLinkMeta | undefined;
+  if (built.verifiedHit) {
+    const v = built.verifiedHit.item;
+    verifiedLink = {
+      verifiedId: stableId(v.brand, v.name),
+      verifiedName: v.name,
+      verifiedBrand: v.brand,
+      verifiedCategory: v.category,
+      matchScore: built.verifiedHit.score,
+      offName,
+      offBrand,
+      nutritionFromVerified: built.usedVerified,
+    };
+  }
+  return {
+    ...built.product,
+    offReviewMeta: { offName, offBrand, verifiedLink },
+  };
+}
 
 export function buildCatalogProductFromOff(input: OffCatalogBuildInput): OffCatalogBuildResult | null {
   const gtin = normalizeBarcode(input.gtin);
@@ -134,7 +180,12 @@ export function buildCatalogProductFromOff(input: OffCatalogBuildInput): OffCata
     },
   };
 
-  return { product, usedVerified: Boolean(verifiedHit) };
+  return {
+    product,
+    usedVerified: Boolean(verifiedHit),
+    off,
+    verifiedHit,
+  };
 }
 
 export function buildCatalogProductFromOffRecord(

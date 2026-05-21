@@ -7,6 +7,7 @@ import { useBodyWeightKg } from "../hooks/useBodyWeightKg";
 import { useOffBarcodeLookup } from "../hooks/useOffBarcodeLookup";
 import { fmt1, parseNum } from "../utils/number";
 import { normalizeBarcode } from "../utils/openFoodFacts";
+import type { OffPendingReview } from "../utils/offCatalog";
 import { WALKING_MET, walkingStepsToBurnKcal } from "../utils/walkingBurn";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useToast } from "../context/ToastContext";
@@ -78,6 +79,7 @@ export function Home() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const draftParam = searchParams.get("draft");
+  const offReviewParam = searchParams.get("offReview");
   const {
     catalog,
     upsertByBarcode,
@@ -85,12 +87,17 @@ export function Home() {
     supermarketDrafts,
     supermarketDraftsReady,
     deleteSupermarketDraft,
+    offPendingReviews,
+    offPendingReady,
+    approveOffPendingReview,
   } = useCatalog();
   const { showToast } = useToast();
   const { findMatches, items: verifiedItems } = useVerified100();
   const bodyKg = useBodyWeightKg();
 
   const hydratedDraftParamRef = useRef<string | null>(null);
+  const hydratedOffReviewRef = useRef<string | null>(null);
+  const [offReviewItem, setOffReviewItem] = useState<OffPendingReview | null>(null);
   const [pendingDraftId, setPendingDraftId] = useState<string | null>(null);
   const [isInternal, setIsInternal] = useState(false);
   const [internalId, setInternalId] = useState(() => newInternalId());
@@ -191,7 +198,7 @@ export function Home() {
   const [unitWeightG, setUnitWeightG] = useState("");
   const lastPackEditRef = useRef<"units" | "unitWeight" | null>(null);
 
-  const { offLoading } = useOffBarcodeLookup({
+  const { offLoading, verifiedLink } = useOffBarcodeLookup({
     barcodeDigits,
     enabled: !isInternal,
     skipLookup: isInternal || isAlreadyInCatalog,
@@ -292,6 +299,68 @@ export function Home() {
       hydratedDraftParamRef.current = null;
     }
   }, [draftParam]);
+
+  useEffect(() => {
+    if (!offReviewParam) {
+      hydratedOffReviewRef.current = null;
+      setOffReviewItem(null);
+      return;
+    }
+    if (!offPendingReady) return;
+    const item =
+      offPendingReviews.find((p) => p.id === offReviewParam || p.gtin === offReviewParam) ??
+      null;
+    if (!item) {
+      showToast("פריט OFF לא נמצא ברשימת הבדיקה", "error");
+      return;
+    }
+    if (hydratedOffReviewRef.current === offReviewParam) return;
+    hydratedOffReviewRef.current = offReviewParam;
+    setOffReviewItem(item);
+    setIsInternal(false);
+    setBarcodeRaw(item.gtin ?? item.id);
+    setName(item.name);
+    setShortName(item.shortName ?? "");
+    setBrand(item.brand ?? "");
+    setCategory(item.category ?? "");
+    setKeywordsRaw((item.keywords ?? []).join(", "));
+    if (item.usageTags?.length) setUsageTags(item.usageTags as UsageTag[]);
+    setPer100Basis(item.per100Basis === "ml" ? "ml" : "g");
+    const per = item.nutrition?.per100g;
+    setKcal100(per?.calories != null ? String(per.calories) : "");
+    setProt100(per?.proteinG != null ? String(per.proteinG) : "");
+    setCarb100(per?.carbsG != null ? String(per.carbsG) : "");
+    setFat100(per?.fatG != null ? String(per.fatG) : "");
+    setTotalWeightG(
+      item.package?.totalWeightG != null && item.package.totalWeightG > 0
+        ? fmt1(item.package.totalWeightG)
+        : "",
+    );
+    setUnitsPerPack(
+      item.package?.unitsPerPack != null && item.package.unitsPerPack > 0
+        ? String(item.package.unitsPerPack)
+        : "",
+    );
+    setUnitWeightG(
+      item.package?.unitWeightG != null && item.package.unitWeightG > 0
+        ? fmt1(item.package.unitWeightG)
+        : "",
+    );
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        next.delete("offReview");
+        return next;
+      },
+      { replace: true },
+    );
+  }, [
+    offReviewParam,
+    offPendingReady,
+    offPendingReviews,
+    setSearchParams,
+    showToast,
+  ]);
 
   useEffect(() => {
     if (!draftParam || !supermarketDraftsReady) return;
@@ -448,11 +517,41 @@ export function Home() {
     const unitW = pkg.unitW;
     // If user provided only total weight, treat the entire package/cup as a single unit.
     const inferredUnitsPerPack = units ?? (unitW ? totalW / unitW : 1);
+    const unitWeightG =
+      unitW ?? (inferredUnitsPerPack > 0 ? totalW / inferredUnitsPerPack : undefined);
 
     if (!isInternal) {
       const bc = barcodeDigits;
       if (!bc || bc.length < 8) {
         setError("ברקוד לא תקין (חייב לפחות 8 ספרות).");
+        return;
+      }
+      if (offReviewItem) {
+        const updated: OffPendingReview = {
+          ...offReviewItem,
+          id: bc,
+          gtin: bc,
+          name: n,
+          shortName: shortName.trim() || undefined,
+          brand: brand.trim() || undefined,
+          keywords,
+          category: category.trim() || undefined,
+          usageTags: usage,
+          per100Basis,
+          defaultMeasure,
+          commonMeasures,
+          package: {
+            totalWeightG: totalW,
+            unitsPerPack: inferredUnitsPerPack,
+            unitWeightG: unitWeightG,
+          },
+          measures,
+          nutrition: { per100g: per100 },
+        };
+        await approveOffPendingReview(updated);
+        setOffReviewItem(null);
+        hydratedOffReviewRef.current = null;
+        navigate("/off-review");
         return;
       }
       await upsertByBarcode({
@@ -528,8 +627,36 @@ export function Home() {
             >
               מוצרים לעריכה
             </button>
+            <button
+              type="button"
+              onClick={() => navigate("/off-review")}
+              className="min-h-[48px] touch-manipulation flex-1 rounded-2xl border border-sky-400/25 bg-sky-500/10 px-3 py-2 text-center text-sm font-semibold leading-snug text-sky-50 transition hover:border-sky-400/40 active:scale-[0.99] sm:px-4"
+            >
+              בדיקת OFF
+            </button>
           </div>
         </header>
+
+        {offReviewItem ? (
+          <div className="rounded-2xl border border-sky-400/30 bg-sky-500/10 px-4 py-3 space-y-2">
+            <p className="text-sm font-semibold text-sky-50">בדיקת OFF — ברקוד {offReviewItem.gtin}</p>
+            {offReviewItem.offReviewMeta.verifiedLink ? (
+              <p className="text-xs leading-relaxed text-sky-100/90">
+                התאמה למאומת (לפי שם, לא ברקוד):{" "}
+                {offReviewItem.offReviewMeta.verifiedLink.verifiedName}
+                {offReviewItem.offReviewMeta.verifiedLink.verifiedBrand
+                  ? ` · ${offReviewItem.offReviewMeta.verifiedLink.verifiedBrand}`
+                  : ""}{" "}
+                (ציון {offReviewItem.offReviewMeta.verifiedLink.matchScore}). OFF:{" "}
+                {offReviewItem.offReviewMeta.verifiedLink.offName}
+              </p>
+            ) : (
+              <p className="text-xs text-sky-100/80">
+                אין התאמה למאגר המאומת — ודאי שהברקוד והשם תואמים לאותו מוצר.
+              </p>
+            )}
+          </div>
+        ) : null}
 
         <section className="rounded-2xl border border-white/10 bg-white/[0.03] p-4 space-y-4">
           <label className="flex items-center gap-3 text-sm text-white">
@@ -570,6 +697,23 @@ export function Home() {
                   {offLoading ? "טוען OFF…" : barcodeDigits ? `מנורמל: ${barcodeDigits}` : "—"}
                 </div>
               </div>
+              {verifiedLink && !offReviewItem ? (
+                <div className="rounded-xl border border-sky-400/25 bg-sky-500/10 px-3 py-2 text-[11px] leading-relaxed text-sky-100/90">
+                  <p className="font-semibold text-sky-50">התאמה למאגר המאומת (לפי שם — לא ברקוד)</p>
+                  <p>
+                    OFF: {verifiedLink.offName}
+                    {verifiedLink.offBrand ? ` · ${verifiedLink.offBrand}` : ""}
+                  </p>
+                  <p>
+                    מאומת: {verifiedLink.verifiedName}
+                    {verifiedLink.verifiedBrand ? ` · ${verifiedLink.verifiedBrand}` : ""} · ציון{" "}
+                    {verifiedLink.matchScore}
+                  </p>
+                  <p className="text-ink-dim">
+                    התזונה הוחלה מהמאומת. ודאי שזה אותו מוצר לפני שמירה למאגר.
+                  </p>
+                </div>
+              ) : null}
               {existingByBarcode && existingBarcodeDismissed !== barcodeDigits ? (
                 <div className="rounded-xl border border-amber-400/30 bg-amber-500/10 px-3 py-2">
                   <div className="flex items-start justify-between gap-2">
@@ -1078,7 +1222,7 @@ export function Home() {
           onClick={() => void handleSave()}
           className="min-h-[52px] w-full rounded-2xl bg-white text-base font-semibold text-black transition hover:bg-neutral-200 active:scale-[0.99]"
         >
-          שמור מוצר למאגר
+          {offReviewItem ? "הוסף למאגר (אחרי בדיקה)" : "שמור מוצר למאגר"}
         </button>
       </div>
 
