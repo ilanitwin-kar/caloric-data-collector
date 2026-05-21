@@ -1,7 +1,9 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { Spinner } from "../components/Spinner";
 import { useCatalog } from "../context/CatalogContext";
 import { useVerified100 } from "../context/Verified100Context";
+import { countOffImportedCatalogProducts } from "../utils/offCatalogPolicy";
 import {
   clearBodyWeightKg,
   readBodyWeightKg,
@@ -19,7 +21,17 @@ type OffImportProgress = {
 };
 
 export function Settings() {
-  const { catalog, importOpenFoodFactsIsrael } = useCatalog();
+  const navigate = useNavigate();
+  const {
+    catalog,
+    importOpenFoodFactsIsrael,
+    offPendingReviews,
+    offPendingReady,
+    offImportCheckpoint,
+    offImportCheckpointReady,
+    purgeOffImportedFromCatalog,
+    clearOffImportCheckpoint,
+  } = useCatalog();
   const { items, loading, importTsv } = useVerified100();
   const [importing, setImporting] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -28,9 +40,12 @@ export function Settings() {
   const [bodyError, setBodyError] = useState<string | null>(null);
 
   const [offImporting, setOffImporting] = useState(false);
+  const [purgingOff, setPurgingOff] = useState(false);
   const [offProgress, setOffProgress] = useState<OffImportProgress | null>(null);
   const [offResult, setOffResult] = useState<string | null>(null);
   const offAbortRef = useRef<AbortController | null>(null);
+
+  const offInCatalogCount = useMemo(() => countOffImportedCatalogProducts(catalog), [catalog]);
 
   useEffect(() => {
     const w = readBodyWeightKg();
@@ -43,7 +58,7 @@ export function Settings() {
     return () => window.clearTimeout(t);
   }, [bodySavedAt]);
 
-  async function handleOffImport() {
+  async function runOffImport(resume: boolean) {
     if (offImporting) return;
     const ctrl = new AbortController();
     offAbortRef.current = ctrl;
@@ -53,11 +68,24 @@ export function Settings() {
     try {
       const res = await importOpenFoodFactsIsrael(items, {
         signal: ctrl.signal,
+        startPage: resume ? offImportCheckpoint?.nextPage : undefined,
         onProgress: setOffProgress,
       });
-      setOffResult(
-        `הייבוא הסתיים · נסרקו ${res.scanned.toLocaleString("he-IL")} · נוספו ${res.added.toLocaleString("he-IL")} · דולגו ${res.skipped.toLocaleString("he-IL")} · תזונה מהמאומת: ${res.verifiedOverrides.toLocaleString("he-IL")}`,
-      );
+      const parts = [
+        res.completed
+          ? "הייבוא הסתיים"
+          : `נעצר (מגבלת OFF)${res.resumeNextPage != null ? ` · המשך מעמוד ${res.resumeNextPage}` : ""}`,
+        `נסרקו ${res.scanned.toLocaleString("he-IL")}`,
+        `לבדיקה: ${res.queued.toLocaleString("he-IL")}`,
+        `דולגו ${res.skipped.toLocaleString("he-IL")}`,
+      ];
+      if (res.stoppedEarly && res.resumeNextPage) {
+        parts.push(`המשך מעמוד ${res.resumeNextPage}`);
+      }
+      if (res.totalOffReported) {
+        parts.push(`(~${res.totalOffReported.toLocaleString("he-IL")} ב-OFF ישראל)`);
+      }
+      setOffResult(parts.join(" · "));
     } catch {
       setOffResult("ייבוא נכשל");
     } finally {
@@ -67,9 +95,30 @@ export function Settings() {
     }
   }
 
+  async function handlePurgeOffCatalog() {
+    if (purgingOff || offInCatalogCount === 0) return;
+    const ok = window.confirm(
+      `למחוק ${offInCatalogCount.toLocaleString("he-IL")} מוצרים שיובאו מ-OFF מהמאגר?\n\nמוצרים ששמרת ידנית (או ללא מקור OFF) לא יימחקו.`,
+    );
+    if (!ok) return;
+    setPurgingOff(true);
+    try {
+      await purgeOffImportedFromCatalog();
+      await clearOffImportCheckpoint();
+      setOffResult(null);
+    } finally {
+      setPurgingOff(false);
+    }
+  }
+
   function cancelOffImport() {
     offAbortRef.current?.abort();
   }
+
+  const canResume =
+    offImportCheckpointReady &&
+    offImportCheckpoint?.stopReason === "rate_limited" &&
+    offImportCheckpoint.nextPage > 1;
 
   return (
     <div className="space-y-8 pb-4">
@@ -176,24 +225,51 @@ export function Settings() {
         </div>
       </section>
 
-      <section className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+      <section className="rounded-2xl border border-white/10 bg-white/[0.03] p-4 space-y-3">
         <h2 className="text-sm font-semibold text-white">ייבוא Open Food Facts (ישראל)</h2>
-        <p className="mt-1 text-xs leading-relaxed text-ink-muted">
-          מוסיף לקטלוג מוצרים עם ברקוד מ־OFF (ישראל + תזונה). לא דורס מוצרים שכבר בקטלוג או שנשמרו
-          ידנית. אם שם+מותג תואמים למאגר המאומת ({items.length.toLocaleString("he-IL")} פריטים) —
-          נשמרת התזונה המאומתת. הריצה יכולה לקחת כמה דקות — עקבי אחרי מספר העמוד שעולה.
+        <p className="text-xs leading-relaxed text-ink-muted">
+          שלב 1: מוצרים נכנסים ל־<button type="button" className="text-sky-300 underline" onClick={() => navigate("/off-review")}>בדיקת OFF</button> (לא ישר למאגר).
+          שלב 2: אחרי &quot;הוסף למאגר&quot; — נכנס לקטלוג. מוצרים ידניים לא נמחקים.
         </p>
-        <p className="mt-2 text-xs text-ink-dim">
-          בקטלוג כרגע: {catalog.length.toLocaleString("he-IL")} מוצרים
+        <p className="text-xs text-ink-dim">
+          במאגר: {catalog.length.toLocaleString("he-IL")} · מ־OFF (למחיקה):{" "}
+          {offInCatalogCount.toLocaleString("he-IL")} · ממתינים לבדיקה:{" "}
+          {offPendingReady ? offPendingReviews.length.toLocaleString("he-IL") : "…"}
         </p>
-        <div className="mt-3 flex flex-wrap gap-2">
+
+        {canResume ? (
+          <p className="rounded-xl border border-amber-400/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-100">
+            ייבוא קודם נעצר — אפשר להמשיך מעמוד {offImportCheckpoint!.nextPage} (המתנה ~6 שניות
+            בין עמודים).
+          </p>
+        ) : null}
+
+        <div className="flex flex-wrap gap-2">
           <button
             type="button"
-            disabled={offImporting || loading}
-            onClick={() => void handleOffImport()}
+            disabled={offImporting || loading || purgingOff}
+            onClick={() => void runOffImport(false)}
             className="min-h-[44px] rounded-xl bg-white px-4 text-sm font-semibold text-black transition hover:bg-neutral-200 disabled:opacity-50"
           >
-            {offImporting ? "מייבא OFF…" : "ייבא מוצרי OFF לישראל"}
+            {offImporting ? "מייבא OFF…" : "ייבא OFF (מעמוד 1)"}
+          </button>
+          {canResume ? (
+            <button
+              type="button"
+              disabled={offImporting || loading || purgingOff}
+              onClick={() => void runOffImport(true)}
+              className="min-h-[44px] rounded-xl border border-amber-400/40 bg-amber-500/15 px-4 text-sm font-semibold text-amber-50 disabled:opacity-50"
+            >
+              המשך ייבוא
+            </button>
+          ) : null}
+          <button
+            type="button"
+            disabled={purgingOff || offImporting || offInCatalogCount === 0}
+            onClick={() => void handlePurgeOffCatalog()}
+            className="min-h-[44px] rounded-xl border border-red-400/35 bg-red-500/10 px-4 text-sm font-semibold text-red-100 disabled:opacity-50"
+          >
+            {purgingOff ? "מוחק…" : `מחק ייבוא OFF מהמאגר (${offInCatalogCount})`}
           </button>
           {offImporting ? (
             <button
@@ -205,24 +281,27 @@ export function Settings() {
             </button>
           ) : null}
         </div>
+
+        <p className="text-[11px] text-ink-dim leading-relaxed">
+          סדר מומלץ: מחק ייבוא OFF מהמאגר → ייבא OFF מחדש → בדיקת OFF → הוסף למאגר.
+        </p>
+
         {offProgress ? (
-          <div className="mt-3 rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-xs text-ink-muted">
+          <div className="rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-xs text-ink-muted">
             {offProgress.phase === "fetch" ? (
               <p>
                 שלב איסוף
                 {offProgress.page != null ? ` · עמוד ${offProgress.page}` : ""} · נסרקו{" "}
                 {offProgress.scanned.toLocaleString("he-IL")} · דולגו{" "}
-                {offProgress.skipped.toLocaleString("he-IL")} · בתור{" "}
+                {offProgress.skipped.toLocaleString("he-IL")} · לבדיקה בתור{" "}
                 {offProgress.queued.toLocaleString("he-IL")}
               </p>
             ) : (
-              <p>
-                שלב שמירה · נכתבו {offProgress.written.toLocaleString("he-IL")}
-              </p>
+              <p>שלב שמירה לבדיקה · {offProgress.written.toLocaleString("he-IL")}</p>
             )}
           </div>
         ) : null}
-        {offResult ? <p className="mt-2 text-xs text-emerald-200">{offResult}</p> : null}
+        {offResult ? <p className="text-xs text-emerald-200 leading-relaxed">{offResult}</p> : null}
       </section>
     </div>
   );

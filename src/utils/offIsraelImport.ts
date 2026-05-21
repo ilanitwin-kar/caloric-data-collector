@@ -12,12 +12,22 @@ export type OffIsraelPageProgress = {
   totalSeen: number;
 };
 
+export type OffIsraelFetchStopReason = "complete" | "rate_limited" | "empty";
+
 export type FetchOffIsraelPagesOpts = {
   pageSize?: number;
   maxPages?: number;
+  /** First page to fetch (1-based). Used to resume after rate limits. */
+  startPage?: number;
   delayMs?: number;
   signal?: AbortSignal;
   onPage?: (p: OffIsraelPageProgress) => void;
+};
+
+export type OffIsraelFetchSummary = {
+  stopReason: OffIsraelFetchStopReason;
+  lastPageFetched: number;
+  totalReportedCount?: number;
 };
 
 function sleep(ms: number, signal?: AbortSignal): Promise<void> {
@@ -42,15 +52,40 @@ function sleep(ms: number, signal?: AbortSignal): Promise<void> {
  * Paginates Open Food Facts search for products tagged with Israel.
  * Yields raw product records (caller maps to catalog).
  */
+export async function fetchOffIsraelReportedCount(signal?: AbortSignal): Promise<number | undefined> {
+  for (const origin of OFF_API_ORIGINS) {
+    const url = new URL(`${origin}/cgi/search.pl`);
+    url.searchParams.set("action", "process");
+    url.searchParams.set("json", "1");
+    url.searchParams.set("tagtype_0", "countries");
+    url.searchParams.set("tag_contains_0", "contains");
+    url.searchParams.set("tag_0", "Israel");
+    url.searchParams.set("page_size", "1");
+    url.searchParams.set("page", "1");
+    try {
+      const res = await fetch(url.toString(), { signal, headers: OFF_REQUEST_HEADERS });
+      if (!res.ok) continue;
+      const json = (await res.json()) as { count?: number };
+      if (typeof json.count === "number" && json.count > 0) return json.count;
+    } catch {
+      continue;
+    }
+  }
+  return undefined;
+}
+
 export async function* fetchOffIsraelProductPages(
   opts?: FetchOffIsraelPagesOpts,
-): AsyncGenerator<Record<string, unknown>[], void, void> {
+): AsyncGenerator<Record<string, unknown>[], OffIsraelFetchSummary, void> {
   const pageSize = Math.max(20, Math.min(100, opts?.pageSize ?? 100));
   const maxPages = Math.max(1, Math.min(500, opts?.maxPages ?? 300));
-  const delayMs = Math.max(0, opts?.delayMs ?? 350);
+  const delayMs = Math.max(0, opts?.delayMs ?? 6500);
+  const startPage = Math.max(1, opts?.startPage ?? 1);
   let totalSeen = 0;
+  let lastPageFetched = startPage - 1;
+  let totalReportedCount: number | undefined;
 
-  for (let page = 1; page <= maxPages; page++) {
+  for (let page = startPage; page <= maxPages; page++) {
     if (opts?.signal?.aborted) throw new DOMException("Aborted", "AbortError");
 
     let products: Record<string, unknown>[] | null = null;
@@ -95,7 +130,11 @@ export async function* fetchOffIsraelProductPages(
         continue;
       }
 
-      const raw = (json as { products?: unknown }).products;
+      const payload = json as { products?: unknown; count?: number };
+      if (typeof payload.count === "number" && payload.count > 0) {
+        totalReportedCount = payload.count;
+      }
+      const raw = payload.products;
       if (!Array.isArray(raw)) continue;
 
       const batch: Record<string, unknown>[] = [];
@@ -115,19 +154,30 @@ export async function* fetchOffIsraelProductPages(
     }
 
     if (!products) {
-      if (page === 1) {
+      if (page === startPage) {
         throw new Error("לא הצלחנו להביא מוצרים מ-Open Food Facts (רשת או חסימה).");
       }
-      return;
+      return {
+        stopReason: "rate_limited",
+        lastPageFetched,
+        totalReportedCount,
+      };
     }
 
+    lastPageFetched = page;
     totalSeen += products.length;
     opts?.onPage?.({ page, productsOnPage: products.length, totalSeen });
 
-    if (products.length === 0 && rawPageCount === 0) return;
+    if (products.length === 0 && rawPageCount === 0) {
+      return { stopReason: "empty", lastPageFetched, totalReportedCount };
+    }
     if (products.length > 0) yield products;
 
-    if (rawPageCount < pageSize) return;
+    if (rawPageCount < pageSize) {
+      return { stopReason: "complete", lastPageFetched, totalReportedCount };
+    }
     if (page < maxPages && delayMs > 0) await sleep(delayMs, opts?.signal);
   }
+
+  return { stopReason: "complete", lastPageFetched, totalReportedCount };
 }

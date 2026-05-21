@@ -1,9 +1,18 @@
 import { NavLink } from "react-router-dom";
+import { useCatalog } from "../context/CatalogContext";
 
 function IconHome({ className }: { className?: string }) {
   return (
     <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} aria-hidden>
       <path strokeLinecap="round" strokeLinejoin="round" d="m2.25 12 8.954-8.955c.44-.439 1.152-.439 1.591 0L21.75 12M4.5 9.75v10.125c0 .621.504 1.125 1.125 1.125H9v-4.875c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21h4.125c.621 0 1.125-.504 1.125-1.125V9.75M8.25 21h8.25" />
+    </svg>
+  );
+}
+
+function IconClipboard({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} aria-hidden>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2M9 5a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2M9 5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2m-6 9 2 2 4-4" />
     </svg>
   );
 }
@@ -30,6 +39,9 @@ const tab =
   "flex min-h-[52px] flex-1 flex-col items-center justify-center gap-1 rounded-xl px-2 text-[11px] font-medium transition-colors";
 
 export function BottomNav() {
+  const { offPendingReviews, offPendingReady } = useCatalog();
+  const offCount = offPendingReady ? offPendingReviews.length : 0;
+
   return (
     <nav
       className="fixed bottom-0 left-0 right-0 z-40 border-t border-white/10 bg-black/90 px-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-2 backdrop-blur-md"
@@ -46,6 +58,22 @@ export function BottomNav() {
         >
           <IconHome className="h-6 w-6" />
           בית
+        </NavLink>
+        <NavLink
+          to="/off-review"
+          className={({ isActive }) =>
+            `${tab} relative ${isActive ? "text-white" : "text-ink-muted hover:text-white/80"}`
+          }
+        >
+          <IconClipboard className="h-6 w-6" />
+          <span className="flex items-center gap-1">
+            בדיקת OFF
+            {offCount > 0 ? (
+              <span className="rounded-full bg-sky-500 px-1.5 py-0.5 text-[9px] font-bold text-white">
+                {offCount > 99 ? "99+" : offCount}
+              </span>
+            ) : null}
+          </span>
         </NavLink>
         <NavLink
           to="/catalog"

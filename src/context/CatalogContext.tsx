@@ -15,9 +15,18 @@ import { normalizeBarcode } from "../utils/openFoodFacts";
 import {
   buildCatalogProductFromOffRecord,
   catalogEntryBlocksOffImport,
+  toOffPendingReview,
+  type OffPendingReview,
 } from "../utils/offCatalog";
+import { isOffImportedCatalogProduct } from "../utils/offCatalogPolicy";
 import { fetchOffIsraelProductPages } from "../utils/offIsraelImport";
 import type { Verified100Row } from "../utils/verifiedTsv";
+
+export type OffImportCheckpoint = {
+  nextPage: number;
+  stopReason: "rate_limited" | "complete";
+  updatedAt: string;
+};
 
 export type CatalogNutritionPer100g = {
   calories?: number;
@@ -193,6 +202,7 @@ type CatalogContextValue = {
   importOpenFoodFactsIsrael: (
     verifiedItems: Verified100Row[],
     opts?: {
+      startPage?: number;
       signal?: AbortSignal;
       onProgress?: (p: {
         phase: "fetch" | "write";
@@ -203,7 +213,25 @@ type CatalogContextValue = {
         written: number;
       }) => void;
     },
-  ) => Promise<{ scanned: number; skipped: number; added: number; verifiedOverrides: number }>;
+  ) => Promise<{
+    scanned: number;
+    skipped: number;
+    queued: number;
+    verifiedOverrides: number;
+    completed: boolean;
+    stoppedEarly: boolean;
+    resumeNextPage?: number;
+    totalOffReported?: number;
+  }>;
+  offImportCheckpoint: OffImportCheckpoint | null;
+  offImportCheckpointReady: boolean;
+  clearOffImportCheckpoint: () => Promise<void>;
+  purgeOffImportedFromCatalog: () => Promise<{ removed: number; kept: number }>;
+  offPendingReviews: OffPendingReview[];
+  offPendingReady: boolean;
+  approveOffPendingReview: (item: OffPendingReview) => Promise<void>;
+  rejectOffPendingReview: (id: string) => Promise<void>;
+  updateOffPendingReview: (item: OffPendingReview) => Promise<void>;
   deleteProduct: (id: string) => Promise<void>;
   supermarketTrips: SupermarketTrip[];
   supermarketDrafts: SupermarketDraft[];
@@ -247,6 +275,12 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
   const [supermarketTripsReady, setSupermarketTripsReady] = useState(false);
   const [supermarketDrafts, setSupermarketDrafts] = useState<SupermarketDraft[]>([]);
   const [supermarketDraftsReady, setSupermarketDraftsReady] = useState(false);
+  const [offPendingReviews, setOffPendingReviews] = useState<OffPendingReview[]>([]);
+  const [offPendingReady, setOffPendingReady] = useState(false);
+  const [offImportCheckpoint, setOffImportCheckpoint] = useState<OffImportCheckpoint | null>(
+    null,
+  );
+  const [offImportCheckpointReady, setOffImportCheckpointReady] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [stuckHint, setStuckHint] = useState<string | null>(null);
@@ -324,12 +358,18 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
     if (!user || cloudSyncPaused) {
       setSupermarketTrips([]);
       setSupermarketDrafts([]);
+      setOffPendingReviews([]);
+      setOffImportCheckpoint(null);
       setSupermarketTripsReady(false);
       setSupermarketDraftsReady(false);
+      setOffPendingReady(false);
+      setOffImportCheckpointReady(false);
       return;
     }
     const rt = ref(db, `users/${user.uid}/catalog/supermarketTrips`);
     const rd = ref(db, `users/${user.uid}/catalog/supermarketDrafts`);
+    const ro = ref(db, `users/${user.uid}/catalog/offPendingReview`);
+    const rck = ref(db, `users/${user.uid}/catalog/meta/offImportCheckpoint`);
     const unsubTrips = onValue(rt, (snap: DataSnapshot) => {
       setSupermarketTripsReady(true);
       const v = snap.val() as Record<string, Omit<SupermarketTrip, "id">> | null;
@@ -354,9 +394,26 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
       );
       setSupermarketDrafts(list);
     });
+    const unsubOff = onValue(ro, (snap: DataSnapshot) => {
+      setOffPendingReady(true);
+      const v = snap.val() as Record<string, OffPendingReview> | null;
+      const list = v ? Object.values(v) : [];
+      list.sort(
+        (a, b) =>
+          new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
+      );
+      setOffPendingReviews(list);
+    });
+    const unsubCk = onValue(rck, (snap: DataSnapshot) => {
+      setOffImportCheckpointReady(true);
+      const v = snap.val() as OffImportCheckpoint | null;
+      setOffImportCheckpoint(v && v.nextPage > 0 ? v : null);
+    });
     return () => {
       unsubTrips();
       unsubDrafts();
+      unsubOff();
+      unsubCk();
     };
   }, [user, cloudSyncPaused]);
 
@@ -603,6 +660,7 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
     async (
       verifiedItems: Verified100Row[],
       opts?: {
+        startPage?: number;
         signal?: AbortSignal;
         onProgress?: (p: {
           phase: "fetch" | "write";
@@ -616,8 +674,21 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
     ) => {
       if (!user) {
         showToast("צריך להתחבר כדי לייבא", "error");
-        return { scanned: 0, skipped: 0, added: 0, verifiedOverrides: 0 };
+        return {
+          scanned: 0,
+          skipped: 0,
+          queued: 0,
+          verifiedOverrides: 0,
+          completed: false,
+          stoppedEarly: false,
+        };
       }
+
+      const startPage =
+        opts?.startPage ??
+        (offImportCheckpoint?.stopReason === "rate_limited"
+          ? offImportCheckpoint.nextPage
+          : 1);
 
       const existingById = new Map<string, CatalogProduct>();
       for (const p of catalog) {
@@ -626,36 +697,48 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
           : normalizeBarcode(p.gtin ?? p.id);
         if (key.length >= 6) existingById.set(key, p);
       }
+      const existingOffPending = new Set(
+        offPendingReviews.map((p) => normalizeBarcode(p.gtin ?? p.id)).filter((k) => k.length >= 8),
+      );
 
       let scanned = 0;
       let skipped = 0;
-      let added = 0;
+      let queued = 0;
       let written = 0;
       let verifiedOverrides = 0;
-      const pending: CatalogProduct[] = [];
+      const pending: OffPendingReview[] = [];
       const seenGtin = new Set<string>();
+      const basePath = `users/${user.uid}/catalog/offPendingReview`;
 
       const flushPending = async () => {
         if (pending.length === 0) return;
         const batch = pending.splice(0, pending.length);
-        await bulkUpsert(batch, {
-          silent: true,
-          onProgress: (done) => {
-            written = done;
-            opts?.onProgress?.({
-              phase: "write",
-              scanned,
-              skipped,
-              queued: pending.length,
-              written,
-            });
-          },
+        const updates: Record<string, OffPendingReview> = {};
+        const now = new Date().toISOString();
+        for (const item of batch) {
+          const key = normalizeBarcode(item.gtin ?? item.id);
+          if (key.length < 8) continue;
+          updates[`${basePath}/${key}`] = cleanForRtdb({ ...item, id: key, updatedAt: now });
+        }
+        if (Object.keys(updates).length > 0) {
+          await update(ref(db), updates);
+        }
+        written += batch.length;
+        opts?.onProgress?.({
+          phase: "write",
+          scanned,
+          skipped,
+          queued: pending.length,
+          written,
         });
       };
 
+      const ckPath = `users/${user.uid}/catalog/meta/offImportCheckpoint`;
+
       try {
-        for await (const page of fetchOffIsraelProductPages({
+        const gen = fetchOffIsraelProductPages({
           signal: opts?.signal,
+          startPage,
           onPage: ({ page }) => {
             opts?.onProgress?.({
               phase: "fetch",
@@ -666,7 +749,11 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
               written,
             });
           },
-        })) {
+        });
+
+        let iter = await gen.next();
+        while (!iter.done) {
+          const page = iter.value;
           for (const record of page) {
             scanned += 1;
             const built = buildCatalogProductFromOffRecord(record, verifiedItems);
@@ -675,7 +762,7 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
               continue;
             }
             const gtin = built.product.id;
-            if (seenGtin.has(gtin)) {
+            if (seenGtin.has(gtin) || existingOffPending.has(gtin)) {
               skipped += 1;
               continue;
             }
@@ -687,8 +774,8 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
             }
 
             if (built.usedVerified) verifiedOverrides += 1;
-            pending.push(built.product);
-            added += 1;
+            pending.push(toOffPendingReview(built));
+            queued += 1;
 
             if (pending.length >= 250) await flushPending();
 
@@ -702,26 +789,167 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
               });
             }
           }
+          iter = await gen.next();
         }
 
         await flushPending();
 
+        const summary = iter.value;
+        if (summary.stopReason === "rate_limited") {
+          const nextPage = summary.lastPageFetched + 1;
+          await set(ref(db, ckPath), {
+            nextPage,
+            stopReason: "rate_limited",
+            updatedAt: new Date().toISOString(),
+          });
+          showToast(
+            `ייבוא נעצר בעמוד ${summary.lastPageFetched} (מגבלת OFF). אפשר להמשיך מאוחר יותר.`,
+            "error",
+          );
+          return {
+            scanned,
+            skipped,
+            queued,
+            verifiedOverrides,
+            completed: false,
+            stoppedEarly: true,
+            resumeNextPage: nextPage,
+            totalOffReported: summary.totalReportedCount,
+          };
+        }
+
+        await remove(ref(db, ckPath));
         showToast(
-          `ייבוא OFF: נוספו ${added.toLocaleString("he-IL")} מוצרים (${skipped.toLocaleString("he-IL")} דולגו)`,
+          `ייבוא OFF: ${queued.toLocaleString("he-IL")} מוצרים לבדיקה (${skipped.toLocaleString("he-IL")} דולגו)`,
           "success",
         );
-        return { scanned, skipped, added, verifiedOverrides };
+        return {
+          scanned,
+          skipped,
+          queued,
+          verifiedOverrides,
+          completed: true,
+          stoppedEarly: false,
+          totalOffReported: summary.totalReportedCount,
+        };
       } catch (e) {
         if (e instanceof DOMException && e.name === "AbortError") {
           showToast("ייבוא OFF בוטל", "error");
-          return { scanned, skipped, added, verifiedOverrides };
+          return {
+            scanned,
+            skipped,
+            queued,
+            verifiedOverrides,
+            completed: false,
+            stoppedEarly: false,
+          };
         }
         const msg = e instanceof Error ? e.message : "שגיאה בייבוא OFF";
         showToast(msg, "error");
-        return { scanned, skipped, added, verifiedOverrides };
+        return {
+          scanned,
+          skipped,
+          queued,
+          verifiedOverrides,
+          completed: false,
+          stoppedEarly: false,
+        };
       }
     },
-    [user, catalog, bulkUpsert, showToast],
+    [user, catalog, offPendingReviews, offImportCheckpoint, showToast],
+  );
+
+  const clearOffImportCheckpoint = useCallback(async () => {
+    if (!user) return;
+    await remove(ref(db, `users/${user.uid}/catalog/meta/offImportCheckpoint`));
+  }, [user]);
+
+  const purgeOffImportedFromCatalog = useCallback(async () => {
+    if (!user) {
+      showToast("צריך להתחבר", "error");
+      return { removed: 0, kept: 0 };
+    }
+    const toRemove = catalog.filter(isOffImportedCatalogProduct);
+    const kept = catalog.length - toRemove.length;
+    if (toRemove.length === 0) {
+      showToast("אין מוצרים לייבוא OFF למחיקה במאגר", "error");
+      return { removed: 0, kept };
+    }
+    const base = `users/${user.uid}/catalog/products`;
+    const chunkSize = 200;
+    for (let i = 0; i < toRemove.length; i += chunkSize) {
+      const chunk = toRemove.slice(i, i + chunkSize);
+      const updates: Record<string, null> = {};
+      for (const p of chunk) {
+        const key = p.id.startsWith("internal:") ? p.id : normalizeBarcode(p.gtin ?? p.id);
+        if (key.length >= 6) updates[`${base}/${key}`] = null;
+      }
+      if (Object.keys(updates).length > 0) await update(ref(db), updates);
+    }
+    showToast(
+      `הוסרו ${toRemove.length.toLocaleString("he-IL")} מוצרי OFF מהמאגר. נשארו ${kept.toLocaleString("he-IL")} (ידני וכו׳).`,
+      "success",
+    );
+    return { removed: toRemove.length, kept };
+  }, [user, catalog, showToast]);
+
+  const approveOffPendingReview = useCallback(
+    async (item: OffPendingReview) => {
+      if (!user) {
+        showToast("צריך להתחבר", "error");
+        return;
+      }
+      const gtin = normalizeBarcode(item.gtin ?? item.id);
+      const per = item.nutrition?.per100g ?? {};
+      await upsertByBarcode({
+        barcode: gtin,
+        name: item.name,
+        shortName: item.shortName,
+        brand: item.brand,
+        keywords: item.keywords,
+        category: item.category,
+        usageTags: item.usageTags,
+        per100Basis: item.per100Basis,
+        defaultMeasure: item.defaultMeasure,
+        commonMeasures: item.commonMeasures,
+        per100: per,
+        totalWeightG: item.package?.totalWeightG,
+        unitsPerPack: item.package?.unitsPerPack,
+        measures: item.measures,
+        sourceType: item.sources?.some((s) => s.type === "verified100")
+          ? "barcode_openfoodfacts"
+          : "barcode_openfoodfacts",
+      });
+      await remove(ref(db, `users/${user.uid}/catalog/offPendingReview/${gtin}`));
+      showToast("נוסף למאגר", "success");
+    },
+    [user, upsertByBarcode, showToast],
+  );
+
+  const rejectOffPendingReview = useCallback(
+    async (id: string) => {
+      if (!user) return;
+      const key = normalizeBarcode(id);
+      await remove(ref(db, `users/${user.uid}/catalog/offPendingReview/${key}`));
+      showToast("הוסר מרשימת הבדיקה", "success");
+    },
+    [user, showToast],
+  );
+
+  const updateOffPendingReview = useCallback(
+    async (item: OffPendingReview) => {
+      if (!user) {
+        showToast("צריך להתחבר", "error");
+        return;
+      }
+      const key = normalizeBarcode(item.gtin ?? item.id);
+      const now = new Date().toISOString();
+      await set(
+        ref(db, `users/${user.uid}/catalog/offPendingReview/${key}`),
+        cleanForRtdb({ ...item, id: key, updatedAt: now }),
+      );
+    },
+    [user, showToast],
   );
 
   const deleteProduct = useCallback(
@@ -820,6 +1048,15 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
       updateProduct,
       bulkUpsert,
       importOpenFoodFactsIsrael,
+      offImportCheckpoint,
+      offImportCheckpointReady,
+      clearOffImportCheckpoint,
+      purgeOffImportedFromCatalog,
+      offPendingReviews,
+      offPendingReady,
+      approveOffPendingReview,
+      rejectOffPendingReview,
+      updateOffPendingReview,
       deleteProduct,
       supermarketTrips,
       supermarketDrafts,
@@ -842,6 +1079,15 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
       updateProduct,
       bulkUpsert,
       importOpenFoodFactsIsrael,
+      offImportCheckpoint,
+      offImportCheckpointReady,
+      clearOffImportCheckpoint,
+      purgeOffImportedFromCatalog,
+      offPendingReviews,
+      offPendingReady,
+      approveOffPendingReview,
+      rejectOffPendingReview,
+      updateOffPendingReview,
       deleteProduct,
       supermarketTrips,
       supermarketDrafts,

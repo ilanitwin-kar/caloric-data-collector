@@ -4,7 +4,8 @@ import type { Verified100Item } from "../context/Verified100Context";
 import type { Verified100Row } from "../utils/verifiedTsv";
 import { fetchOpenFoodFactsProduct } from "../utils/openFoodFacts";
 import { offDataToFormValues } from "../utils/offFormFill";
-import { findBestVerifiedForOff } from "../utils/offCatalog";
+import { findBestVerifiedForOff, type OffVerifiedLinkMeta } from "../utils/offCatalog";
+import { stableId } from "../utils/verifiedTsv";
 
 export type OffBarcodeFormSetters = {
   setName: (v: string) => void;
@@ -39,6 +40,7 @@ export function useOffBarcodeLookup({
 }: Options) {
   const { showToast } = useToast();
   const [offLoading, setOffLoading] = useState(false);
+  const [verifiedLink, setVerifiedLink] = useState<OffVerifiedLinkMeta | null>(null);
   const lastFetchedRef = useRef<string | null>(null);
   const settersRef = useRef(setters);
   settersRef.current = setters;
@@ -47,6 +49,7 @@ export function useOffBarcodeLookup({
     if (!enabled || skipLookup) return;
     if (barcodeDigits.length < 8) {
       lastFetchedRef.current = null;
+      setVerifiedLink(null);
       return;
     }
     if (lastFetchedRef.current === barcodeDigits) return;
@@ -73,6 +76,22 @@ export function useOffBarcodeLookup({
             name: res.data.productName,
             brand: res.data.brand || undefined,
           });
+
+          if (verifiedHit) {
+            const v = verifiedHit.item;
+            setVerifiedLink({
+              verifiedId: stableId(v.brand, v.name),
+              verifiedName: v.name,
+              verifiedBrand: v.brand,
+              verifiedCategory: v.category,
+              matchScore: verifiedHit.score,
+              offName: res.data.productName.trim() || "ללא שם",
+              offBrand: res.data.brand.trim() || undefined,
+              nutritionFromVerified: true,
+            });
+          } else {
+            setVerifiedLink(null);
+          }
 
           const form = offDataToFormValues(res.data, verifiedHit?.item ?? null);
           const s = settersRef.current;
@@ -110,5 +129,5 @@ export function useOffBarcodeLookup({
     };
   }, [barcodeDigits, enabled, skipLookup, verifiedItems, showToast]);
 
-  return { offLoading };
+  return { offLoading, verifiedLink };
 }
