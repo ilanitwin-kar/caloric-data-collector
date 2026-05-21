@@ -1,4 +1,5 @@
-import type { OffImportCheckpoint } from "../context/CatalogContext";
+import type { OffImportCheckpoint } from "./offImportProgress";
+import { offImportCheckpointIsResumable } from "./offImportProgress";
 
 const KEY_PREFIX = "off-import-checkpoint:";
 
@@ -7,7 +8,7 @@ export function readLocalOffImportCheckpoint(uid: string): OffImportCheckpoint |
     const raw = localStorage.getItem(`${KEY_PREFIX}${uid}`);
     if (!raw) return null;
     const v = JSON.parse(raw) as OffImportCheckpoint;
-    if (typeof v.nextPage !== "number" || v.nextPage < 2) return null;
+    if (!offImportCheckpointIsResumable(v)) return null;
     return v;
   } catch {
     return null;
@@ -20,7 +21,7 @@ export function writeLocalOffImportCheckpoint(
 ): void {
   const key = `${KEY_PREFIX}${uid}`;
   try {
-    if (!checkpoint || checkpoint.nextPage < 2) {
+    if (!checkpoint || !offImportCheckpointIsResumable(checkpoint)) {
       localStorage.removeItem(key);
       return;
     }

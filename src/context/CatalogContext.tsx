@@ -19,25 +19,26 @@ import {
   type OffPendingReview,
 } from "../utils/offCatalog";
 import { isOffImportedCatalogProduct } from "../utils/offCatalogPolicy";
-import { fetchOffIsraelProductPages } from "../utils/offIsraelImport";
+import {
+  fetchOffIsraelProductPages,
+  fetchOffIsraelReportedCount,
+} from "../utils/offIsraelImport";
 import {
   readLocalOffImportCheckpoint,
   writeLocalOffImportCheckpoint,
 } from "../utils/offImportCheckpointStorage";
 import type { Verified100Row } from "../utils/verifiedTsv";
 
-export type OffImportStopReason =
-  | "rate_limited"
-  | "paused"
-  | "aborted"
-  | "incomplete";
-
-export type OffImportCheckpoint = {
-  nextPage: number;
-  stopReason: OffImportStopReason;
-  lastPageFetched?: number;
-  updatedAt: string;
-};
+export type {
+  OffImportCheckpoint,
+  OffImportStopReason,
+} from "../utils/offImportProgress";
+import type { OffImportCheckpoint, OffImportStopReason } from "../utils/offImportProgress";
+import {
+  offImportCheckpointIsResumable,
+  offImportIsFullyComplete,
+  OFF_IMPORT_PAGE_SIZE,
+} from "../utils/offImportProgress";
 
 export type CatalogNutritionPer100g = {
   calories?: number;
@@ -425,7 +426,14 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
     const unsubCk = onValue(rck, (snap: DataSnapshot) => {
       setOffImportCheckpointReady(true);
       const v = snap.val() as OffImportCheckpoint | null;
-      const ck = v && v.nextPage >= 2 ? v : null;
+      const ck =
+        v && offImportCheckpointIsResumable(v) ?
+          v
+        : v?.stopReason === "complete" && !offImportCheckpointIsResumable(v) ?
+          null
+        : v && v.nextPage >= 1 ?
+          v
+        : null;
       setOffImportCheckpoint(ck);
       writeLocalOffImportCheckpoint(user.uid, ck);
     });
@@ -755,8 +763,10 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
       };
 
       const ckPath = `users/${user.uid}/catalog/meta/offImportCheckpoint`;
-      const OFF_PAGE_SIZE = 100;
       let lastPageFetched = startPage - 1;
+      let totalOffReported =
+        offImportCheckpoint?.totalOffReported ??
+        (await fetchOffIsraelReportedCount(opts?.signal));
 
       const persistCheckpoint = async (
         nextPage: number,
@@ -767,6 +777,7 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
           nextPage,
           stopReason,
           lastPageFetched: lastPage,
+          totalOffReported,
           updatedAt: new Date().toISOString(),
         };
         await set(ref(db, ckPath), ck);
@@ -784,6 +795,7 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
         const gen = fetchOffIsraelProductPages({
           signal: opts?.signal,
           startPage,
+          totalReportedCount: totalOffReported,
           onPage: ({ page }) => {
             lastPageFetched = page;
             opts?.onProgress?.({
@@ -835,33 +847,43 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
               });
             }
           }
-          if (lastPageFetched >= startPage) {
-            await persistCheckpoint(lastPageFetched + 1, "paused", lastPageFetched);
-          }
           iter = await gen.next();
         }
 
         await flushPending();
 
         const summary = iter.value;
-        const likelyIncomplete =
-          summary.stopReason === "complete" &&
-          summary.totalReportedCount != null &&
-          summary.totalReportedCount > 0 &&
-          summary.lastPageFetched <
-            Math.ceil(summary.totalReportedCount / OFF_PAGE_SIZE);
+        if (summary.totalReportedCount != null && summary.totalReportedCount > 0) {
+          totalOffReported = summary.totalReportedCount;
+        }
 
-        if (summary.stopReason === "rate_limited" || likelyIncomplete) {
+        const fullyDone = offImportIsFullyComplete(
+          summary.lastPageFetched,
+          totalOffReported,
+          OFF_IMPORT_PAGE_SIZE,
+        );
+
+        const needsResume =
+          summary.stopReason === "rate_limited" ||
+          summary.stopReason === "incomplete" ||
+          summary.stopReason === "empty" ||
+          !fullyDone;
+
+        if (needsResume) {
           const nextPage = summary.lastPageFetched + 1;
-          const reason: OffImportStopReason = likelyIncomplete
-            ? "incomplete"
-            : "rate_limited";
+          const reason: OffImportStopReason =
+            summary.stopReason === "rate_limited" ? "rate_limited"
+            : summary.stopReason === "incomplete" ? "incomplete"
+            : "incomplete";
           await persistCheckpoint(nextPage, reason, summary.lastPageFetched);
+          const expectedLast = totalOffReported
+            ? Math.ceil(totalOffReported / OFF_IMPORT_PAGE_SIZE)
+            : null;
           showToast(
-            likelyIncomplete
-              ? `ייבוא נעצר לפני סוף הרשימה — המשך מעמוד ${nextPage}`
-              : `ייבוא נעצר בעמוד ${summary.lastPageFetched} (מגבלת OFF). המשך מעמוד ${nextPage}`,
-            "error",
+            queued > 0
+              ? `ייבוא נעצר — המשך מעמוד ${nextPage}${expectedLast ? ` (מתוך ~${expectedLast})` : ""}`
+              : `נסרקו ${scanned.toLocaleString("he-IL")} — רובם כבר ברשימה. המשך מעמוד ${nextPage}${expectedLast ? ` (מתוך ~${expectedLast})` : ""}`,
+            queued > 0 ? "error" : "success",
           );
           return {
             scanned,
@@ -871,13 +893,13 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
             completed: false,
             stoppedEarly: true,
             resumeNextPage: nextPage,
-            totalOffReported: summary.totalReportedCount,
+            totalOffReported,
           };
         }
 
         await clearCheckpoint();
         showToast(
-          `ייבוא OFF: ${queued.toLocaleString("he-IL")} מוצרים לבדיקה (${skipped.toLocaleString("he-IL")} דולגו)`,
+          `ייבוא OFF הסתיים — ${queued.toLocaleString("he-IL")} חדשים לבדיקה (${skipped.toLocaleString("he-IL")} דולגו)`,
           "success",
         );
         return {
@@ -887,7 +909,7 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
           verifiedOverrides,
           completed: true,
           stoppedEarly: false,
-          totalOffReported: summary.totalReportedCount,
+          totalOffReported,
         };
       } catch (e) {
         if (e instanceof DOMException && e.name === "AbortError") {
@@ -925,7 +947,7 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
         };
       }
     },
-    [user, catalog, offPendingReviews, showToast],
+    [user, catalog, offPendingReviews, offImportCheckpoint, showToast],
   );
 
   const clearOffImportCheckpoint = useCallback(async () => {

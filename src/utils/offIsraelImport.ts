@@ -12,13 +12,15 @@ export type OffIsraelPageProgress = {
   totalSeen: number;
 };
 
-export type OffIsraelFetchStopReason = "complete" | "rate_limited" | "empty";
+export type OffIsraelFetchStopReason = "complete" | "rate_limited" | "empty" | "incomplete";
 
 export type FetchOffIsraelPagesOpts = {
   pageSize?: number;
   maxPages?: number;
   /** First page to fetch (1-based). Used to resume after rate limits. */
   startPage?: number;
+  /** Total products reported by OFF search (from count field). */
+  totalReportedCount?: number;
   delayMs?: number;
   signal?: AbortSignal;
   onPage?: (p: OffIsraelPageProgress) => void;
@@ -78,12 +80,23 @@ export async function* fetchOffIsraelProductPages(
   opts?: FetchOffIsraelPagesOpts,
 ): AsyncGenerator<Record<string, unknown>[], OffIsraelFetchSummary, void> {
   const pageSize = Math.max(20, Math.min(100, opts?.pageSize ?? 100));
-  const maxPages = Math.max(1, Math.min(500, opts?.maxPages ?? 300));
-  const delayMs = Math.max(0, opts?.delayMs ?? 6500);
   const startPage = Math.max(1, opts?.startPage ?? 1);
+  let totalReportedCount = opts?.totalReportedCount;
+  const expectedLastPage =
+    totalReportedCount != null && totalReportedCount > 0 ?
+      Math.ceil(totalReportedCount / pageSize)
+    : null;
+  const maxPages = Math.max(
+    startPage,
+    Math.min(
+      500,
+      opts?.maxPages ??
+        (expectedLastPage != null ? expectedLastPage + 2 : 300),
+    ),
+  );
+  const delayMs = Math.max(0, opts?.delayMs ?? 6500);
   let totalSeen = 0;
   let lastPageFetched = startPage - 1;
-  let totalReportedCount: number | undefined;
 
   for (let page = startPage; page <= maxPages; page++) {
     if (opts?.signal?.aborted) throw new DOMException("Aborted", "AbortError");
@@ -174,6 +187,9 @@ export async function* fetchOffIsraelProductPages(
     if (products.length > 0) yield products;
 
     if (rawPageCount < pageSize) {
+      if (expectedLastPage != null && page < expectedLastPage) {
+        return { stopReason: "incomplete", lastPageFetched, totalReportedCount };
+      }
       return { stopReason: "complete", lastPageFetched, totalReportedCount };
     }
     if (page < maxPages && delayMs > 0) await sleep(delayMs, opts?.signal);
