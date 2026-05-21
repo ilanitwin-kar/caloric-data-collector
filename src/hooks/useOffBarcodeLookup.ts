@@ -88,6 +88,18 @@ export function useOffBarcodeLookup({
               offName: res.data.productName.trim() || "ללא שם",
               offBrand: res.data.brand.trim() || undefined,
               nutritionFromVerified: true,
+              offPer100: {
+                calories: res.data.cals100,
+                proteinG: res.data.prot100,
+                carbsG: res.data.carb100,
+                fatG: res.data.fat100,
+              },
+              verifiedPer100: {
+                calories: v.calories100,
+                proteinG: v.protein100,
+                carbsG: v.carbs100,
+                fatG: v.fat100,
+              },
             });
           } else {
             setVerifiedLink(null);

@@ -2,6 +2,10 @@ import { createPortal } from "react-dom";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { BarcodeScanner } from "../components/BarcodeScanner";
+import {
+  VerifiedSuggestionsCollapsible,
+  type VerifiedSuggestionPick,
+} from "../components/VerifiedSuggestionsCollapsible";
 import { useAuth } from "../context/AuthContext";
 import type { CatalogProduct } from "../context/CatalogContext";
 import { useCatalog } from "../context/CatalogContext";
@@ -133,17 +137,7 @@ export function SupermarketQuickFill() {
 
   const [verifiedPicked, setVerifiedPicked] = useState(false);
   const [verifiedPickedSig, setVerifiedPickedSig] = useState<string | null>(null);
-  const [verifiedSuggestions, setVerifiedSuggestions] = useState<
-    Array<{
-      name: string;
-      brand?: string;
-      category?: string;
-      calories100?: number;
-      protein100?: number;
-      carbs100?: number;
-      fat100?: number;
-    }>
-  >([]);
+  const [verifiedSuggestions, setVerifiedSuggestions] = useState<VerifiedSuggestionPick[]>([]);
   const [verifiedOffset, setVerifiedOffset] = useState(0);
 
   const [catalogMatchIgnoredSig, setCatalogMatchIgnoredSig] = useState<string | null>(null);
@@ -556,85 +550,38 @@ export function SupermarketQuickFill() {
                 </div>
               ) : null}
 
-              {verifiedPicked ? (
-                <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-emerald-400/25 bg-emerald-500/10 px-3 py-2">
-                  <span className="text-[11px] font-semibold text-emerald-50">✓ נבחרה התאמה מהמאגר המאומת</span>
-                  {!isAlreadyInCatalog ? (
-                    <button
-                      type="button"
-                      className="rounded-lg border border-white/15 bg-transparent px-3 py-1.5 text-[11px] font-semibold text-ink-muted hover:border-white/25 hover:text-white"
-                      onClick={() => {
-                        setVerifiedPicked(false);
-                        setVerifiedPickedSig(null);
-                      }}
-                    >
-                      הצג עוד הצעות
-                    </button>
-                  ) : null}
-                </div>
-              ) : null}
-
-              {visibleVerifiedSuggestions.length > 0 ? (
-                <div className="rounded-xl border border-emerald-400/25 bg-emerald-500/10 px-3 py-2">
-                  <p className="text-[11px] text-emerald-100/90">הצעות מהמאגר המאומת (למילוי 100g):</p>
-                  <div className="mt-2 space-y-2">
-                    {visibleVerifiedSuggestions.map((sug, idx) => (
-                      <div key={`${sug.name}|${sug.brand ?? ""}|${verifiedOffset + idx}`} className="flex flex-wrap items-center gap-2">
-                        <button
-                          type="button"
-                          className="rounded-lg bg-emerald-400/15 px-3 py-1.5 text-xs font-semibold text-emerald-50 hover:bg-emerald-400/20"
-                          onClick={() => {
-                            setVerifiedPicked(true);
-                            setVerifiedPickedSig(`${sug.name.trim()}|${(sug.brand ?? "").trim()}||`);
-                            setName(sug.name);
-                            setShortName((prev) => (prev.trim() ? prev : sug.name));
-                            if (sug.brand) setBrand(sug.brand);
-                            if (sug.category) setCategory(sug.category);
-                            if (sug.calories100 != null) setKcal100(String(sug.calories100));
-                            if (sug.protein100 != null) setProt100(String(sug.protein100));
-                            if (sug.carbs100 != null) setCarb100(String(sug.carbs100));
-                            if (sug.fat100 != null) setFat100(String(sug.fat100));
-                            setVerifiedSuggestions([]);
-                            setVerifiedOffset(0);
-                          }}
-                        >
-                          ✓ בחר
-                        </button>
-                        <span className="text-[11px] text-emerald-100/90">
-                          {sug.name}
-                          {sug.brand ? ` · ${sug.brand}` : ""}
-                          {sug.category ? ` · ${sug.category}` : ""}
-                          {sug.calories100 != null ? ` · ${sug.calories100} קק״ל` : ""}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                  <div className="mt-2 flex flex-wrap gap-2">
-                    {verifiedOffset + 4 < verifiedSuggestions.length ? (
-                      <button
-                        type="button"
-                        className="rounded-lg border border-white/15 bg-transparent px-3 py-1.5 text-xs font-semibold text-ink-muted hover:border-white/25 hover:text-white"
-                        onClick={() => setVerifiedOffset((o) => Math.min(verifiedSuggestions.length, o + 4))}
-                      >
-                        לא מתאים — עוד הצעות
-                      </button>
-                    ) : (
-                      <button
-                        type="button"
-                        className="rounded-lg border border-white/15 bg-transparent px-3 py-1.5 text-xs font-semibold text-ink-muted hover:border-white/25 hover:text-white"
-                        onClick={() => {
-                          setVerifiedSuggestions([]);
-                          setVerifiedOffset(0);
-                        }}
-                      >
-                        התעלם
-                      </button>
-                    )}
-                  </div>
-                </div>
-              ) : (
-                <p className="text-[11px] text-ink-dim">המאגר המאומת מציע התאמות לפי שם/מותג. כדי למלא — בחרי הצעה.</p>
-              )}
+              <VerifiedSuggestionsCollapsible
+                suggestions={verifiedSuggestions}
+                visibleSuggestions={visibleVerifiedSuggestions}
+                verifiedOffset={verifiedOffset}
+                verifiedPicked={verifiedPicked}
+                isAlreadyInCatalog={isAlreadyInCatalog}
+                onPick={(sug) => {
+                  setVerifiedPicked(true);
+                  setVerifiedPickedSig(`${sug.name.trim()}|${(sug.brand ?? "").trim()}||`);
+                  setName(sug.name);
+                  setShortName((prev) => (prev.trim() ? prev : sug.name));
+                  if (sug.brand) setBrand(sug.brand);
+                  if (sug.category) setCategory(sug.category);
+                  if (sug.calories100 != null) setKcal100(String(sug.calories100));
+                  if (sug.protein100 != null) setProt100(String(sug.protein100));
+                  if (sug.carbs100 != null) setCarb100(String(sug.carbs100));
+                  if (sug.fat100 != null) setFat100(String(sug.fat100));
+                  setVerifiedSuggestions([]);
+                  setVerifiedOffset(0);
+                }}
+                onMore={() =>
+                  setVerifiedOffset((o) => Math.min(verifiedSuggestions.length, o + 4))
+                }
+                onDismiss={() => {
+                  setVerifiedSuggestions([]);
+                  setVerifiedOffset(0);
+                }}
+                onClearPicked={() => {
+                  setVerifiedPicked(false);
+                  setVerifiedPickedSig(null);
+                }}
+              />
             </section>
 
             <section className="rounded-2xl border border-white/10 bg-white/[0.03] p-4 space-y-3">

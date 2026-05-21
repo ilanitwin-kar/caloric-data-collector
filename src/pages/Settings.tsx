@@ -58,8 +58,22 @@ export function Settings() {
     return () => window.clearTimeout(t);
   }, [bodySavedAt]);
 
+  const resumePage =
+    offImportCheckpointReady && offImportCheckpoint && offImportCheckpoint.nextPage >= 2
+      ? offImportCheckpoint.nextPage
+      : null;
+
   async function runOffImport(resume: boolean) {
     if (offImporting) return;
+    if (resume) {
+      if (!resumePage) return;
+    } else if (resumePage) {
+      const ok = window.confirm(
+        `ייבוא קודם לא הסתיים (המשך מעמוד ${resumePage}).\n\nלהתחיל מעמוד 1 מחדש? (ההתקדמות השמורה תימחק)`,
+      );
+      if (!ok) return;
+      await clearOffImportCheckpoint();
+    }
     const ctrl = new AbortController();
     offAbortRef.current = ctrl;
     setOffImporting(true);
@@ -68,7 +82,7 @@ export function Settings() {
     try {
       const res = await importOpenFoodFactsIsrael(items, {
         signal: ctrl.signal,
-        startPage: resume ? offImportCheckpoint?.nextPage : undefined,
+        startPage: resume ? resumePage! : 1,
         onProgress: setOffProgress,
       });
       const parts = [
@@ -114,11 +128,6 @@ export function Settings() {
   function cancelOffImport() {
     offAbortRef.current?.abort();
   }
-
-  const canResume =
-    offImportCheckpointReady &&
-    offImportCheckpoint?.stopReason === "rate_limited" &&
-    offImportCheckpoint.nextPage > 1;
 
   return (
     <div className="space-y-8 pb-4">
@@ -237,10 +246,10 @@ export function Settings() {
           {offPendingReady ? offPendingReviews.length.toLocaleString("he-IL") : "…"}
         </p>
 
-        {canResume ? (
+        {resumePage && !offImporting ? (
           <p className="rounded-xl border border-amber-400/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-100">
-            ייבוא קודם נעצר — אפשר להמשיך מעמוד {offImportCheckpoint!.nextPage} (המתנה ~6 שניות
-            בין עמודים).
+            ייבוא לא הסתיים — לחצי «המשך ייבוא (מעמוד {resumePage})» כדי לסרוק ולייבא עד העצירה
+            הבאה (~6 שניות בין עמודים).
           </p>
         ) : null}
 
@@ -251,18 +260,20 @@ export function Settings() {
             onClick={() => void runOffImport(false)}
             className="min-h-[44px] rounded-xl bg-white px-4 text-sm font-semibold text-black transition hover:bg-neutral-200 disabled:opacity-50"
           >
-            {offImporting ? "מייבא OFF…" : "ייבא OFF (מעמוד 1)"}
+            {offImporting ? "מייבא OFF…" : "ייבא OFF"}
           </button>
-          {canResume ? (
-            <button
-              type="button"
-              disabled={offImporting || loading || purgingOff}
-              onClick={() => void runOffImport(true)}
-              className="min-h-[44px] rounded-xl border border-amber-400/40 bg-amber-500/15 px-4 text-sm font-semibold text-amber-50 disabled:opacity-50"
-            >
-              המשך ייבוא
-            </button>
-          ) : null}
+          <button
+            type="button"
+            disabled={offImporting || loading || purgingOff || !resumePage}
+            onClick={() => void runOffImport(true)}
+            className="min-h-[44px] rounded-xl border border-amber-400/40 bg-amber-500/15 px-4 text-sm font-semibold text-amber-50 transition hover:bg-amber-500/25 disabled:opacity-40"
+          >
+            {offImporting
+              ? "מייבא OFF…"
+              : resumePage
+                ? `המשך ייבוא (מעמוד ${resumePage})`
+                : "המשך ייבוא"}
+          </button>
           <button
             type="button"
             disabled={purgingOff || offImporting || offInCatalogCount === 0}

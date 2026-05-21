@@ -1,13 +1,20 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { BarcodeScanner } from "../components/BarcodeScanner";
+import { OffVerifiedComparePanel } from "../components/OffVerifiedComparePanel";
+import {
+  VerifiedSuggestionsCollapsible,
+  type VerifiedSuggestionPick,
+} from "../components/VerifiedSuggestionsCollapsible";
 import { useCatalog } from "../context/CatalogContext";
 import { useVerified100 } from "../context/Verified100Context";
 import { useBodyWeightKg } from "../hooks/useBodyWeightKg";
 import { useOffBarcodeLookup } from "../hooks/useOffBarcodeLookup";
 import { fmt1, parseNum } from "../utils/number";
 import { normalizeBarcode } from "../utils/openFoodFacts";
-import type { OffPendingReview } from "../utils/offCatalog";
+import type { OffPendingReview, OffVerifiedLinkMeta } from "../utils/offCatalog";
+import { scoreVerifiedMatch, stableId } from "../utils/verifiedTsv";
+import type { CatalogNutritionPer100g } from "../context/CatalogContext";
 import { WALKING_MET, walkingStepsToBurnKcal } from "../utils/walkingBurn";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useToast } from "../context/ToastContext";
@@ -98,6 +105,7 @@ export function Home() {
   const hydratedDraftParamRef = useRef<string | null>(null);
   const hydratedOffReviewRef = useRef<string | null>(null);
   const [offReviewItem, setOffReviewItem] = useState<OffPendingReview | null>(null);
+  const offReviewOffPer100Ref = useRef<CatalogNutritionPer100g | undefined>(undefined);
   const [pendingDraftId, setPendingDraftId] = useState<string | null>(null);
   const [isInternal, setIsInternal] = useState(false);
   const [internalId, setInternalId] = useState(() => newInternalId());
@@ -122,17 +130,7 @@ export function Home() {
   const [fat100, setFat100] = useState("");
   const [verifiedPicked, setVerifiedPicked] = useState(false);
   const [verifiedPickedSig, setVerifiedPickedSig] = useState<string | null>(null);
-  const [verifiedSuggestions, setVerifiedSuggestions] = useState<
-    Array<{
-      name: string;
-      brand?: string;
-      category?: string;
-      calories100?: number;
-      protein100?: number;
-      carbs100?: number;
-      fat100?: number;
-    }>
-  >([]);
+  const [verifiedSuggestions, setVerifiedSuggestions] = useState<VerifiedSuggestionPick[]>([]);
   const [verifiedOffset, setVerifiedOffset] = useState(0);
 
   const isAlreadyInCatalog = useMemo(() => {
@@ -201,7 +199,7 @@ export function Home() {
   const { offLoading, verifiedLink } = useOffBarcodeLookup({
     barcodeDigits,
     enabled: !isInternal,
-    skipLookup: isInternal || isAlreadyInCatalog,
+    skipLookup: isInternal || isAlreadyInCatalog || Boolean(offReviewItem),
     verifiedItems,
     setters: {
       setName,
@@ -237,10 +235,9 @@ export function Home() {
     };
   }, [scannerOpen]);
 
-  // Suggest 100g macros from verified DB by best matches on name+brand (do not auto-apply).
+  // Suggest macros from verified DB by name+brand (manual pick; OFF review often has no auto-match).
   useEffect(() => {
-    if (per100Basis === "ml") {
-      // Verified DB is per 100g; avoid suggesting for 100ml mode.
+    if (per100Basis === "ml" && !offReviewItem) {
       setVerifiedSuggestions([]);
       setVerifiedOffset(0);
       return;
@@ -271,12 +268,35 @@ export function Home() {
       })),
     );
     setVerifiedOffset(0);
-  }, [name, brand, keywordsRaw, category, findMatches, verifiedPickedSig, isAlreadyInCatalog, per100Basis]);
+  }, [
+    name,
+    brand,
+    keywordsRaw,
+    category,
+    findMatches,
+    verifiedPickedSig,
+    isAlreadyInCatalog,
+    per100Basis,
+    offReviewItem,
+  ]);
 
   const visibleVerifiedSuggestions = useMemo(
     () => verifiedSuggestions.slice(verifiedOffset, verifiedOffset + 4),
     [verifiedSuggestions, verifiedOffset],
   );
+
+  const appliedPer100FromForm = useMemo((): CatalogNutritionPer100g => {
+    const n = (s: string) => {
+      const v = parseNum(s);
+      return v != null && Number.isFinite(v) ? v : undefined;
+    };
+    return {
+      calories: n(kcal100),
+      proteinG: n(prot100),
+      carbsG: n(carb100),
+      fatG: n(fat100),
+    };
+  }, [kcal100, prot100, carb100, fat100]);
 
   // Package triad: user inputs totalWeight always; typing either units or unitWeight calculates the other.
   useEffect(() => {
@@ -316,7 +336,13 @@ export function Home() {
     }
     if (hydratedOffReviewRef.current === offReviewParam) return;
     hydratedOffReviewRef.current = offReviewParam;
+    const meta = item.offReviewMeta;
+    offReviewOffPer100Ref.current =
+      meta.verifiedLink?.offPer100 ??
+      (meta.verifiedLink?.nutritionFromVerified ? undefined : item.nutrition?.per100g);
     setOffReviewItem(item);
+    setVerifiedPicked(Boolean(meta.verifiedLink?.nutritionFromVerified));
+    setVerifiedPickedSig(null);
     setIsInternal(false);
     setBarcodeRaw(item.gtin ?? item.id);
     setName(item.name);
@@ -510,7 +536,11 @@ export function Home() {
 
     const totalW = pkg.totalW;
     if (!totalW) {
-      setError("נא להזין משקל כולל של האריזה (גרם).");
+      setError(
+        per100Basis === "ml"
+          ? "נא להזין נפח כולל של האריזה (מ״ל)."
+          : "נא להזין משקל כולל של האריזה (גרם).",
+      );
       return;
     }
     const units = pkg.units;
@@ -527,6 +557,13 @@ export function Home() {
         return;
       }
       if (offReviewItem) {
+        const now = new Date().toISOString();
+        const sources: OffPendingReview["sources"] = [
+          { type: "barcode_openfoodfacts", at: now },
+        ];
+        if (verifiedPicked || offReviewItem.offReviewMeta.verifiedLink) {
+          sources.push({ type: "verified100", at: now });
+        }
         const updated: OffPendingReview = {
           ...offReviewItem,
           id: bc,
@@ -547,6 +584,8 @@ export function Home() {
           },
           measures,
           nutrition: { per100g: per100 },
+          sources,
+          updatedAt: now,
         };
         await approveOffPendingReview(updated);
         setOffReviewItem(null);
@@ -638,23 +677,22 @@ export function Home() {
         </header>
 
         {offReviewItem ? (
-          <div className="rounded-2xl border border-sky-400/30 bg-sky-500/10 px-4 py-3 space-y-2">
-            <p className="text-sm font-semibold text-sky-50">בדיקת OFF — ברקוד {offReviewItem.gtin}</p>
-            {offReviewItem.offReviewMeta.verifiedLink ? (
-              <p className="text-xs leading-relaxed text-sky-100/90">
-                התאמה למאומת (לפי שם, לא ברקוד):{" "}
-                {offReviewItem.offReviewMeta.verifiedLink.verifiedName}
-                {offReviewItem.offReviewMeta.verifiedLink.verifiedBrand
-                  ? ` · ${offReviewItem.offReviewMeta.verifiedLink.verifiedBrand}`
-                  : ""}{" "}
-                (ציון {offReviewItem.offReviewMeta.verifiedLink.matchScore}). OFF:{" "}
-                {offReviewItem.offReviewMeta.verifiedLink.offName}
+          <div className="rounded-2xl border border-violet-400/30 bg-violet-500/10 px-4 py-3 space-y-3">
+            <p className="text-sm font-semibold text-violet-50">
+              בדיקת OFF — השוואה לפני שמירה
+            </p>
+            <OffVerifiedComparePanel
+              gtin={offReviewItem.gtin ?? offReviewItem.id}
+              link={offReviewItem.offReviewMeta.verifiedLink}
+              appliedPer100={appliedPer100FromForm}
+              showFormHint
+            />
+            {!offReviewItem.offReviewMeta.verifiedLink && !verifiedPicked ? (
+              <p className="text-xs leading-relaxed text-violet-100/90">
+                אין התאמה אוטומטית — שנה שם או מותג למטה ופתחי «הצעות מהמאגר המאומת». בחירת
+                הצעה תמלא מהמאומת (100g) ותשאיר את הברקוד מ־OFF.
               </p>
-            ) : (
-              <p className="text-xs text-sky-100/80">
-                אין התאמה למאגר המאומת — ודאי שהברקוד והשם תואמים לאותו מוצר.
-              </p>
-            )}
+            ) : null}
           </div>
         ) : null}
 
@@ -698,21 +736,18 @@ export function Home() {
                 </div>
               </div>
               {verifiedLink && !offReviewItem ? (
-                <div className="rounded-xl border border-sky-400/25 bg-sky-500/10 px-3 py-2 text-[11px] leading-relaxed text-sky-100/90">
-                  <p className="font-semibold text-sky-50">התאמה למאגר המאומת (לפי שם — לא ברקוד)</p>
-                  <p>
-                    OFF: {verifiedLink.offName}
-                    {verifiedLink.offBrand ? ` · ${verifiedLink.offBrand}` : ""}
-                  </p>
-                  <p>
-                    מאומת: {verifiedLink.verifiedName}
-                    {verifiedLink.verifiedBrand ? ` · ${verifiedLink.verifiedBrand}` : ""} · ציון{" "}
-                    {verifiedLink.matchScore}
-                  </p>
-                  <p className="text-ink-dim">
-                    התזונה הוחלה מהמאומת. ודאי שזה אותו מוצר לפני שמירה למאגר.
-                  </p>
-                </div>
+                <details className="rounded-2xl border border-violet-400/25 bg-violet-500/[0.07]">
+                  <summary className="cursor-pointer list-none px-3 py-2.5 text-sm font-semibold text-violet-50 marker:content-none [&::-webkit-details-marker]:hidden">
+                    התאמה OFF ↔ מאגר מאומת (לחץ לפתיחה)
+                  </summary>
+                  <div className="border-t border-violet-400/20 px-3 pb-3 pt-2">
+                    <OffVerifiedComparePanel
+                      gtin={barcodeDigits}
+                      link={verifiedLink}
+                      showFormHint
+                    />
+                  </div>
+                </details>
               ) : null}
               {existingByBarcode && existingBarcodeDismissed !== barcodeDigits ? (
                 <div className="rounded-xl border border-amber-400/30 bg-amber-500/10 px-3 py-2">
@@ -815,96 +850,79 @@ export function Home() {
               onChange={setKeywordsRaw}
               placeholder="למשל גבינה צהובה, עמק, 9 אחוז"
             />
-            {verifiedPicked ? (
-              <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-emerald-400/25 bg-emerald-500/10 px-3 py-2">
-                <span className="text-[11px] font-semibold text-emerald-50">
-                  ✓ נבחרה התאמה מהמאגר המאומת
-                </span>
-                {!isAlreadyInCatalog ? (
-                  <button
-                    type="button"
-                    className="rounded-lg border border-white/15 bg-transparent px-3 py-1.5 text-[11px] font-semibold text-ink-muted hover:border-white/25 hover:text-white"
-                    onClick={() => {
-                      setVerifiedPicked(false);
-                      setVerifiedPickedSig(null);
-                    }}
-                  >
-                    הצג עוד הצעות
-                  </button>
-                ) : null}
-              </div>
-            ) : null}
-            {visibleVerifiedSuggestions.length > 0 ? (
-              <div className="rounded-xl border border-emerald-400/25 bg-emerald-500/10 px-3 py-2">
-                <p className="text-[11px] text-emerald-100/90">הצעות מהמאגר המאומת (למילוי 100g):</p>
-                <div className="mt-2 space-y-2">
-                  {visibleVerifiedSuggestions.map((sug, idx) => (
-                    <div
-                      key={`${sug.name}|${sug.brand ?? ""}|${verifiedOffset + idx}`}
-                      className="flex flex-wrap items-center gap-2"
-                    >
-                      <button
-                        type="button"
-                        className="rounded-lg bg-emerald-400/15 px-3 py-1.5 text-xs font-semibold text-emerald-50 hover:bg-emerald-400/20"
-                        onClick={() => {
-                        setVerifiedPicked(true);
-                        setVerifiedPickedSig(
-                          `${sug.name.trim()}|${(sug.brand ?? "").trim()}|${keywordsRaw.trim()}|${(sug.category ?? "").trim()}`,
-                        );
-                        setName(sug.name);
-                        setShortName((prev) => (prev.trim() ? prev : sug.name));
-                        if (sug.brand) setBrand(sug.brand);
-                        if (sug.category) setCategory(sug.category);
-                          if (sug.calories100 != null) setKcal100(String(sug.calories100));
-                          if (sug.protein100 != null) setProt100(String(sug.protein100));
-                          if (sug.carbs100 != null) setCarb100(String(sug.carbs100));
-                          if (sug.fat100 != null) setFat100(String(sug.fat100));
-                          setVerifiedSuggestions([]);
-                          setVerifiedOffset(0);
-                        }}
-                      >
-                        ✓ בחר
-                      </button>
-                      <span className="text-[11px] text-emerald-100/90">
-                        {sug.name}
-                        {sug.brand ? ` · ${sug.brand}` : ""}
-                      {sug.category ? ` · ${sug.category}` : ""}
-                        {sug.calories100 != null ? ` · ${sug.calories100} קק\"ל` : ""}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-                <div className="mt-2 flex flex-wrap gap-2">
-                  {verifiedOffset + 4 < verifiedSuggestions.length ? (
-                    <button
-                      type="button"
-                      className="rounded-lg border border-white/15 bg-transparent px-3 py-1.5 text-xs font-semibold text-ink-muted hover:border-white/25 hover:text-white"
-                      onClick={() => setVerifiedOffset((o) => Math.min(verifiedSuggestions.length, o + 4))}
-                    >
-                      לא מתאים — עוד הצעות
-                    </button>
-                  ) : (
-                    <button
-                      type="button"
-                      className="rounded-lg border border-white/15 bg-transparent px-3 py-1.5 text-xs font-semibold text-ink-muted hover:border-white/25 hover:text-white"
-                      onClick={() => {
-                        setVerifiedSuggestions([]);
-                        setVerifiedOffset(0);
-                      }}
-                    >
-                      התעלם
-                    </button>
-                  )}
-                </div>
-                <p className="mt-2 text-[11px] text-ink-dim">
-                  שם כללי עלול להתאים למוצר אחר — עדיף לבחור ידנית.
-                </p>
-              </div>
-            ) : (
-              <p className="text-[11px] text-ink-dim">
-                המאגר המאומת מציע התאמות לפי שם/מותג/מילות חיפוש. כדי למלא — בחרי הצעה.
-              </p>
-            )}
+            <VerifiedSuggestionsCollapsible
+              suggestions={verifiedSuggestions}
+              visibleSuggestions={visibleVerifiedSuggestions}
+              verifiedOffset={verifiedOffset}
+              verifiedPicked={verifiedPicked}
+              isAlreadyInCatalog={isAlreadyInCatalog}
+              defaultOpen={Boolean(
+                offReviewItem && !offReviewItem.offReviewMeta.verifiedLink && !verifiedPicked,
+              )}
+              onPick={(sug) => {
+                setVerifiedPicked(true);
+                setVerifiedPickedSig(
+                  `${sug.name.trim()}|${(sug.brand ?? "").trim()}|${keywordsRaw.trim()}|${(sug.category ?? "").trim()}`,
+                );
+                setName(sug.name);
+                setShortName((prev) => (prev.trim() ? prev : sug.name));
+                if (sug.brand) setBrand(sug.brand);
+                if (sug.category) setCategory(sug.category);
+                setPer100Basis("g");
+                if (sug.calories100 != null) setKcal100(String(sug.calories100));
+                if (sug.protein100 != null) setProt100(String(sug.protein100));
+                if (sug.carbs100 != null) setCarb100(String(sug.carbs100));
+                if (sug.fat100 != null) setFat100(String(sug.fat100));
+                setVerifiedSuggestions([]);
+                setVerifiedOffset(0);
+                if (offReviewItem) {
+                  const score = scoreVerifiedMatch(
+                    {
+                      name: sug.name,
+                      brand: sug.brand,
+                      category: sug.category,
+                    },
+                    {
+                      name: offReviewItem.offReviewMeta.offName,
+                      brand: offReviewItem.offReviewMeta.offBrand,
+                    },
+                  );
+                  const verifiedPer100: CatalogNutritionPer100g = {
+                    calories: sug.calories100,
+                    proteinG: sug.protein100,
+                    carbsG: sug.carbs100,
+                    fatG: sug.fat100,
+                  };
+                  const link: OffVerifiedLinkMeta = {
+                    verifiedId: stableId(sug.brand, sug.name),
+                    verifiedName: sug.name,
+                    verifiedBrand: sug.brand,
+                    verifiedCategory: sug.category,
+                    matchScore: score,
+                    offName: offReviewItem.offReviewMeta.offName,
+                    offBrand: offReviewItem.offReviewMeta.offBrand,
+                    nutritionFromVerified: true,
+                    offPer100: offReviewOffPer100Ref.current,
+                    verifiedPer100,
+                  };
+                  setOffReviewItem({
+                    ...offReviewItem,
+                    offReviewMeta: { ...offReviewItem.offReviewMeta, verifiedLink: link },
+                  });
+                }
+              }}
+              onMore={() =>
+                setVerifiedOffset((o) => Math.min(verifiedSuggestions.length, o + 4))
+              }
+              onDismiss={() => {
+                setVerifiedSuggestions([]);
+                setVerifiedOffset(0);
+              }}
+              onClearPicked={() => {
+                setVerifiedPicked(false);
+                setVerifiedPickedSig(null);
+              }}
+            />
             <div className="space-y-1.5">
               <p className="text-xs font-medium text-ink-muted">סוג שימוש</p>
               <div className="flex flex-wrap gap-2">

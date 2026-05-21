@@ -5,6 +5,7 @@ import {
   parseOffProductRecord,
   type OpenFoodFactsProduct,
 } from "./openFoodFacts";
+import { offProductIsPerMl } from "./offFormFill";
 import {
   scoreVerifiedMatch,
   stableId,
@@ -48,6 +49,8 @@ export type OffVerifiedLinkMeta = {
   offName: string;
   offBrand?: string;
   nutritionFromVerified: boolean;
+  offPer100?: CatalogNutritionPer100g;
+  verifiedPer100?: CatalogNutritionPer100g;
 };
 
 /** Product staged for review before entering the main catalog. */
@@ -70,6 +73,12 @@ export function toOffPendingReview(built: OffCatalogBuildResult): OffPendingRevi
   const offName = built.off.productName.trim() || "ללא שם";
   const offBrand = built.off.brand.trim() || undefined;
   let verifiedLink: OffVerifiedLinkMeta | undefined;
+  const offPer100: CatalogNutritionPer100g = {
+    calories: built.off.cals100,
+    proteinG: built.off.prot100,
+    carbsG: built.off.carb100,
+    fatG: built.off.fat100,
+  };
   if (built.verifiedHit) {
     const v = built.verifiedHit.item;
     verifiedLink = {
@@ -81,6 +90,13 @@ export function toOffPendingReview(built: OffCatalogBuildResult): OffPendingRevi
       offName,
       offBrand,
       nutritionFromVerified: built.usedVerified,
+      offPer100,
+      verifiedPer100: {
+        calories: v.calories100,
+        proteinG: v.protein100,
+        carbsG: v.carbs100,
+        fatG: v.fat100,
+      },
     };
   }
   return {
@@ -142,7 +158,7 @@ export function buildCatalogProductFromOff(input: OffCatalogBuildInput): OffCata
     brand: verifiedHit?.item.brand?.trim() || brand,
     category,
     usageTags: ["ready"],
-    per100Basis: "g",
+    per100Basis: offProductIsPerMl(off) ? "ml" : "g",
     defaultMeasure: "unit",
     commonMeasures: ["unit", "g100"],
     createdAt: now,

@@ -1,60 +1,146 @@
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { OffVerifiedComparePanel } from "../components/OffVerifiedComparePanel";
 import { useAuth } from "../context/AuthContext";
 import { useCatalog } from "../context/CatalogContext";
 import type { OffPendingReview } from "../utils/offCatalog";
-import { VERIFIED_AUTO_APPLY_MIN_SCORE } from "../utils/verifiedTsv";
 
-function VerifiedLinkBanner({ item }: { item: OffPendingReview }) {
-  const link = item.offReviewMeta.verifiedLink;
-  if (!link) {
-    return (
-      <p className="text-[11px] leading-relaxed text-amber-100/90">
-        אין התאמה למאגר המאומת (5,758) — התזונה מ־OFF בלבד. הקישור לברקוד הוא רק השיוך שאת
-        מאשרת כשמוסיפים למאגר.
-      </p>
-    );
-  }
+function OffReviewCard({
+  item,
+  inCatalog,
+  busyId,
+  onBusy,
+}: {
+  item: OffPendingReview;
+  inCatalog: boolean;
+  busyId: string | null;
+  onBusy: (id: string | null) => void;
+}) {
+  const navigate = useNavigate();
+  const { approveOffPendingReview, rejectOffPendingReview } = useCatalog();
+  const hasMatch = Boolean(item.offReviewMeta.verifiedLink);
+
   return (
-    <div className="space-y-1.5 text-[11px] leading-relaxed">
-      <p className="font-semibold text-sky-50">התאמה למאגר המאומת (לפי שם — לא לפי ברקוד)</p>
-      <p className="text-sky-100/90">
-        OFF: {link.offName}
-        {link.offBrand ? ` · ${link.offBrand}` : ""}
-      </p>
-      <p className="text-emerald-100/95">
-        מאומת: {link.verifiedName}
-        {link.verifiedBrand ? ` · ${link.verifiedBrand}` : ""}
-        {link.verifiedCategory ? ` · ${link.verifiedCategory}` : ""}
-      </p>
-      <p className="text-ink-muted">
-        ציון התאמה: {link.matchScore} (מינימום לאוטו: {VERIFIED_AUTO_APPLY_MIN_SCORE}) · תזונה
-        כרגע: {link.nutritionFromVerified ? "מהמאומת" : "מ־OFF"}
-      </p>
-      <p className="text-ink-dim">
-        הברקוד {item.gtin} מגיע מ־OFF. המאומת אין בו ברקוד — ודאי שהשמות מתאימים לאותו מוצר
-        לפני הוספה למאגר.
-      </p>
-    </div>
+    <article
+      className={
+        "rounded-2xl border p-4 space-y-3 " +
+        (hasMatch
+          ? "border-violet-400/25 bg-violet-500/[0.06]"
+          : "border-white/10 bg-white/[0.03]")
+      }
+    >
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <p className="font-mono text-sm font-semibold text-white" dir="ltr">
+          {item.gtin ?? item.id}
+        </p>
+        {inCatalog ? (
+          <span className="rounded-lg border border-amber-400/30 bg-amber-500/10 px-2 py-1 text-[10px] font-semibold text-amber-100">
+            כבר במאגר
+          </span>
+        ) : null}
+      </div>
+
+      <OffVerifiedComparePanel
+        gtin={item.gtin ?? item.id}
+        link={item.offReviewMeta.verifiedLink}
+        appliedPer100={item.nutrition?.per100g}
+      />
+
+      <div className="flex flex-wrap gap-2">
+        <button
+          type="button"
+          disabled={busyId === item.id}
+          onClick={() => navigate(`/?offReview=${encodeURIComponent(item.id)}`)}
+          className="min-h-[44px] flex-1 rounded-xl border border-white/20 px-3 py-2 text-xs font-semibold text-white hover:border-white/35"
+        >
+                    ערוך — חפשי במאגר המאומת
+        </button>
+        <button
+          type="button"
+          disabled={busyId === item.id || inCatalog}
+          onClick={() => {
+            onBusy(item.id);
+            void approveOffPendingReview(item).finally(() => onBusy(null));
+          }}
+          className="min-h-[44px] flex-1 rounded-xl bg-white px-3 py-2 text-xs font-semibold text-black disabled:opacity-50"
+        >
+          {busyId === item.id ? "שומר…" : "הוסף למאגר"}
+        </button>
+        <button
+          type="button"
+          disabled={busyId === item.id}
+          onClick={() => {
+            onBusy(item.id);
+            void rejectOffPendingReview(item.id).finally(() => onBusy(null));
+          }}
+          className="min-h-[44px] rounded-xl border border-red-400/35 bg-red-500/10 px-3 py-2 text-xs font-semibold text-red-200"
+        >
+          דחה
+        </button>
+      </div>
+    </article>
+  );
+}
+
+function ReviewSection({
+  title,
+  subtitle,
+  items,
+  catalogIds,
+  busyId,
+  onBusy,
+}: {
+  title: string;
+  subtitle: string;
+  items: OffPendingReview[];
+  catalogIds: Set<string>;
+  busyId: string | null;
+  onBusy: (id: string | null) => void;
+}) {
+  if (items.length === 0) return null;
+  return (
+    <section className="space-y-3">
+      <div className="rounded-xl border border-violet-400/30 bg-violet-500/10 px-3 py-2.5">
+        <h2 className="text-sm font-semibold text-violet-50">{title}</h2>
+        <p className="mt-0.5 text-[11px] text-violet-100/85 leading-relaxed">{subtitle}</p>
+        <p className="mt-1 text-xs text-violet-100/70">
+          {items.length.toLocaleString("he-IL")} מוצרים
+        </p>
+      </div>
+      <div className="space-y-3">
+        {items.map((item) => (
+          <OffReviewCard
+            key={item.id}
+            item={item}
+            inCatalog={catalogIds.has(item.id)}
+            busyId={busyId}
+            onBusy={onBusy}
+          />
+        ))}
+      </div>
+    </section>
   );
 }
 
 export function PendingOffReview() {
-  const navigate = useNavigate();
   const { user } = useAuth();
-  const {
-    offPendingReviews,
-    offPendingReady,
-    catalog,
-    approveOffPendingReview,
-    rejectOffPendingReview,
-  } = useCatalog();
+  const { offPendingReviews, offPendingReady, catalog } = useCatalog();
   const [busyId, setBusyId] = useState<string | null>(null);
 
   const catalogIds = useMemo(
     () => new Set(catalog.map((p) => p.gtin ?? p.id)),
     [catalog],
   );
+
+  const { withVerifiedMatch, withoutVerifiedMatch } = useMemo(() => {
+    const withVerifiedMatch: OffPendingReview[] = [];
+    const withoutVerifiedMatch: OffPendingReview[] = [];
+    for (const item of offPendingReviews) {
+      if (item.offReviewMeta.verifiedLink) withVerifiedMatch.push(item);
+      else withoutVerifiedMatch.push(item);
+    }
+    return { withVerifiedMatch, withoutVerifiedMatch };
+  }, [offPendingReviews]);
 
   return (
     <div className="space-y-6 pb-4">
@@ -63,12 +149,8 @@ export function PendingOffReview() {
           בדיקת OFF
         </p>
         <p className="text-[13px] leading-relaxed text-ink-muted sm:text-sm">
-          מוצרים מ־Open Food Facts מחכים כאן. רק אחרי בדיקה ועריכה — &quot;הוסף למאגר&quot;. כך לא
-          נכנסים לקטלוג מוצרים שלא אישרת.
-        </p>
-        <p className="text-xs text-ink-dim">
-          המאגר המאומת (5,758) נשאר בנפרד: הוא מציע התאמה לפי שם ומותג, לא מקשר ברקוד אוטומטית.
-          כאן רואים בבירור מה OFF אמר ומה המאומת התאים.
+          לכל מוצר רואים שני טורים: OFF (ברקוד) מול המאגר המאומת (שם/מותג). רק אחרי שמוודאים שזה
+          אותו מוצר — «הוסף למאגר» או «ערוך ובדוק».
         </p>
       </header>
 
@@ -81,95 +163,26 @@ export function PendingOffReview() {
           אין מוצרים ממתינים. ייבוא OFF בהגדרות ממלא את הרשימה הזו (לא את המאגר ישירות).
         </p>
       ) : (
-        <div className="space-y-3">
+        <div className="space-y-8">
           <p className="text-xs text-ink-muted">
-            {offPendingReviews.length.toLocaleString("he-IL")} מוצרים לבדיקה
+            סה״כ {offPendingReviews.length.toLocaleString("he-IL")} לבדיקה
           </p>
-          {offPendingReviews.map((item) => {
-            const inCatalog = catalogIds.has(item.id);
-            return (
-              <article
-                key={item.id}
-                className="rounded-2xl border border-white/10 bg-white/[0.03] p-4 space-y-3"
-              >
-                <div className="flex flex-wrap items-start justify-between gap-2">
-                  <div className="min-w-0">
-                    <p className="font-mono text-sm font-semibold text-white" dir="ltr">
-                      {item.gtin ?? item.id}
-                    </p>
-                    <p className="mt-1 text-sm text-white">{item.name}</p>
-                    {item.brand ? (
-                      <p className="text-xs text-ink-muted">{item.brand}</p>
-                    ) : null}
-                  </div>
-                  {inCatalog ? (
-                    <span className="rounded-lg border border-amber-400/30 bg-amber-500/10 px-2 py-1 text-[10px] font-semibold text-amber-100">
-                      כבר במאגר
-                    </span>
-                  ) : null}
-                </div>
-
-                <div className="rounded-xl border border-white/10 bg-black/30 px-3 py-2">
-                  <VerifiedLinkBanner item={item} />
-                </div>
-
-                {item.nutrition?.per100g ? (
-                  <p className="text-[11px] text-ink-muted" dir="ltr">
-                    {[
-                      item.nutrition.per100g.calories != null
-                        ? `${item.nutrition.per100g.calories} kcal`
-                        : null,
-                      item.nutrition.per100g.proteinG != null
-                        ? `P ${item.nutrition.per100g.proteinG}g`
-                        : null,
-                      item.nutrition.per100g.carbsG != null
-                        ? `C ${item.nutrition.per100g.carbsG}g`
-                        : null,
-                      item.nutrition.per100g.fatG != null
-                        ? `F ${item.nutrition.per100g.fatG}g`
-                        : null,
-                    ]
-                      .filter(Boolean)
-                      .join(" · ")}
-                    /100g
-                  </p>
-                ) : null}
-
-                <div className="flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    disabled={busyId === item.id}
-                    onClick={() => navigate(`/?offReview=${encodeURIComponent(item.id)}`)}
-                    className="min-h-[44px] flex-1 rounded-xl border border-white/20 px-3 py-2 text-xs font-semibold text-white hover:border-white/35"
-                  >
-                    ערוך ובדוק
-                  </button>
-                  <button
-                    type="button"
-                    disabled={busyId === item.id || inCatalog}
-                    onClick={() => {
-                      setBusyId(item.id);
-                      void approveOffPendingReview(item).finally(() => setBusyId(null));
-                    }}
-                    className="min-h-[44px] flex-1 rounded-xl bg-white px-3 py-2 text-xs font-semibold text-black disabled:opacity-50"
-                  >
-                    {busyId === item.id ? "שומר…" : "הוסף למאגר"}
-                  </button>
-                  <button
-                    type="button"
-                    disabled={busyId === item.id}
-                    onClick={() => {
-                      setBusyId(item.id);
-                      void rejectOffPendingReview(item.id).finally(() => setBusyId(null));
-                    }}
-                    className="min-h-[44px] rounded-xl border border-red-400/35 bg-red-500/10 px-3 py-2 text-xs font-semibold text-red-200"
-                  >
-                    דחה
-                  </button>
-                </div>
-              </article>
-            );
-          })}
+          <ReviewSection
+            title="התאמה למאגר המאומת"
+            subtitle="השווי שם ומותג בין OFF למאומת לפני אישור. התזונה בטופס לרוב מהמאומת."
+            items={withVerifiedMatch}
+            catalogIds={catalogIds}
+            busyId={busyId}
+            onBusy={setBusyId}
+          />
+          <ReviewSection
+            title="ללא התאמה למאגר — OFF בלבד"
+            subtitle="לחצי «ערוך» — שנה שם/מותג כדי לחפש במאגר המאומת; הברקוד נשאר מ־OFF."
+            items={withoutVerifiedMatch}
+            catalogIds={catalogIds}
+            busyId={busyId}
+            onBusy={setBusyId}
+          />
         </div>
       )}
     </div>
