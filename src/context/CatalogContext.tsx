@@ -46,6 +46,7 @@ import type { OffImportCheckpoint, OffImportStopReason } from "../utils/offImpor
 import {
   offImportCheckpointIsResumable,
   offImportIsFullyComplete,
+  offImportNextPageFromSummary,
   OFF_IMPORT_PAGE_SIZE,
   OFF_IMPORT_PAGES_PER_RUN,
 } from "../utils/offImportProgress";
@@ -238,12 +239,18 @@ type CatalogContextValue = {
   ) => Promise<{
     scanned: number;
     skipped: number;
+    skippedCatalog: number;
+    skippedPending: number;
+    skippedNoNutrition: number;
     queued: number;
+    written: number;
+    pagesProcessed: number;
     verifiedOverrides: number;
     completed: boolean;
     stoppedEarly: boolean;
     resumeNextPage?: number;
     totalOffReported?: number;
+    error?: string;
   }>;
   offImportCheckpoint: OffImportCheckpoint | null;
   offImportCheckpointReady: boolean;
@@ -446,13 +453,15 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
         writeLocalOffImportCheckpoint(user.uid, v);
         return;
       }
-      const local = readLocalOffImportCheckpoint(user.uid);
-      if (local) {
-        setOffImportCheckpoint(local);
-        return;
+      if (!v) {
+        const local = readLocalOffImportCheckpoint(user.uid);
+        if (local && offImportCheckpointIsResumable(local)) {
+          setOffImportCheckpoint(local);
+          return;
+        }
       }
-      setOffImportCheckpoint(null);
-      writeLocalOffImportCheckpoint(user.uid, null);
+      setOffImportCheckpoint(v ?? null);
+      writeLocalOffImportCheckpoint(user.uid, v ?? null);
     });
     return () => {
       unsubTrips();
@@ -727,7 +736,12 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
         return {
           scanned: 0,
           skipped: 0,
+          skippedCatalog: 0,
+          skippedPending: 0,
+          skippedNoNutrition: 0,
           queued: 0,
+          written: 0,
+          pagesProcessed: 0,
           verifiedOverrides: 0,
           completed: false,
           stoppedEarly: false,
@@ -759,8 +773,12 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
 
       let scanned = 0;
       let skipped = 0;
+      let skippedCatalog = 0;
+      let skippedPending = 0;
+      let skippedNoNutrition = 0;
       let queued = 0;
       let written = 0;
+      let pagesProcessed = 0;
       let verifiedOverrides = 0;
       const pending: OffPendingReview[] = [];
       const seenGtin = new Set<string>();
@@ -777,14 +795,19 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
           updates[`${basePath}/${key}`] = cleanForRtdb({ ...item, id: key, updatedAt: now });
         }
         if (Object.keys(updates).length > 0) {
-          await update(ref(db), updates);
+          try {
+            await update(ref(db), updates);
+          } catch (err) {
+            const msg = err instanceof Error ? err.message : "שגיאת Firebase";
+            throw new Error(`שמירה לרשימת בדיקת OFF נכשלה: ${msg}`);
+          }
         }
         written += batch.length;
         opts?.onProgress?.({
           phase: "write",
           scanned,
           skipped,
-          queued: pending.length,
+          queued,
           written,
         });
       };
@@ -801,15 +824,22 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
         lastPage?: number,
       ) => {
         const ck: OffImportCheckpoint = {
-          nextPage,
+          nextPage: Math.max(1, nextPage),
           stopReason,
           lastPageFetched: lastPage,
           totalOffReported,
           updatedAt: new Date().toISOString(),
         };
-        await set(ref(db, ckPath), ck);
-        writeLocalOffImportCheckpoint(user.uid, ck);
-        setOffImportCheckpoint(ck);
+        try {
+          await set(ref(db, ckPath), ck);
+          writeLocalOffImportCheckpoint(user.uid, ck);
+          setOffImportCheckpoint(ck);
+        } catch (err) {
+          writeLocalOffImportCheckpoint(user.uid, ck);
+          setOffImportCheckpoint(ck);
+          const msg = err instanceof Error ? err.message : "שגיאת Firebase";
+          throw new Error(`שמירת התקדמות ייבוא נכשלה: ${msg}`);
+        }
       };
 
       const clearCheckpoint = async () => {
@@ -846,17 +876,20 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
             const built = buildCatalogProductFromOffRecord(record, verifiedItems);
             if (!built) {
               skipped += 1;
+              skippedNoNutrition += 1;
               continue;
             }
             const gtin = built.product.id;
             if (seenGtin.has(gtin) || existingOffPending.has(gtin)) {
               skipped += 1;
+              skippedPending += 1;
               continue;
             }
             seenGtin.add(gtin);
 
             if (catalogEntryBlocksOffImport(existingById.get(gtin))) {
               skipped += 1;
+              skippedCatalog += 1;
               continue;
             }
 
@@ -877,6 +910,8 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
             }
           }
 
+          pagesProcessed = pagesProcessedThisRun;
+
           if (pagesProcessedThisRun >= OFF_IMPORT_PAGES_PER_RUN) {
             await flushPending();
             const nextPage = lastPageFetched + 1;
@@ -884,16 +919,23 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
             const expectedLast = totalOffReported
               ? Math.ceil(totalOffReported / OFF_IMPORT_PAGE_SIZE)
               : null;
-            showToast(
+            const detail =
               queued > 0
-                ? `נעצר אחרי ${OFF_IMPORT_PAGES_PER_RUN} עמודים — המשך מעמוד ${nextPage}${expectedLast ? ` (מתוך ~${expectedLast})` : ""}`
-                : `נסרקו ${scanned.toLocaleString("he-IL")} (רובם כבר ברשימה) — המשך מעמוד ${nextPage}${expectedLast ? ` (מתוך ~${expectedLast})` : ""}`,
-              "success",
+                ? `${queued} חדשים לבדיקה`
+                : `0 חדשים (כבר ברשימה/מאגר: ${skippedPending + skippedCatalog})`;
+            showToast(
+              `נעצר אחרי ${OFF_IMPORT_PAGES_PER_RUN} עמודים — ${detail}. המשך מעמוד ${nextPage}${expectedLast ? ` (~${expectedLast})` : ""}`,
+              queued > 0 ? "success" : "error",
             );
             return {
               scanned,
               skipped,
+              skippedCatalog,
+              skippedPending,
+              skippedNoNutrition,
               queued,
+              written,
+              pagesProcessed: pagesProcessedThisRun,
               verifiedOverrides,
               completed: false,
               stoppedEarly: true,
@@ -924,8 +966,10 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
           summary.stopReason === "empty" ||
           !fullyDone;
 
+        pagesProcessed = summary.lastPageFetched - startPage + 1;
+
         if (needsResume) {
-          const nextPage = summary.lastPageFetched + 1;
+          const nextPage = offImportNextPageFromSummary(summary);
           const reason: OffImportStopReason =
             summary.stopReason === "rate_limited" ? "rate_limited"
             : summary.stopReason === "incomplete" ? "incomplete"
@@ -937,13 +981,18 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
           showToast(
             queued > 0
               ? `ייבוא נעצר — המשך מעמוד ${nextPage}${expectedLast ? ` (מתוך ~${expectedLast})` : ""}`
-              : `נסרקו ${scanned.toLocaleString("he-IL")} — רובם כבר ברשימה. המשך מעמוד ${nextPage}${expectedLast ? ` (מתוך ~${expectedLast})` : ""}`,
-            queued > 0 ? "error" : "success",
+              : `0 חדשים · דולגו ${skippedPending + skippedCatalog} · המשך מעמוד ${nextPage}`,
+            queued > 0 ? "success" : "error",
           );
           return {
             scanned,
             skipped,
+            skippedCatalog,
+            skippedPending,
+            skippedNoNutrition,
             queued,
+            written,
+            pagesProcessed,
             verifiedOverrides,
             completed: false,
             stoppedEarly: true,
@@ -954,13 +1003,18 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
 
         await clearCheckpoint();
         showToast(
-          `ייבוא OFF הסתיים — ${queued.toLocaleString("he-IL")} חדשים לבדיקה (${skipped.toLocaleString("he-IL")} דולגו)`,
+          `ייבוא OFF הסתיים — ${queued.toLocaleString("he-IL")} חדשים · נשמרו ${written.toLocaleString("he-IL")} · דולגו ${skipped.toLocaleString("he-IL")}`,
           "success",
         );
         return {
           scanned,
           skipped,
+          skippedCatalog,
+          skippedPending,
+          skippedNoNutrition,
           queued,
+          written,
+          pagesProcessed,
           verifiedOverrides,
           completed: true,
           stoppedEarly: false,
@@ -970,13 +1024,22 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
         if (e instanceof DOMException && e.name === "AbortError") {
           if (lastPageFetched >= startPage) {
             const nextPage = lastPageFetched + 1;
-            await persistCheckpoint(nextPage, "aborted", lastPageFetched);
+            try {
+              await persistCheckpoint(nextPage, "aborted", lastPageFetched);
+            } catch {
+              /* local checkpoint still updated in persistCheckpoint partial */
+            }
           }
           showToast("ייבוא OFF הופסק — אפשר להמשיך מהעמוד השמור", "error");
           return {
             scanned,
             skipped,
+            skippedCatalog,
+            skippedPending,
+            skippedNoNutrition,
             queued,
+            written,
+            pagesProcessed,
             verifiedOverrides,
             completed: false,
             stoppedEarly: lastPageFetched >= startPage,
@@ -984,21 +1047,30 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
               lastPageFetched >= startPage ? lastPageFetched + 1 : undefined,
           };
         }
-        if (lastPageFetched >= startPage) {
-          const nextPage = lastPageFetched + 1;
-          await persistCheckpoint(nextPage, "paused", lastPageFetched);
-        }
         const msg = e instanceof Error ? e.message : "שגיאה בייבוא OFF";
+        if (lastPageFetched >= startPage) {
+          try {
+            await persistCheckpoint(lastPageFetched + 1, "paused", lastPageFetched);
+          } catch {
+            /* keep local */
+          }
+        }
         showToast(msg, "error");
         return {
           scanned,
           skipped,
+          skippedCatalog,
+          skippedPending,
+          skippedNoNutrition,
           queued,
+          written,
+          pagesProcessed,
           verifiedOverrides,
           completed: false,
           stoppedEarly: lastPageFetched >= startPage,
           resumeNextPage:
             lastPageFetched >= startPage ? lastPageFetched + 1 : undefined,
+          error: msg,
         };
       }
     },

@@ -45,5 +45,19 @@ export function offImportCheckpointIsResumable(ck: OffImportCheckpoint | null): 
 
 export function offImportResumePage(ck: OffImportCheckpoint | null): number | null {
   if (!offImportCheckpointIsResumable(ck)) return null;
-  return ck!.nextPage;
+  return Math.max(1, ck!.nextPage);
+}
+
+/** Align stored checkpoint with fetch summary (retry failed page, not skip ahead). */
+export function offImportNextPageFromSummary(
+  summary: {
+    lastPageFetched: number;
+    failedAtPage?: number;
+    stopReason: string;
+  },
+): number {
+  if (summary.failedAtPage != null && summary.failedAtPage > 0) {
+    return summary.failedAtPage;
+  }
+  return summary.lastPageFetched + 1;
 }

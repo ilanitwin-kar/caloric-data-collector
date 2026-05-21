@@ -116,14 +116,21 @@ export function Settings() {
       const parts = [
         res.completed
           ? "הייבוא הסתיים"
-          : `נעצר (מגבלת OFF)${res.resumeNextPage != null ? ` · המשך מעמוד ${res.resumeNextPage}` : ""}`,
+          : `נעצר${res.resumeNextPage != null ? ` · המשך מעמוד ${res.resumeNextPage}` : ""}`,
+        `עמודים בריצה: ${res.pagesProcessed}`,
         `נסרקו ${res.scanned.toLocaleString("he-IL")}`,
-        `לבדיקה: ${res.queued.toLocaleString("he-IL")}`,
-        `דולגו ${res.skipped.toLocaleString("he-IL")}`,
+        `חדשים לבדיקה: ${res.queued.toLocaleString("he-IL")}`,
+        `נשמרו: ${res.written.toLocaleString("he-IL")}`,
       ];
-      if (res.stoppedEarly && res.resumeNextPage) {
-        parts.push(`המשך מעמוד ${res.resumeNextPage}`);
+      if (res.skipped > 0) {
+        parts.push(
+          `דולגו ${res.skipped.toLocaleString("he-IL")} (מאגר ${res.skippedCatalog} · כבר בבדיקה ${res.skippedPending} · ללא תזונה ${res.skippedNoNutrition})`,
+        );
       }
+      if (res.queued === 0 && res.scanned > 0 && !res.completed) {
+        parts.push("0 חדשים — המשיכי לעמוד הבא; רוב הברקודים כבר קיימים");
+      }
+      if (res.error) parts.push(res.error);
       if (res.totalOffReported) {
         parts.push(`(~${res.totalOffReported.toLocaleString("he-IL")} ב-OFF ישראל)`);
       }
