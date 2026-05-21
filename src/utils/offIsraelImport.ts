@@ -54,6 +54,7 @@ export async function* fetchOffIsraelProductPages(
     if (opts?.signal?.aborted) throw new DOMException("Aborted", "AbortError");
 
     let products: Record<string, unknown>[] | null = null;
+    let rawPageCount = 0;
 
     for (const origin of OFF_API_ORIGINS) {
       const url = new URL(`${origin}/cgi/search.pl`);
@@ -109,6 +110,7 @@ export async function* fetchOffIsraelProductPages(
       }
 
       products = batch;
+      rawPageCount = raw.length;
       break;
     }
 
@@ -122,10 +124,10 @@ export async function* fetchOffIsraelProductPages(
     totalSeen += products.length;
     opts?.onPage?.({ page, productsOnPage: products.length, totalSeen });
 
-    if (products.length === 0) return;
-    yield products;
+    if (products.length === 0 && rawPageCount === 0) return;
+    if (products.length > 0) yield products;
 
-    if (products.length < pageSize) return;
+    if (rawPageCount < pageSize) return;
     if (page < maxPages && delayMs > 0) await sleep(delayMs, opts?.signal);
   }
 }

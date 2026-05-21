@@ -56,7 +56,7 @@ export function Settings() {
         onProgress: setOffProgress,
       });
       setOffResult(
-        `נסרקו ${res.scanned.toLocaleString("he-IL")} · נוספו ${res.added.toLocaleString("he-IL")} · דולגו ${res.skipped.toLocaleString("he-IL")} · תזונה מהמאומת: ${res.verifiedOverrides.toLocaleString("he-IL")}`,
+        `הייבוא הסתיים · נסרקו ${res.scanned.toLocaleString("he-IL")} · נוספו ${res.added.toLocaleString("he-IL")} · דולגו ${res.skipped.toLocaleString("he-IL")} · תזונה מהמאומת: ${res.verifiedOverrides.toLocaleString("he-IL")}`,
       );
     } catch {
       setOffResult("ייבוא נכשל");
@@ -181,7 +181,7 @@ export function Settings() {
         <p className="mt-1 text-xs leading-relaxed text-ink-muted">
           מוסיף לקטלוג מוצרים עם ברקוד מ־OFF (ישראל + תזונה). לא דורס מוצרים שכבר בקטלוג או שנשמרו
           ידנית. אם שם+מותג תואמים למאגר המאומת ({items.length.toLocaleString("he-IL")} פריטים) —
-          נשמרת התזונה המאומתת.
+          נשמרת התזונה המאומתת. הריצה יכולה לקחת כמה דקות — עקבי אחרי מספר העמוד שעולה.
         </p>
         <p className="mt-2 text-xs text-ink-dim">
           בקטלוג כרגע: {catalog.length.toLocaleString("he-IL")} מוצרים
