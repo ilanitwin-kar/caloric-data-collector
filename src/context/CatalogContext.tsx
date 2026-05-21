@@ -20,11 +20,22 @@ import {
 } from "../utils/offCatalog";
 import { isOffImportedCatalogProduct } from "../utils/offCatalogPolicy";
 import { fetchOffIsraelProductPages } from "../utils/offIsraelImport";
+import {
+  readLocalOffImportCheckpoint,
+  writeLocalOffImportCheckpoint,
+} from "../utils/offImportCheckpointStorage";
 import type { Verified100Row } from "../utils/verifiedTsv";
+
+export type OffImportStopReason =
+  | "rate_limited"
+  | "paused"
+  | "aborted"
+  | "incomplete";
 
 export type OffImportCheckpoint = {
   nextPage: number;
-  stopReason: "rate_limited" | "complete";
+  stopReason: OffImportStopReason;
+  lastPageFetched?: number;
   updatedAt: string;
 };
 
@@ -355,6 +366,13 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
   }, [user, cloudSyncPaused]);
 
   useEffect(() => {
+    if (user && !cloudSyncPaused) {
+      const local = readLocalOffImportCheckpoint(user.uid);
+      if (local) setOffImportCheckpoint(local);
+    }
+  }, [user, cloudSyncPaused]);
+
+  useEffect(() => {
     if (!user || cloudSyncPaused) {
       setSupermarketTrips([]);
       setSupermarketDrafts([]);
@@ -407,7 +425,9 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
     const unsubCk = onValue(rck, (snap: DataSnapshot) => {
       setOffImportCheckpointReady(true);
       const v = snap.val() as OffImportCheckpoint | null;
-      setOffImportCheckpoint(v && v.nextPage > 0 ? v : null);
+      const ck = v && v.nextPage >= 2 ? v : null;
+      setOffImportCheckpoint(ck);
+      writeLocalOffImportCheckpoint(user.uid, ck);
     });
     return () => {
       unsubTrips();
@@ -434,6 +454,8 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
       unitsPerPack?: number;
       measures?: CatalogMeasures;
       sourceType: CatalogSourceType;
+      /** When set, written as product sources (e.g. OFF + verified100). */
+      sources?: CatalogProduct["sources"];
     }) => {
       if (!user) {
         showToast("צריך להתחבר כדי לשמור לקטלוג", "error");
@@ -469,13 +491,16 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
           input.keywords?.filter((k) => k.trim()).map((k) => k.trim()) ?? undefined,
         category: input.category?.trim() || undefined,
         usageTags: input.usageTags?.length ? input.usageTags : undefined,
-        per100Basis: input.per100Basis ?? "g",
+        per100Basis: input.per100Basis === "ml" ? "ml" : "g",
         defaultMeasure: input.defaultMeasure ?? "unit",
         commonMeasures:
           input.commonMeasures?.length ? input.commonMeasures : [input.defaultMeasure ?? "unit", "g100"],
         createdAt: now,
         updatedAt: now,
-        sources: [{ type: input.sourceType, at: now }],
+        sources:
+          input.sources?.length ?
+            input.sources
+          : [{ type: input.sourceType, at: now }],
         package: {
           totalWeightG: totalW,
           unitsPerPack: units,
@@ -684,11 +709,7 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
         };
       }
 
-      const startPage =
-        opts?.startPage ??
-        (offImportCheckpoint?.stopReason === "rate_limited"
-          ? offImportCheckpoint.nextPage
-          : 1);
+      const startPage = Math.max(1, opts?.startPage ?? 1);
 
       const existingById = new Map<string, CatalogProduct>();
       for (const p of catalog) {
@@ -734,12 +755,37 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
       };
 
       const ckPath = `users/${user.uid}/catalog/meta/offImportCheckpoint`;
+      const OFF_PAGE_SIZE = 100;
+      let lastPageFetched = startPage - 1;
+
+      const persistCheckpoint = async (
+        nextPage: number,
+        stopReason: OffImportStopReason,
+        lastPage?: number,
+      ) => {
+        const ck: OffImportCheckpoint = {
+          nextPage,
+          stopReason,
+          lastPageFetched: lastPage,
+          updatedAt: new Date().toISOString(),
+        };
+        await set(ref(db, ckPath), ck);
+        writeLocalOffImportCheckpoint(user.uid, ck);
+        setOffImportCheckpoint(ck);
+      };
+
+      const clearCheckpoint = async () => {
+        await remove(ref(db, ckPath));
+        writeLocalOffImportCheckpoint(user.uid, null);
+        setOffImportCheckpoint(null);
+      };
 
       try {
         const gen = fetchOffIsraelProductPages({
           signal: opts?.signal,
           startPage,
           onPage: ({ page }) => {
+            lastPageFetched = page;
             opts?.onProgress?.({
               phase: "fetch",
               page,
@@ -789,21 +835,32 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
               });
             }
           }
+          if (lastPageFetched >= startPage) {
+            await persistCheckpoint(lastPageFetched + 1, "paused", lastPageFetched);
+          }
           iter = await gen.next();
         }
 
         await flushPending();
 
         const summary = iter.value;
-        if (summary.stopReason === "rate_limited") {
+        const likelyIncomplete =
+          summary.stopReason === "complete" &&
+          summary.totalReportedCount != null &&
+          summary.totalReportedCount > 0 &&
+          summary.lastPageFetched <
+            Math.ceil(summary.totalReportedCount / OFF_PAGE_SIZE);
+
+        if (summary.stopReason === "rate_limited" || likelyIncomplete) {
           const nextPage = summary.lastPageFetched + 1;
-          await set(ref(db, ckPath), {
-            nextPage,
-            stopReason: "rate_limited",
-            updatedAt: new Date().toISOString(),
-          });
+          const reason: OffImportStopReason = likelyIncomplete
+            ? "incomplete"
+            : "rate_limited";
+          await persistCheckpoint(nextPage, reason, summary.lastPageFetched);
           showToast(
-            `ייבוא נעצר בעמוד ${summary.lastPageFetched} (מגבלת OFF). אפשר להמשיך מאוחר יותר.`,
+            likelyIncomplete
+              ? `ייבוא נעצר לפני סוף הרשימה — המשך מעמוד ${nextPage}`
+              : `ייבוא נעצר בעמוד ${summary.lastPageFetched} (מגבלת OFF). המשך מעמוד ${nextPage}`,
             "error",
           );
           return {
@@ -818,7 +875,7 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
           };
         }
 
-        await remove(ref(db, ckPath));
+        await clearCheckpoint();
         showToast(
           `ייבוא OFF: ${queued.toLocaleString("he-IL")} מוצרים לבדיקה (${skipped.toLocaleString("he-IL")} דולגו)`,
           "success",
@@ -834,15 +891,25 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
         };
       } catch (e) {
         if (e instanceof DOMException && e.name === "AbortError") {
-          showToast("ייבוא OFF בוטל", "error");
+          if (lastPageFetched >= startPage) {
+            const nextPage = lastPageFetched + 1;
+            await persistCheckpoint(nextPage, "aborted", lastPageFetched);
+          }
+          showToast("ייבוא OFF הופסק — אפשר להמשיך מהעמוד השמור", "error");
           return {
             scanned,
             skipped,
             queued,
             verifiedOverrides,
             completed: false,
-            stoppedEarly: false,
+            stoppedEarly: lastPageFetched >= startPage,
+            resumeNextPage:
+              lastPageFetched >= startPage ? lastPageFetched + 1 : undefined,
           };
+        }
+        if (lastPageFetched >= startPage) {
+          const nextPage = lastPageFetched + 1;
+          await persistCheckpoint(nextPage, "paused", lastPageFetched);
         }
         const msg = e instanceof Error ? e.message : "שגיאה בייבוא OFF";
         showToast(msg, "error");
@@ -852,16 +919,20 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
           queued,
           verifiedOverrides,
           completed: false,
-          stoppedEarly: false,
+          stoppedEarly: lastPageFetched >= startPage,
+          resumeNextPage:
+            lastPageFetched >= startPage ? lastPageFetched + 1 : undefined,
         };
       }
     },
-    [user, catalog, offPendingReviews, offImportCheckpoint, showToast],
+    [user, catalog, offPendingReviews, showToast],
   );
 
   const clearOffImportCheckpoint = useCallback(async () => {
     if (!user) return;
     await remove(ref(db, `users/${user.uid}/catalog/meta/offImportCheckpoint`));
+    writeLocalOffImportCheckpoint(user.uid, null);
+    setOffImportCheckpoint(null);
   }, [user]);
 
   const purgeOffImportedFromCatalog = useCallback(async () => {
@@ -901,6 +972,11 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
       }
       const gtin = normalizeBarcode(item.gtin ?? item.id);
       const per = item.nutrition?.per100g ?? {};
+      const now = new Date().toISOString();
+      const sources =
+        item.sources?.length ?
+          item.sources
+        : [{ type: "barcode_openfoodfacts" as const, at: now }];
       await upsertByBarcode({
         barcode: gtin,
         name: item.name,
@@ -909,16 +985,15 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
         keywords: item.keywords,
         category: item.category,
         usageTags: item.usageTags,
-        per100Basis: item.per100Basis,
+        per100Basis: item.per100Basis === "ml" ? "ml" : "g",
         defaultMeasure: item.defaultMeasure,
         commonMeasures: item.commonMeasures,
         per100: per,
         totalWeightG: item.package?.totalWeightG,
         unitsPerPack: item.package?.unitsPerPack,
         measures: item.measures,
-        sourceType: item.sources?.some((s) => s.type === "verified100")
-          ? "barcode_openfoodfacts"
-          : "barcode_openfoodfacts",
+        sourceType: "barcode_openfoodfacts",
+        sources,
       });
       await remove(ref(db, `users/${user.uid}/catalog/offPendingReview/${gtin}`));
       showToast("נוסף למאגר", "success");

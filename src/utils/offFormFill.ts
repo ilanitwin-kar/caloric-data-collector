@@ -2,6 +2,14 @@ import { fmt1 } from "./number";
 import type { OpenFoodFactsProduct } from "./openFoodFacts";
 import type { Verified100Row } from "./verifiedTsv";
 
+/** True when OFF quantity text suggests liquid (ml / liter). */
+export function offProductIsPerMl(off: {
+  quantityText?: string;
+}): boolean {
+  const q = (off.quantityText ?? "").toLowerCase();
+  return q.includes("ml") || q.includes("מ\"ל") || q.includes("מ״ל") || q.includes("ליטר");
+}
+
 export type OffFormFillValues = {
   name: string;
   brand: string;
@@ -24,10 +32,7 @@ export function offDataToFormValues(
   const useV = Boolean(verified);
   const quantityG = off.quantityG;
   const units = off.packUnits;
-  const isMl =
-    off.quantityText?.toLowerCase().includes("ml") ||
-    off.quantityText?.toLowerCase().includes(" ליטר") ||
-    false;
+  const isMl = offProductIsPerMl(off);
 
   let totalWeightG = "";
   let unitsPerPack = "";
