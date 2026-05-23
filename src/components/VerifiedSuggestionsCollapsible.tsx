@@ -1,33 +1,13 @@
-export type VerifiedSuggestionPick = {
-  name: string;
-  brand?: string;
-  category?: string;
-  calories100?: number;
-  protein100?: number;
-  carbs100?: number;
-  fat100?: number;
-  unitWeightG?: number;
-  packWeightG?: number;
-  unitsPerPack?: number;
-  measures?: {
-    unitsPer100g?: number;
-    tbspPer100g?: number;
-    tspPer100g?: number;
-    cupsPer100g?: number;
-  };
-  commonMeasures?: ("unit" | "tbsp" | "tsp" | "cup" | "g100")[];
-  defaultMeasure?: "unit" | "tbsp" | "tsp" | "cup" | "g100";
-};
+export type {
+  VerifiedSuggestionPick,
+  VerifiedSuggestionSource,
+} from "./verifiedSuggestionTypes";
+export { verifiedPortionHintFromPick as verifiedPortionHint } from "./verifiedSuggestionTypes";
 
-function verifiedPortionHint(sug: VerifiedSuggestionPick): string | null {
-  const parts: string[] = [];
-  if (sug.unitWeightG != null && sug.unitWeightG > 0) {
-    parts.push(`יחידה ~${Math.round(sug.unitWeightG)}g`);
-  }
-  if (sug.measures?.tbspPer100g && sug.measures.tbspPer100g > 0) parts.push("כף");
-  if (sug.measures?.cupsPer100g && sug.measures.cupsPer100g > 0) parts.push("כוס");
-  return parts.length > 0 ? parts.join(" · ") : null;
-}
+import {
+  verifiedPortionHintFromPick,
+  type VerifiedSuggestionPick,
+} from "./verifiedSuggestionTypes";
 
 type VerifiedSuggestionsCollapsibleProps = {
   suggestions: VerifiedSuggestionPick[];
@@ -99,27 +79,28 @@ export function VerifiedSuggestionsCollapsible({
             </p>
             <div className="space-y-2">
               {visibleSuggestions.map((sug, idx) => {
-                const portionHint = verifiedPortionHint(sug);
+                const portionHint = verifiedPortionHintFromPick(sug);
                 return (
-                <div
-                  key={`${sug.name}|${sug.brand ?? ""}|${verifiedOffset + idx}`}
-                  className="flex flex-wrap items-center gap-2"
-                >
-                  <button
-                    type="button"
-                    className="rounded-lg bg-emerald-400/15 px-3 py-1.5 text-xs font-semibold text-emerald-50 hover:bg-emerald-400/20"
-                    onClick={() => onPick(sug)}
+                  <div
+                    key={`${sug.name}|${sug.brand ?? ""}|${verifiedOffset + idx}`}
+                    className="flex flex-wrap items-center gap-2"
                   >
-                    ✓ בחר
-                  </button>
-                  <span className="text-[11px] text-emerald-100/90">
-                    {sug.name}
-                    {sug.brand ? ` · ${sug.brand}` : ""}
-                    {sug.category ? ` · ${sug.category}` : ""}
-                    {sug.calories100 != null ? ` · ${sug.calories100} קק״ל` : ""}
-                    {portionHint ? ` · ${portionHint}` : ""}
-                  </span>
-                </div>
+                    <button
+                      type="button"
+                      className="rounded-lg bg-emerald-400/15 px-3 py-1.5 text-xs font-semibold text-emerald-50 hover:bg-emerald-400/20"
+                      onClick={() => onPick(sug)}
+                    >
+                      ✓ בחר
+                    </button>
+                    <span className="text-[11px] text-emerald-100/90">
+                      {sug.source === "ministry" ? "משרד הבריאות · " : ""}
+                      {sug.name}
+                      {sug.brand ? ` · ${sug.brand}` : ""}
+                      {sug.category ? ` · ${sug.category}` : ""}
+                      {sug.calories100 != null ? ` · ${sug.calories100} קק״ל` : ""}
+                      {portionHint ? ` · ${portionHint}` : ""}
+                    </span>
+                  </div>
                 );
               })}
             </div>

@@ -40,6 +40,10 @@ type Verified100ContextValue = {
   syncFromMinistry: (opts?: { signal?: AbortSignal }) => Promise<{ written: number; enriched: number }>;
   findBestMatch: (q: { name: string; brand?: string }) => Verified100Item | null;
   findMatches: (q: { name: string; brand?: string }, opts?: { limit?: number }) => Verified100Item[];
+  findScoredMatches: (
+    q: { name: string; brand?: string },
+    opts?: { limit?: number; source?: "all" | "tsv" | "ministry" },
+  ) => Array<{ item: Verified100Item; score: number }>;
 };
 
 const Ctx = createContext<Verified100ContextValue | null>(null);
@@ -272,10 +276,6 @@ export function Verified100Provider({ children }: { children: ReactNode }) {
               createdAt: now,
               updatedAt: now,
               ministryCode: row.ministryCode,
-              ...(row.protein100 != null ? { protein100: row.protein100 } : {}),
-              ...(row.fat100 != null ? { fat100: row.fat100 } : {}),
-              ...(row.carbs100 != null ? { carbs100: row.carbs100 } : {}),
-              ...(row.calories100 != null ? { calories100: row.calories100 } : {}),
               ...(row.unitWeightG ? { unitWeightG: row.unitWeightG } : {}),
               ...(row.packWeightG ? { packWeightG: row.packWeightG } : {}),
               ...(row.unitsPerPack ? { unitsPerPack: row.unitsPerPack } : {}),
@@ -288,7 +288,7 @@ export function Verified100Provider({ children }: { children: ReactNode }) {
         }
 
         showToast(
-          `סנכרון משרד הבריאות — ${written.toLocaleString("he-IL")} מצרכים, ${enriched.toLocaleString("he-IL")} פריטים קיימים הועשרו במידות`,
+          `סנכרון משרד הבריאות — ${written.toLocaleString("he-IL")} מצרכים (מידות בלבד), ${enriched.toLocaleString("he-IL")} פריטי TSV הועשרו במידות`,
           "success",
         );
         return { written, enriched };
@@ -319,19 +319,37 @@ export function Verified100Provider({ children }: { children: ReactNode }) {
     [items],
   );
 
-  const findMatches = useCallback(
-    (q: { name: string; brand?: string }, opts?: { limit?: number }) => {
+  const findScoredMatches = useCallback(
+    (q: { name: string; brand?: string }, opts?: { limit?: number; source?: "all" | "tsv" | "ministry" }) => {
       if (!q.name.trim() || items.length === 0) return [];
+      const source = opts?.source ?? "all";
       const scored: Match[] = [];
       for (const it of items) {
+        const isMoh = it.id.startsWith("moh:");
+        if (source === "tsv" && isMoh) continue;
+        if (source === "ministry" && !isMoh) continue;
         const s = scoreVerifiedMatch(it, q);
         if (s >= 35) scored.push({ item: it, score: s });
       }
-      scored.sort((a, b) => b.score - a.score);
-      const limit = Math.max(1, Math.min(30, opts?.limit ?? 4));
-      return scored.slice(0, limit).map((m) => m.item);
+      scored.sort((a, b) => {
+        if (source === "all") {
+          const aMoh = a.item.id.startsWith("moh:") ? 1 : 0;
+          const bMoh = b.item.id.startsWith("moh:") ? 1 : 0;
+          if (bMoh !== aMoh) return bMoh - aMoh;
+        }
+        return b.score - a.score;
+      });
+      const limit = Math.max(1, Math.min(30, opts?.limit ?? 12));
+      return scored.slice(0, limit);
     },
     [items],
+  );
+
+  const findMatches = useCallback(
+    (q: { name: string; brand?: string }, opts?: { limit?: number }) => {
+      return findScoredMatches(q, opts).map((m) => m.item);
+    },
+    [findScoredMatches],
   );
 
   const value = useMemo<Verified100ContextValue>(
@@ -346,6 +364,7 @@ export function Verified100Provider({ children }: { children: ReactNode }) {
       syncFromMinistry,
       findBestMatch,
       findMatches,
+      findScoredMatches,
     }),
     [
       items,
@@ -359,6 +378,7 @@ export function Verified100Provider({ children }: { children: ReactNode }) {
       syncFromMinistry,
       findBestMatch,
       findMatches,
+      findScoredMatches,
     ],
   );
 
