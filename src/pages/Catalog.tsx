@@ -9,6 +9,14 @@ import { catalogToPdfBlob, downloadCatalogXlsx } from "../utils/catalogExport";
 import { downloadCsv } from "../utils/csv";
 import { fmt1, parseNum } from "../utils/number";
 import { downloadBlob } from "../utils/share";
+import {
+  analyzeCatalogCompleteness,
+  CATALOG_FIELD_LABELS,
+  countCatalogCompleteness,
+  matchesCompletenessFilter,
+  type CatalogCompletenessFilter,
+} from "../utils/catalogCompleteness";
+import { catalogProductPortionHint } from "../utils/verifiedMeasures";
 
 function matchProduct(p: CatalogProduct, q: string): boolean {
   const s = q.trim().toLowerCase();
@@ -118,6 +126,200 @@ function productToDraft(p: CatalogProduct): EditDraft {
     tspPer100g: p.measures?.tspPer100g != null ? String(p.measures.tspPer100g) : "",
     cupsPer100g: p.measures?.cupsPer100g != null ? String(p.measures.cupsPer100g) : "",
   };
+}
+
+function sourceLabel(p: CatalogProduct): string {
+  const types = p.sources?.map((s) => s.type) ?? [];
+  const parts: string[] = [];
+  if (types.includes("barcode_openfoodfacts")) parts.push("OFF");
+  if (types.includes("verified100")) parts.push("מאומת");
+  if (types.includes("manual")) parts.push("ידני");
+  if (types.includes("ocr")) parts.push("OCR");
+  if (parts.length === 0) return p.id.startsWith("internal:") ? "פנימי" : "—";
+  return parts.join(" + ");
+}
+
+function CompletenessBadge({
+  ok,
+  label,
+  warn,
+}: {
+  ok: boolean;
+  label: string;
+  warn?: boolean;
+}) {
+  return (
+    <span
+      className={
+        "rounded-md border px-1.5 py-0.5 text-[9px] font-semibold " +
+        (ok ?
+          "border-emerald-400/35 bg-emerald-500/10 text-emerald-100"
+        : warn ?
+          "border-amber-400/35 bg-amber-500/10 text-amber-100"
+        : "border-white/15 bg-white/[0.04] text-ink-muted")
+      }
+    >
+      {label}
+    </span>
+  );
+}
+
+function CatalogProductCard({
+  product: p,
+  onEdit,
+  onDelete,
+}: {
+  product: CatalogProduct;
+  onEdit: () => void;
+  onDelete: () => void;
+}) {
+  const per = p.nutrition?.per100g;
+  const report = analyzeCatalogCompleteness(p);
+  const basis = p.per100Basis === "ml" ? "מ״ל" : "g";
+  const filledLabels = report.filled.map((k) => CATALOG_FIELD_LABELS[k]);
+  const missingRecommendedLabels = report.missingRecommended.map((k) => CATALOG_FIELD_LABELS[k]);
+  const missingOptionalLabels = report.missingOptional.map((k) => CATALOG_FIELD_LABELS[k]);
+
+  const nutritionOk =
+    report.filled.includes("calories") &&
+    report.filled.includes("protein") &&
+    report.filled.includes("carbs") &&
+    report.filled.includes("fat");
+  const packageOk = report.hasPackage;
+  const portionsOk = report.portionLevel === "full";
+  const portionWarn = report.portionLevel === "packageOnly";
+
+  return (
+    <li className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="font-display text-lg font-semibold text-white">{p.name}</p>
+          {p.brand ? <p className="text-sm text-ink-muted">{p.brand}</p> : null}
+          {p.category ? <p className="text-[11px] text-ink-dim">{p.category}</p> : null}
+          <p className="mt-1 font-mono text-xs text-ink-dim" dir="ltr">
+            {p.gtin ?? p.id}
+          </p>
+          <p className="mt-1 text-[10px] text-ink-dim">
+            מקור: {sourceLabel(p)} · {report.recommendedScore.filled}/
+            {report.recommendedScore.total} שדות מומלצים
+          </p>
+        </div>
+        <div className="shrink-0 flex items-center gap-2">
+          <button
+            type="button"
+            onClick={onEdit}
+            className="rounded-xl border border-white/15 bg-white/[0.06] px-3 py-2 text-xs font-semibold text-white transition hover:border-white/30"
+          >
+            עריכה
+          </button>
+          <button
+            type="button"
+            onClick={onDelete}
+            className="rounded-xl border border-red-400/30 bg-red-500/10 px-3 py-2 text-xs font-semibold text-red-200 transition hover:border-red-400/45 hover:bg-red-500/15"
+          >
+            מחק
+          </button>
+        </div>
+      </div>
+
+      <div className="mt-2 flex flex-wrap gap-1">
+        <CompletenessBadge ok={nutritionOk} label={nutritionOk ? "תזונה ✓" : "חסר תזונה"} />
+        <CompletenessBadge
+          ok={packageOk}
+          label={packageOk ? "אריזה ✓" : "חסר אריזה"}
+          warn={!packageOk}
+        />
+        <CompletenessBadge
+          ok={portionsOk}
+          label={
+            portionsOk ?
+              `מידות ✓${report.portionHint ? ` · ${report.portionHint}` : ""}`
+            : portionWarn ?
+              `אריזה OFF${report.portionHint ? ` · ${report.portionHint}` : ""}`
+            : "חסר מידות"
+          }
+          warn={portionWarn}
+        />
+        {report.isComplete ? (
+          <span className="rounded-md border border-sky-400/35 bg-sky-500/10 px-1.5 py-0.5 text-[9px] font-semibold text-sky-100">
+            מלא ✓
+          </span>
+        ) : null}
+      </div>
+
+      <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
+        <div>
+          <span className="text-ink-muted">קל׳ ל־100{basis}</span>
+          <p className="tabular-nums text-white">{per?.calories != null ? fmt1(per.calories) : "—"}</p>
+        </div>
+        <div>
+          <span className="text-ink-muted">חלבון</span>
+          <p className="tabular-nums text-white">{per?.proteinG != null ? fmt1(per.proteinG) : "—"}</p>
+        </div>
+        <div>
+          <span className="text-ink-muted">פחמ׳</span>
+          <p className="tabular-nums text-white">{per?.carbsG != null ? fmt1(per.carbsG) : "—"}</p>
+        </div>
+        <div>
+          <span className="text-ink-muted">שומן</span>
+          <p className="tabular-nums text-white">{per?.fatG != null ? fmt1(per.fatG) : "—"}</p>
+        </div>
+      </div>
+
+      <details className="group mt-3 rounded-xl border border-white/10 bg-white/[0.02]">
+        <summary className="cursor-pointer list-none px-3 py-2 text-[11px] font-semibold text-ink-muted marker:content-none [&::-webkit-details-marker]:hidden">
+          <span className="flex items-center justify-between gap-2">
+            <span>פרטים — מה מולא / מה חסר</span>
+            <span className="text-[10px] text-ink-dim group-open:rotate-180 transition">▼</span>
+          </span>
+        </summary>
+        <div className="space-y-2 border-t border-white/10 px-3 pb-3 pt-2 text-[11px] leading-relaxed">
+          {p.package?.totalWeightG || p.package?.unitWeightG ? (
+            <p className="text-ink-muted">
+              <span className="font-semibold text-white/90">אריזה: </span>
+              {p.package.totalWeightG ? `${fmt1(p.package.totalWeightG)}${basis}` : "—"}
+              {p.package.unitsPerPack ? ` · ${p.package.unitsPerPack} יח׳` : ""}
+              {p.package.unitWeightG ? ` · ~${fmt1(p.package.unitWeightG)}g/יח׳` : ""}
+            </p>
+          ) : (
+            <p className="text-ink-dim">אריזה: לא מולא</p>
+          )}
+          {catalogProductPortionHint(p) ? (
+            <p className="text-ink-muted">
+              <span className="font-semibold text-white/90">מידות: </span>
+              {catalogProductPortionHint(p)}
+            </p>
+          ) : (
+            <p className="text-ink-dim">מידות: לא מולא</p>
+          )}
+          {p.usageTags?.length ? (
+            <p className="text-ink-dim">שימוש: {usageCell(p.usageTags as string[])}</p>
+          ) : null}
+          {p.keywords?.length ? (
+            <p className="text-ink-dim">מילים: {keywordsCell(p.keywords)}</p>
+          ) : null}
+          {filledLabels.length > 0 ? (
+            <p className="text-emerald-100/90">
+              <span className="font-semibold">מולא: </span>
+              {filledLabels.join(" · ")}
+            </p>
+          ) : null}
+          {missingRecommendedLabels.length > 0 ? (
+            <p className="text-rose-200/90">
+              <span className="font-semibold">חסר (מומלץ): </span>
+              {missingRecommendedLabels.join(" · ")}
+            </p>
+          ) : null}
+          {missingOptionalLabels.length > 0 ? (
+            <p className="text-ink-dim">
+              <span className="font-semibold">אופציונלי חסר: </span>
+              {missingOptionalLabels.join(" · ")}
+            </p>
+          ) : null}
+        </div>
+      </details>
+    </li>
+  );
 }
 
 function Field({
@@ -540,6 +742,7 @@ export function Catalog() {
   const { showToast } = useToast();
   const [searchParams] = useSearchParams();
   const [q, setQ] = useState("");
+  const [completenessFilter, setCompletenessFilter] = useState<CatalogCompletenessFilter>("all");
   const [editing, setEditing] = useState<CatalogProduct | null>(null);
   const fileRef = useRef<HTMLInputElement | null>(null);
   const [exporting, setExporting] = useState<null | "csv" | "xlsx" | "pdf">(null);
@@ -556,7 +759,15 @@ export function Catalog() {
     }
   }, [searchParams, catalog]);
 
-  const filtered = useMemo(() => catalog.filter((p) => matchProduct(p, q)), [catalog, q]);
+  const filtered = useMemo(
+    () =>
+      catalog.filter(
+        (p) => matchProduct(p, q) && matchesCompletenessFilter(p, completenessFilter),
+      ),
+    [catalog, q, completenessFilter],
+  );
+
+  const completenessTotals = useMemo(() => countCatalogCompleteness(catalog), [catalog]);
 
   async function handleImport(file: File) {
     const text = await file.text();
@@ -661,6 +872,65 @@ export function Catalog() {
         <p className="text-xs text-ink-muted">
           {catalog.length.toLocaleString("he-IL")} מוצרים · חיפוש כולל גם מילות מפתח.
         </p>
+        {!loading && catalog.length > 0 ? (
+          <div className="rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2.5 text-xs text-ink-muted leading-relaxed space-y-1">
+            <p>
+              <span className="text-sky-200/90">
+                {completenessTotals.complete.toLocaleString("he-IL")} מלאים
+              </span>
+              {" · "}
+              <span className="text-emerald-200/90">
+                {completenessTotals.withCalories.toLocaleString("he-IL")} עם קלוריות
+              </span>
+              {" · "}
+              <span className="text-emerald-200/90">
+                {completenessTotals.withFullPortions.toLocaleString("he-IL")} עם מידות
+              </span>
+            </p>
+            <p>
+              <span className="text-amber-200/90">
+                {completenessTotals.packageOnly.toLocaleString("he-IL")} אריזה OFF בלבד
+              </span>
+              {" · "}
+              <span className="text-ink-dim">
+                {completenessTotals.noPortions.toLocaleString("he-IL")} ללא מידות
+              </span>
+              {completenessTotals.missingNutrition > 0 ? (
+                <>
+                  {" · "}
+                  <span className="text-rose-200/90">
+                    {completenessTotals.missingNutrition.toLocaleString("he-IL")} חסר תזונה
+                  </span>
+                </>
+              ) : null}
+            </p>
+          </div>
+        ) : null}
+        <div className="flex flex-wrap gap-2" role="group" aria-label="סינון שלמות">
+          {(
+            [
+              ["all", "הכל"],
+              ["complete", "מלא"],
+              ["missingNutrition", "חסר תזונה"],
+              ["missingPortions", "חסר מידות"],
+              ["packageOnly", "אריזה OFF בלבד"],
+            ] as const
+          ).map(([id, label]) => (
+            <button
+              key={id}
+              type="button"
+              onClick={() => setCompletenessFilter(id)}
+              className={
+                "rounded-lg border px-2.5 py-1.5 text-[11px] font-semibold transition " +
+                (completenessFilter === id ?
+                  "border-white/30 bg-white/[0.1] text-white"
+                : "border-white/10 bg-transparent text-ink-muted hover:border-white/20 hover:text-white")
+              }
+            >
+              {label}
+            </button>
+          ))}
+        </div>
         <div className="flex flex-wrap items-center gap-2">
           <input
             type="search"
@@ -725,66 +995,17 @@ export function Catalog() {
             אין תוצאות
           </li>
         ) : null}
-        {filtered.map((p) => {
-          const per = p.nutrition?.per100g;
-          return (
-            <li key={p.id} className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <p className="font-display text-lg font-semibold text-white">{p.name}</p>
-                  {p.brand ? <p className="text-sm text-ink-muted">{p.brand}</p> : null}
-                  <p className="mt-1 font-mono text-xs text-ink-dim" dir="ltr">
-                    {p.gtin ?? p.id}
-                  </p>
-                  {p.usageTags?.length ? (
-                    <p className="mt-1 text-[11px] text-ink-dim">שימוש: {usageCell(p.usageTags as string[])}</p>
-                  ) : null}
-                  {p.keywords?.length ? (
-                    <p className="mt-2 text-[11px] text-ink-dim">מילים: {keywordsCell(p.keywords)}</p>
-                  ) : null}
-                </div>
-                <div className="shrink-0 flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setEditing(p)}
-                    className="rounded-xl border border-white/15 bg-white/[0.06] px-3 py-2 text-xs font-semibold text-white transition hover:border-white/30"
-                  >
-                    עריכה
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (!window.confirm("למחוק מוצר מהמאגר?")) return;
-                      void deleteProduct(p.id).catch(() => showToast("מחיקה נכשלה", "error"));
-                    }}
-                    className="rounded-xl border border-red-400/30 bg-red-500/10 px-3 py-2 text-xs font-semibold text-red-200 transition hover:border-red-400/45 hover:bg-red-500/15"
-                  >
-                    מחק
-                  </button>
-                </div>
-              </div>
-
-              <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
-                <div>
-                  <span className="text-ink-muted">קל׳ ל־100g</span>
-                  <p className="tabular-nums text-white">{per?.calories != null ? fmt1(per.calories) : "—"}</p>
-                </div>
-                <div>
-                  <span className="text-ink-muted">חלבון</span>
-                  <p className="tabular-nums text-white">{per?.proteinG != null ? fmt1(per.proteinG) : "—"}</p>
-                </div>
-                <div>
-                  <span className="text-ink-muted">פחמ׳</span>
-                  <p className="tabular-nums text-white">{per?.carbsG != null ? fmt1(per.carbsG) : "—"}</p>
-                </div>
-                <div>
-                  <span className="text-ink-muted">שומן</span>
-                  <p className="tabular-nums text-white">{per?.fatG != null ? fmt1(per.fatG) : "—"}</p>
-                </div>
-              </div>
-            </li>
-          );
-        })}
+        {filtered.map((p) => (
+          <CatalogProductCard
+            key={p.id}
+            product={p}
+            onEdit={() => setEditing(p)}
+            onDelete={() => {
+              if (!window.confirm("למחוק מוצר מהמאגר?")) return;
+              void deleteProduct(p.id).catch(() => showToast("מחיקה נכשלה", "error"));
+            }}
+          />
+        ))}
       </ul>
 
       <EditModal product={editing} onClose={() => setEditing(null)} />
