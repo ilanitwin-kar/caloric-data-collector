@@ -155,6 +155,9 @@ export function Home() {
   const [isInternal, setIsInternal] = useState(false);
   const [internalId, setInternalId] = useState(() => newInternalId());
   const [mohRecipeCatalogId, setMohRecipeCatalogId] = useState<string | null>(null);
+  const [mohRecipePick, setMohRecipePick] = useState<{ code?: number; name: string } | null>(null);
+
+  const isMohRecipeEditMode = Boolean(mohRecipeCatalogId || mohRecipePick);
 
   const [barcodeRaw, setBarcodeRaw] = useState("");
   const barcodeDigits = useMemo(() => normalizeBarcode(barcodeRaw), [barcodeRaw]);
@@ -234,7 +237,7 @@ export function Home() {
   const applyMohRecipeToForm = useCallback(
     (sug: VerifiedSuggestionPick, withNutrition: boolean) => {
       setName(sug.name);
-      setShortName((prev) => (prev.trim() ? prev : sug.name));
+      setShortName("");
       applyMohPortionsOnly(sug);
       if (withNutrition) {
         applyVerifiedNutritionToForm(sug);
@@ -247,6 +250,10 @@ export function Home() {
         next.add("cooked");
         return [...next] as UsageTag[];
       });
+      setMohRecipePick({ code: sug.ministryCode, name: sug.name });
+      setVerifiedSuggestions([]);
+      setMohSuggestions([]);
+      setMohDismissed(true);
       if (!offReviewItem && sug.ministryCode != null) {
         setMohRecipeCatalogId(buildMohRecipeCatalogId(sug.ministryCode));
         setIsInternal(false);
@@ -431,6 +438,10 @@ export function Home() {
 
   // TSV matches only — for nutrition near product name.
   useEffect(() => {
+    if (isMohRecipeEditMode) {
+      setVerifiedSuggestions([]);
+      return;
+    }
     if (per100Basis === "ml" && !offReviewItem) {
       setVerifiedSuggestions([]);
       return;
@@ -459,6 +470,7 @@ export function Home() {
     offReviewItem,
     verifiedPickedSig,
     verifiedSearchQuery,
+    isMohRecipeEditMode,
   ]);
 
   useEffect(() => {
@@ -502,8 +514,12 @@ export function Home() {
     return offKcal != null && offKcal > 0;
   }, [kcal100, verifiedPicked, offReviewItem]);
 
-  // Ministry matches only — for packaging/measures section.
+  // Ministry ingredient portions — not for MoH recipe edit flow.
   useEffect(() => {
+    if (isMohRecipeEditMode) {
+      setMohSuggestions([]);
+      return;
+    }
     if (!nutritionReady || mohPickedLabel || mohDismissed || isAlreadyInCatalog) {
       setMohSuggestions([]);
       return;
@@ -535,6 +551,7 @@ export function Home() {
     per100Basis,
     offReviewItem,
     verifiedSearchQuery,
+    isMohRecipeEditMode,
   ]);
 
   const appliedPer100FromForm = useMemo((): CatalogNutritionPer100g => {
@@ -593,6 +610,10 @@ export function Home() {
       meta.verifiedLink?.offPer100 ??
       (meta.verifiedLink?.nutritionFromVerified ? undefined : item.nutrition?.per100g);
     setOffReviewItem(item);
+    setMohRecipePick(null);
+    setMohRecipeCatalogId(null);
+    setMohPickedLabel(null);
+    setMohDismissed(false);
     setVerifiedPicked(Boolean(meta.verifiedLink?.nutritionFromVerified));
     setVerifiedPickedSig(null);
     setIsInternal(false);
@@ -949,18 +970,38 @@ export function Home() {
               appliedPer100={appliedPer100FromForm}
               showFormHint
             />
-            {!offReviewItem.offReviewMeta.verifiedLink && !verifiedPicked ? (
+            {!offReviewItem.offReviewMeta.verifiedLink && !verifiedPicked && !mohRecipePick ? (
               <p className="text-xs leading-relaxed text-violet-100/90">
                 אין התאמה אוטומטית — שנה שם או מותג למטה ופתחי «הצעות מהמאגר המאומת». בחירת
                 הצעה תמלא מהמאומת (100g) ותשאיר את הברקוד מ־OFF.
               </p>
             ) : null}
-            <MinistryRecipesPanel
-              searchQuery={verifiedSearchQuery}
-              defaultSearch={verifiedSearchQuery}
-              onApplyNamePortions={(sug) => applyMohRecipeToForm(sug, false)}
-              onApplyWithNutrition={(sug) => applyMohRecipeToForm(sug, true)}
-            />
+            {mohRecipePick ? (
+              <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-amber-400/30 bg-amber-500/10 px-3 py-2.5">
+                <div>
+                  <p className="text-[11px] font-semibold text-amber-50">✓ מתכון MoH נבחר</p>
+                  <p className="text-[11px] text-amber-100/90">{mohRecipePick.name}</p>
+                </div>
+                <button
+                  type="button"
+                  className="rounded-lg border border-white/15 px-2 py-1 text-[10px] font-semibold text-ink-muted hover:text-white"
+                  onClick={() => {
+                    setMohRecipePick(null);
+                    setMohPickedLabel(null);
+                    setMohDismissed(false);
+                  }}
+                >
+                  החלף מתכון
+                </button>
+              </div>
+            ) : (
+              <MinistryRecipesPanel
+                searchQuery={verifiedSearchQuery}
+                defaultSearch={verifiedSearchQuery}
+                onApplyNamePortions={(sug) => applyMohRecipeToForm(sug, false)}
+                onApplyWithNutrition={(sug) => applyMohRecipeToForm(sug, true)}
+              />
+            )}
           </div>
         ) : null}
 
@@ -977,6 +1018,7 @@ export function Home() {
                 if (next) {
                   setInternalId(newInternalId());
                   setMohRecipeCatalogId(null);
+                  setMohRecipePick(null);
                 }
                 setUsageTags(next ? ["ingredient"] : ["ready"]);
                 setDefaultMeasure(next ? "g100" : "unit");
@@ -990,7 +1032,12 @@ export function Home() {
             <MohRecipeIdBox
               catalogId={mohRecipeCatalogId}
               ministryCode={parseMohRecipeCatalogId(mohRecipeCatalogId)}
-              onClear={() => setMohRecipeCatalogId(null)}
+              onClear={() => {
+                setMohRecipeCatalogId(null);
+                setMohRecipePick(null);
+                setMohPickedLabel(null);
+                setMohDismissed(false);
+              }}
             />
           ) : !isInternal ? (
             <div className="space-y-2">
@@ -1067,20 +1114,22 @@ export function Home() {
 
           <div className="grid grid-cols-1 gap-3">
             <Field label="שם מוצר" value={name} onChange={setName} placeholder="למשל גבינת עמק 9%" />
-            <VerifiedSuggestionsPanel
-              suggestions={verifiedSuggestions}
-              verifiedPicked={verifiedPicked}
-              isAlreadyInCatalog={isAlreadyInCatalog}
-              searchQuery={verifiedSearchQuery}
-              onPickNutrition={applyVerifiedPickNutrition}
-              onPickFull={applyVerifiedPickFull}
-              onClearPicked={() => {
-                setVerifiedPicked(false);
-                setVerifiedPickedSig(null);
-              }}
-              onDismiss={() => setVerifiedSuggestions([])}
-            />
-            {showCatalogNameHint ? (
+            {!isMohRecipeEditMode ? (
+              <VerifiedSuggestionsPanel
+                suggestions={verifiedSuggestions}
+                verifiedPicked={verifiedPicked}
+                isAlreadyInCatalog={isAlreadyInCatalog}
+                searchQuery={verifiedSearchQuery}
+                onPickNutrition={applyVerifiedPickNutrition}
+                onPickFull={applyVerifiedPickFull}
+                onClearPicked={() => {
+                  setVerifiedPicked(false);
+                  setVerifiedPickedSig(null);
+                }}
+                onDismiss={() => setVerifiedSuggestions([])}
+              />
+            ) : null}
+            {!isMohRecipeEditMode && showCatalogNameHint ? (
               <div className="rounded-xl border border-sky-400/25 bg-sky-500/10 px-3 py-2">
                 <p className="text-[11px] font-semibold text-sky-50">ייתכן שכבר קיים במאגר:</p>
                 <div className="mt-2 space-y-2">
@@ -1131,10 +1180,19 @@ export function Home() {
               label="שם קצר ליומן (אופציונלי)"
               value={shortName}
               onChange={setShortName}
-              placeholder="למשל עמק 9%"
+              placeholder={
+                isMohRecipeEditMode
+                  ? "השאירי ריק — ביומן יופיע שם המוצר המלא"
+                  : "למשל עמק 9%"
+              }
             />
             <Field label="מותג" value={brand} onChange={setBrand} placeholder="למשל תנובה" />
-            <Field label="קטגוריה" value={category} onChange={setCategory} placeholder="למשל שימורים" />
+            <Field
+              label="קטגוריה"
+              value={category}
+              onChange={setCategory}
+              placeholder={isMohRecipeEditMode ? MOH_RECIPE_CATEGORY : "למשל שימורים"}
+            />
             <Field
               label="מילות חיפוש נוספות (מופרד בפסיק)"
               value={keywordsRaw}
@@ -1267,21 +1325,27 @@ export function Home() {
 
         <section className="rounded-2xl border border-white/10 bg-white/[0.03] p-4 space-y-3">
           <p className="text-sm font-semibold text-white">אריזה</p>
-          <MinistryPortionsPanel
-            suggestions={mohSuggestions}
-            searchQuery={verifiedSearchQuery}
-            nutritionReady={nutritionReady}
-            pickedLabel={mohPickedLabel}
-            onApprove={applyMohPortionsOnly}
-            onClearPicked={() => {
-              setMohPickedLabel(null);
-              setMohDismissed(false);
-            }}
-            onDismiss={() => {
-              setMohDismissed(true);
-              setMohSuggestions([]);
-            }}
-          />
+          {isMohRecipeEditMode ? (
+            <p className="rounded-xl border border-amber-400/20 bg-amber-500/[0.06] px-3 py-2 text-[11px] text-amber-100/90">
+              מידות מהמתכון שכבר נבחר — ערכי בשדות למטה. אין הצעות מצרכים נוספות ממשרד הבריאות.
+            </p>
+          ) : (
+            <MinistryPortionsPanel
+              suggestions={mohSuggestions}
+              searchQuery={verifiedSearchQuery}
+              nutritionReady={nutritionReady}
+              pickedLabel={mohPickedLabel}
+              onApprove={applyMohPortionsOnly}
+              onClearPicked={() => {
+                setMohPickedLabel(null);
+                setMohDismissed(false);
+              }}
+              onDismiss={() => {
+                setMohDismissed(true);
+                setMohSuggestions([]);
+              }}
+            />
+          )}
           <div className="grid grid-cols-1 gap-3">
             <Field
               label={per100Basis === "ml" ? "נפח כולל של האריזה (מ״ל)" : "משקל כולל של האריזה (גרם)"}

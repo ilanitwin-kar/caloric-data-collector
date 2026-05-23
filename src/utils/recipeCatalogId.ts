@@ -1,6 +1,6 @@
 import { normalizeBarcode } from "./openFoodFacts";
 
-export const MOH_RECIPE_CATEGORY = "בישול ביתי";
+export const MOH_RECIPE_CATEGORY = "משרד הבריאות";
 
 export function mohRecipeCatalogId(ministryCode: number): string {
   return `recipe:${ministryCode}`;
