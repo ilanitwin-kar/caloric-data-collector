@@ -25,7 +25,9 @@ import { scoreVerifiedMatch, stableId } from "../utils/verifiedTsv";
 import type { CatalogNutritionPer100g } from "../context/CatalogContext";
 import { WALKING_MET, walkingStepsToBurnKcal } from "../utils/walkingBurn";
 import {
+  MOH_RECIPE_BRAND,
   MOH_RECIPE_CATEGORY,
+  MOH_RECIPE_KEYWORDS_SEED,
   mohRecipeCatalogId as buildMohRecipeCatalogId,
   parseMohRecipeCatalogId,
 } from "../utils/recipeCatalogId";
@@ -239,12 +241,17 @@ export function Home() {
       setName(sug.name);
       setShortName("");
       applyMohPortionsOnly(sug);
+      setTotalWeightG("");
+      setUnitsPerPack("");
+      setUnitWeightG("");
       if (withNutrition) {
         applyVerifiedNutritionToForm(sug);
         setVerifiedPicked(false);
         setVerifiedPickedSig(null);
       }
       setCategory(MOH_RECIPE_CATEGORY);
+      setBrand(MOH_RECIPE_BRAND);
+      setKeywordsRaw((prev) => (prev.trim() ? prev : MOH_RECIPE_KEYWORDS_SEED));
       setUsageTags((prev) => {
         const next = new Set(prev);
         next.add("cooked");
@@ -807,8 +814,13 @@ export function Home() {
     const keywords = parseKeywords(keywordsRaw);
     const usage = usageTags.length ? usageTags : (isInternal ? (["ingredient"] as UsageTag[]) : (["ready"] as UsageTag[]));
 
+    const saveDefaultMeasure: MeasureKey = isMohRecipeEditMode ? "g100" : defaultMeasure;
+    const saveCommonMeasures: MeasureKey[] = isMohRecipeEditMode
+      ? (["g100"] as MeasureKey[])
+      : commonMeasures;
+
     const totalW = pkg.totalW ?? pkg.unitW;
-    if (!totalW) {
+    if (!isMohRecipeEditMode && !totalW) {
       setError(
         per100Basis === "ml"
           ? "נא להזין נפח כולל של האריזה (מ״ל)."
@@ -818,10 +830,20 @@ export function Home() {
     }
     const units = pkg.units;
     const unitW = pkg.unitW;
-    // If user provided only total weight, treat the entire package/cup as a single unit.
-    const inferredUnitsPerPack = units ?? (unitW ? totalW / unitW : 1);
+    const inferredUnitsPerPack = units ?? (unitW && totalW ? totalW / unitW : undefined);
     const unitWeightG =
-      unitW ?? (inferredUnitsPerPack > 0 ? totalW / inferredUnitsPerPack : undefined);
+      unitW ?? (inferredUnitsPerPack && totalW && inferredUnitsPerPack > 0
+        ? totalW / inferredUnitsPerPack
+        : undefined);
+
+    const packagePayload =
+      totalW != null && totalW > 0
+        ? {
+            totalWeightG: totalW,
+            unitsPerPack: inferredUnitsPerPack ?? 1,
+            unitWeightG: unitWeightG,
+          }
+        : undefined;
 
     if (!isInternal && !mohRecipeCatalogId) {
       const bc = barcodeDigits;
@@ -848,13 +870,9 @@ export function Home() {
           category: category.trim() || undefined,
           usageTags: usage,
           per100Basis,
-          defaultMeasure,
-          commonMeasures,
-          package: {
-            totalWeightG: totalW,
-            unitsPerPack: inferredUnitsPerPack,
-            unitWeightG: unitWeightG,
-          },
+          defaultMeasure: saveDefaultMeasure,
+          commonMeasures: saveCommonMeasures,
+          ...(packagePayload ? { package: packagePayload } : {}),
           measures,
           nutrition: { per100g: per100 },
           sources,
@@ -875,8 +893,8 @@ export function Home() {
         category: category.trim() || undefined,
         usageTags: usage,
         per100Basis,
-        defaultMeasure,
-        commonMeasures,
+        defaultMeasure: saveDefaultMeasure,
+        commonMeasures: saveCommonMeasures,
         per100,
         totalWeightG: totalW,
         unitsPerPack: inferredUnitsPerPack,
@@ -907,8 +925,8 @@ export function Home() {
       category: category.trim() || undefined,
       usageTags: usage,
       per100Basis,
-      defaultMeasure,
-      commonMeasures,
+      defaultMeasure: saveDefaultMeasure,
+      commonMeasures: saveCommonMeasures,
       per100,
       totalWeightG: totalW,
       unitsPerPack: inferredUnitsPerPack,
@@ -1180,13 +1198,14 @@ export function Home() {
               label="שם קצר ליומן (אופציונלי)"
               value={shortName}
               onChange={setShortName}
-              placeholder={
-                isMohRecipeEditMode
-                  ? "השאירי ריק — ביומן יופיע שם המוצר המלא"
-                  : "למשל עמק 9%"
-              }
+              placeholder={isMohRecipeEditMode ? "רשמי כאן שם קצר ליומן" : "למשל עמק 9%"}
             />
-            <Field label="מותג" value={brand} onChange={setBrand} placeholder="למשל תנובה" />
+            <Field
+              label="מותג"
+              value={brand}
+              onChange={setBrand}
+              placeholder={isMohRecipeEditMode ? MOH_RECIPE_BRAND : "למשל תנובה"}
+            />
             <Field
               label="קטגוריה"
               value={category}
@@ -1197,7 +1216,7 @@ export function Home() {
               label="מילות חיפוש נוספות (מופרד בפסיק)"
               value={keywordsRaw}
               onChange={setKeywordsRaw}
-              placeholder="למשל גבינה צהובה, עמק, 9 אחוז"
+              placeholder={isMohRecipeEditMode ? "ביתי, …" : "למשל גבינה צהובה, עמק, 9 אחוז"}
             />
             <div className="space-y-1.5">
               <p className="text-xs font-medium text-ink-muted">סוג שימוש</p>
@@ -1228,9 +1247,10 @@ export function Home() {
                 })}
               </div>
               <p className="text-[11px] leading-snug text-ink-dim">
-                אפשר לבחור כמה. ברירת מחדל: {isInternal ? "חומר גלם" : "מוכן"}.
+                אפשר לבחור כמה. ברירת מחדל: {isMohRecipeEditMode ? "מבושל" : isInternal ? "חומר גלם" : "מוכן"}.
               </p>
             </div>
+            {!isMohRecipeEditMode ? (
             <div className="space-y-1.5">
               <p className="text-xs font-medium text-ink-muted">ברירת מחדל ביומן</p>
               <div className="flex flex-wrap gap-2">
@@ -1295,6 +1315,7 @@ export function Home() {
                 ביומן יוצגו הכפתורים לפי “מידות נפוצות”. מומלץ 2–4.
               </p>
             </div>
+            ) : null}
           </div>
         </section>
 
@@ -1323,13 +1344,9 @@ export function Home() {
           </div>
         </section>
 
+        {!isMohRecipeEditMode ? (
         <section className="rounded-2xl border border-white/10 bg-white/[0.03] p-4 space-y-3">
           <p className="text-sm font-semibold text-white">אריזה</p>
-          {isMohRecipeEditMode ? (
-            <p className="rounded-xl border border-amber-400/20 bg-amber-500/[0.06] px-3 py-2 text-[11px] text-amber-100/90">
-              מידות מהמתכון שכבר נבחר — ערכי בשדות למטה. אין הצעות מצרכים נוספות ממשרד הבריאות.
-            </p>
-          ) : (
             <MinistryPortionsPanel
               suggestions={mohSuggestions}
               searchQuery={verifiedSearchQuery}
@@ -1345,7 +1362,6 @@ export function Home() {
                 setMohSuggestions([]);
               }}
             />
-          )}
           <div className="grid grid-cols-1 gap-3">
             <Field
               label={per100Basis === "ml" ? "נפח כולל של האריזה (מ״ל)" : "משקל כולל של האריזה (גרם)"}
@@ -1391,6 +1407,7 @@ export function Home() {
               : "משקל יחידה מחושב לפי (משקל כולל ÷ יחידות) (או להפך)."}
           </div>
         </section>
+        ) : null}
 
         <section className="rounded-2xl border border-white/10 bg-white/[0.03] p-4 space-y-3">
           <p className="text-sm font-semibold text-white">מידות (אופציונלי)</p>
