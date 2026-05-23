@@ -40,6 +40,10 @@ type Verified100ContextValue = {
   syncFromMinistry: (opts?: { signal?: AbortSignal }) => Promise<{ written: number; enriched: number }>;
   findBestMatch: (q: { name: string; brand?: string }) => Verified100Item | null;
   findMatches: (q: { name: string; brand?: string }, opts?: { limit?: number }) => Verified100Item[];
+  findScoredMatches: (
+    q: { name: string; brand?: string },
+    opts?: { limit?: number },
+  ) => Array<{ item: Verified100Item; score: number }>;
 };
 
 const Ctx = createContext<Verified100ContextValue | null>(null);
@@ -319,7 +323,7 @@ export function Verified100Provider({ children }: { children: ReactNode }) {
     [items],
   );
 
-  const findMatches = useCallback(
+  const findScoredMatches = useCallback(
     (q: { name: string; brand?: string }, opts?: { limit?: number }) => {
       if (!q.name.trim() || items.length === 0) return [];
       const scored: Match[] = [];
@@ -327,11 +331,23 @@ export function Verified100Provider({ children }: { children: ReactNode }) {
         const s = scoreVerifiedMatch(it, q);
         if (s >= 35) scored.push({ item: it, score: s });
       }
-      scored.sort((a, b) => b.score - a.score);
-      const limit = Math.max(1, Math.min(30, opts?.limit ?? 4));
-      return scored.slice(0, limit).map((m) => m.item);
+      scored.sort((a, b) => {
+        const aMoh = a.item.id.startsWith("moh:") ? 1 : 0;
+        const bMoh = b.item.id.startsWith("moh:") ? 1 : 0;
+        if (bMoh !== aMoh) return bMoh - aMoh;
+        return b.score - a.score;
+      });
+      const limit = Math.max(1, Math.min(30, opts?.limit ?? 12));
+      return scored.slice(0, limit);
     },
     [items],
+  );
+
+  const findMatches = useCallback(
+    (q: { name: string; brand?: string }, opts?: { limit?: number }) => {
+      return findScoredMatches(q, opts).map((m) => m.item);
+    },
+    [findScoredMatches],
   );
 
   const value = useMemo<Verified100ContextValue>(
@@ -346,6 +362,7 @@ export function Verified100Provider({ children }: { children: ReactNode }) {
       syncFromMinistry,
       findBestMatch,
       findMatches,
+      findScoredMatches,
     }),
     [
       items,
@@ -359,6 +376,7 @@ export function Verified100Provider({ children }: { children: ReactNode }) {
       syncFromMinistry,
       findBestMatch,
       findMatches,
+      findScoredMatches,
     ],
   );
 
