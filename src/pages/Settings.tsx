@@ -276,9 +276,9 @@ export function Settings() {
       <section className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
         <h2 className="text-sm font-semibold text-white">מאגר מאומת (100g)</h2>
         <p className="mt-1 text-xs text-ink-muted">
-          קובץ TSV/CSV (קטגוריה, מותג, שם, חלבון, שומן, פחמימה, קלוריות). משמש להצעות ולעדיפות
-          תזונה בייבוא OFF. סנכרון משרד הבריאות מוסיף ~4,600 מצרכים עם מידות (יחידה, כף, כוס) — לא
-          מעדכן מוצרים קיימים בקטלוג.
+          קובץ TSV/CSV (קטגוריה, מותג, שם, חלבון, שומן, פחמימה, קלוריות). משמש להצעות תזונה
+          ולעדיפות תזונה בייבוא OFF. סנכרון משרד הבריאות מוסיף ~4,600 מצרכים עם מידות (יחידה, כף,
+          כוס) בלבד — לא תזונה, ולא מעדכן מוצרים קיימים בקטלוג.
         </p>
         <div className="mt-3 flex flex-wrap items-center gap-2">
           {loading ? (

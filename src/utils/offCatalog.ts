@@ -27,6 +27,7 @@ export function findBestVerifiedForOff(
 ): { item: Verified100Row; score: number } | null {
   let best: { item: Verified100Row; score: number } | null = null;
   for (const it of verifiedItems) {
+    if ("id" in it && typeof it.id === "string" && it.id.startsWith("moh:")) continue;
     const score = scoreVerifiedMatch(it, q);
     if (score < VERIFIED_AUTO_APPLY_MIN_SCORE) continue;
     if (!best || score > best.score) best = { item: it, score };

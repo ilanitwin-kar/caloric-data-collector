@@ -1,10 +1,7 @@
 import { useState } from "react";
 import type { CatalogNutritionPer100g } from "../context/CatalogContext";
 import { verifiedSearchQueryReady } from "../utils/verifiedSearch";
-import {
-  verifiedPortionHintFromPick,
-  type VerifiedSuggestionPick,
-} from "./verifiedSuggestionTypes";
+import type { VerifiedSuggestionPick } from "./verifiedSuggestionTypes";
 
 function formatMacro(v: number | undefined, suffix = ""): string {
   if (v == null || !Number.isFinite(v)) return "—";
@@ -34,27 +31,16 @@ function NutritionPreviewTable({ per }: { per?: CatalogNutritionPer100g }) {
   );
 }
 
-function SuggestionRow({
+function TsvSuggestionRow({
   sug,
-  accent,
-  productName,
   onPickNutrition,
   onPickFull,
 }: {
   sug: VerifiedSuggestionPick;
-  accent: "teal" | "emerald";
-  productName: string;
   onPickNutrition: (sug: VerifiedSuggestionPick) => void;
-  onPickFull?: (sug: VerifiedSuggestionPick) => void;
+  onPickFull: (sug: VerifiedSuggestionPick) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
-  const portionHint = verifiedPortionHintFromPick(sug);
-  const border =
-    accent === "teal" ? "border-teal-400/25 bg-teal-500/[0.06]" : "border-emerald-400/25 bg-emerald-500/[0.06]";
-  const badge =
-    accent === "teal" ?
-      "border-teal-400/35 bg-teal-500/15 text-teal-100"
-    : "border-emerald-400/35 bg-emerald-500/15 text-emerald-100";
 
   const per: CatalogNutritionPer100g = {
     calories: sug.calories100,
@@ -64,7 +50,7 @@ function SuggestionRow({
   };
 
   return (
-    <div className={`rounded-xl border ${border} overflow-hidden`}>
+    <div className="rounded-xl border border-emerald-400/25 bg-emerald-500/[0.06] overflow-hidden">
       <div className="flex flex-wrap items-start gap-2 px-3 py-2.5">
         <button
           type="button"
@@ -73,8 +59,8 @@ function SuggestionRow({
           aria-expanded={expanded}
         >
           <div className="flex flex-wrap items-center gap-1.5">
-            <span className={`rounded-md border px-1.5 py-0.5 text-[9px] font-semibold ${badge}`}>
-              {sug.source === "ministry" ? "משרד הבריאות" : "מאגר מאומת"}
+            <span className="rounded-md border border-emerald-400/35 bg-emerald-500/15 px-1.5 py-0.5 text-[9px] font-semibold text-emerald-100">
+              מאגר מאומת
             </span>
             {sug.matchScore != null ? (
               <span className="text-[9px] text-ink-dim">ציון {sug.matchScore}</span>
@@ -83,8 +69,8 @@ function SuggestionRow({
           <p className="mt-1 text-[11px] font-medium text-white">{sug.name}</p>
           <p className="text-[10px] text-ink-muted">
             {sug.brand ? `${sug.brand} · ` : ""}
-            {sug.calories100 != null ? `${sug.calories100} קק״ל/100g` : "ללא קלוריות"}
-            {portionHint ? ` · ${portionHint}` : ""}
+            {sug.category ? `${sug.category} · ` : ""}
+            {sug.calories100 != null ? `${sug.calories100} קק״ל/100g` : "ללא קלוריות בפריט"}
           </p>
         </button>
         <button
@@ -99,37 +85,24 @@ function SuggestionRow({
       {expanded ? (
         <div className="border-t border-white/10 px-3 pb-3 pt-2 space-y-2">
           <p className="text-[10px] text-ink-dim leading-relaxed">
-            שם המוצר שלך יישמר: <span className="text-white/90">{productName.trim() || "—"}</span>
-            {sug.source === "ministry" ?
-              " · משרד הבריאות ימלא תזונה ומידות בלבד"
-            : " · אפשר למלא רק תזונה או גם שם/מותג מהמאגר"}
+            ממלא תזונה ל־100g בלבד. אריזה ומידות — בהמשך, ממשרד הבריאות.
           </p>
           <NutritionPreviewTable per={per} />
-          {portionHint ? (
-            <p className="text-[11px] text-ink-muted">
-              <span className="font-semibold text-white/90">מידות: </span>
-              {portionHint}
-            </p>
-          ) : (
-            <p className="text-[11px] text-ink-dim">אין מידות (יחידה/כף/כוס) לפריט זה</p>
-          )}
           <div className="flex flex-wrap gap-2">
             <button
               type="button"
               className="min-h-[40px] flex-1 rounded-xl bg-white px-3 py-2 text-xs font-semibold text-black"
               onClick={() => onPickNutrition(sug)}
             >
-              מלא תזונה ומידות
+              מלא תזונה
             </button>
-            {onPickFull ? (
-              <button
-                type="button"
-                className="min-h-[40px] rounded-xl border border-white/20 px-3 py-2 text-xs font-semibold text-white hover:border-white/35"
-                onClick={() => onPickFull(sug)}
-              >
-                החלף גם שם/מותג
-              </button>
-            ) : null}
+            <button
+              type="button"
+              className="min-h-[40px] rounded-xl border border-white/20 px-3 py-2 text-xs font-semibold text-white hover:border-white/35"
+              onClick={() => onPickFull(sug)}
+            >
+              החלף גם שם/מותג
+            </button>
           </div>
         </div>
       ) : (
@@ -139,17 +112,15 @@ function SuggestionRow({
             className="rounded-lg bg-white/10 px-2 py-1 text-[10px] font-semibold text-white hover:bg-white/15"
             onClick={() => onPickNutrition(sug)}
           >
-            מלא תזונה ומידות
+            מלא תזונה
           </button>
-          {onPickFull ? (
-            <button
-              type="button"
-              className="rounded-lg px-2 py-1 text-[10px] font-semibold text-ink-muted hover:text-white"
-              onClick={() => onPickFull(sug)}
-            >
-              + שם/מותג
-            </button>
-          ) : null}
+          <button
+            type="button"
+            className="rounded-lg px-2 py-1 text-[10px] font-semibold text-ink-muted hover:text-white"
+            onClick={() => onPickFull(sug)}
+          >
+            + שם/מותג
+          </button>
           <button
             type="button"
             className="rounded-lg px-2 py-1 text-[10px] font-semibold text-ink-muted hover:text-white"
@@ -167,7 +138,6 @@ type VerifiedSuggestionsPanelProps = {
   suggestions: VerifiedSuggestionPick[];
   verifiedPicked: boolean;
   isAlreadyInCatalog: boolean;
-  productName: string;
   searchQuery: string;
   onPickNutrition: (sug: VerifiedSuggestionPick) => void;
   onPickFull: (sug: VerifiedSuggestionPick) => void;
@@ -179,35 +149,30 @@ export function VerifiedSuggestionsPanel({
   suggestions,
   verifiedPicked,
   isAlreadyInCatalog,
-  productName,
   searchQuery,
   onPickNutrition,
   onPickFull,
   onClearPicked,
   onDismiss,
 }: VerifiedSuggestionsPanelProps) {
-  const ministry = suggestions.filter((s) => s.source === "ministry");
-  const tsv = suggestions.filter((s) => s.source !== "ministry");
   const hasAny = suggestions.length > 0;
 
   if (!verifiedSearchQueryReady(searchQuery) && !verifiedPicked) {
     return (
-      <p className="rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 text-[11px] text-ink-dim">
-        התאמות משרד הבריאות והמאגר המאומת — הזיני לפחות 3 תווים בשם, שם קצר או מילות חיפוש.
+      <p className="rounded-xl border border-emerald-400/20 bg-emerald-500/[0.04] px-3 py-2 text-[11px] text-ink-dim">
+        מאגר מאומת — הזיני לפחות 3 תווים בשם, שם קצר או מילות חיפוש.
       </p>
     );
   }
 
   return (
-    <div className="space-y-3 rounded-2xl border border-white/15 bg-white/[0.03] p-3">
+    <div className="space-y-3 rounded-2xl border border-emerald-400/20 bg-emerald-500/[0.04] p-3">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div>
-          <p className="text-sm font-semibold text-white">התאמות לפי שם / שם קצר / מילות חיפוש</p>
+          <p className="text-sm font-semibold text-emerald-50">מאגר מאומת — תזונה ל־100g</p>
           <p className="mt-0.5 text-[10px] text-ink-dim">
             חיפוש: «{searchQuery}»
-            {hasAny ?
-              ` · ${ministry.length} משרד הבריאות · ${tsv.length} מאגר`
-            : " · אין התאמות"}
+            {hasAny ? ` · ${suggestions.length} התאמות` : " · אין התאמות"}
           </p>
         </div>
         {hasAny && !verifiedPicked ? (
@@ -223,7 +188,7 @@ export function VerifiedSuggestionsPanel({
 
       {verifiedPicked ? (
         <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-emerald-400/25 bg-emerald-500/10 px-3 py-2">
-          <span className="text-[11px] font-semibold text-emerald-50">✓ נבחרה התאמה — תזונה/מידות מהמאגר</span>
+          <span className="text-[11px] font-semibold text-emerald-50">✓ נבחרה תזונה מהמאגר המאומת</span>
           {!isAlreadyInCatalog ? (
             <button
               type="button"
@@ -236,46 +201,22 @@ export function VerifiedSuggestionsPanel({
         </div>
       ) : null}
 
-      {!verifiedPicked && ministry.length > 0 ? (
-        <section className="space-y-2">
-          <h3 className="text-xs font-semibold text-teal-100">
-            משרד הבריאות ({ministry.length})
-          </h3>
-          <p className="text-[10px] text-ink-dim leading-relaxed">
-            מצרכים גנéricים — «מלא תזונה ומידות» שומר את שם המוצר שלך (מ-OFF או ידני).
-          </p>
-          {ministry.map((sug, i) => (
-            <SuggestionRow
-              key={`moh|${sug.ministryCode ?? sug.name}|${i}`}
-              sug={sug}
-              accent="teal"
-              productName={productName}
-              onPickNutrition={onPickNutrition}
-            />
-          ))}
-        </section>
-      ) : null}
-
-      {!verifiedPicked && tsv.length > 0 ? (
-        <section className="space-y-2">
-          <h3 className="text-xs font-semibold text-emerald-100">מאגר מאומת — TSV ({tsv.length})</h3>
-          {tsv.map((sug, i) => (
-            <SuggestionRow
+      {!verifiedPicked && hasAny ? (
+        <div className="space-y-2">
+          {suggestions.map((sug, i) => (
+            <TsvSuggestionRow
               key={`tsv|${sug.verifiedId ?? sug.name}|${i}`}
               sug={sug}
-              accent="emerald"
-              productName={productName}
               onPickNutrition={onPickNutrition}
               onPickFull={onPickFull}
             />
           ))}
-        </section>
+        </div>
       ) : null}
 
       {!verifiedPicked && !hasAny && verifiedSearchQueryReady(searchQuery) ? (
         <p className="text-[11px] text-ink-dim">
-          לא נמצאו התאמות — נסי מילה גנéric יותר (למשל «שוקו», «גבינה צהובה») או סנכרון משרד הבריאות
-          בהגדרות.
+          לא נמצאו התאמות — מלאי תזונה ידנית למטה, או ייבאי/עדכני את קובץ המאגר בהגדרות.
         </p>
       ) : null}
     </div>

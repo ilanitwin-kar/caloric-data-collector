@@ -6,6 +6,7 @@ import {
   offReviewNutritionSources,
 } from "../components/OffVerifiedComparePanel";
 import { VerifiedSuggestionsPanel } from "../components/VerifiedSuggestionsPanel";
+import { MinistryPortionsPanel } from "../components/MinistryPortionsPanel";
 import {
   verifiedItemToSuggestionPick,
   type VerifiedSuggestionPick,
@@ -137,6 +138,9 @@ export function Home() {
   const [verifiedPicked, setVerifiedPicked] = useState(false);
   const [verifiedPickedSig, setVerifiedPickedSig] = useState<string | null>(null);
   const [verifiedSuggestions, setVerifiedSuggestions] = useState<VerifiedSuggestionPick[]>([]);
+  const [mohSuggestions, setMohSuggestions] = useState<VerifiedSuggestionPick[]>([]);
+  const [mohPickedLabel, setMohPickedLabel] = useState<string | null>(null);
+  const [mohDismissed, setMohDismissed] = useState(false);
 
   const verifiedSearchQuery = useMemo(
     () =>
@@ -155,12 +159,15 @@ export function Home() {
     [name, brand, shortName, keywordsRaw, category],
   );
 
-  const applyVerifiedPortionsToForm = useCallback((sug: VerifiedSuggestionPick) => {
+  const applyVerifiedNutritionToForm = useCallback((sug: VerifiedSuggestionPick) => {
     setPer100Basis("g");
     if (sug.calories100 != null) setKcal100(String(sug.calories100));
     if (sug.protein100 != null) setProt100(String(sug.protein100));
     if (sug.carbs100 != null) setCarb100(String(sug.carbs100));
     if (sug.fat100 != null) setFat100(String(sug.fat100));
+  }, []);
+
+  const applyMohPortionsOnly = useCallback((sug: VerifiedSuggestionPick) => {
     const portions = verifiedRowToPickPortions(sug);
     if (portions.unitWeightG != null) setUnitWeightG(fmt1(portions.unitWeightG));
     if (portions.packWeightG != null) setTotalWeightG(fmt1(portions.packWeightG));
@@ -181,6 +188,8 @@ export function Home() {
       setCommonMeasures(portions.commonMeasures.slice(0, 4) as MeasureKey[]);
     }
     if (portions.defaultMeasure) setDefaultMeasure(portions.defaultMeasure as MeasureKey);
+    setMohPickedLabel(sug.name);
+    setMohSuggestions([]);
   }, []);
 
   const attachOffReviewVerifiedLink = useCallback(
@@ -225,11 +234,11 @@ export function Home() {
     (sug: VerifiedSuggestionPick) => {
       setVerifiedPicked(true);
       setVerifiedPickedSig(verifiedPickSig);
-      applyVerifiedPortionsToForm(sug);
+      applyVerifiedNutritionToForm(sug);
       attachOffReviewVerifiedLink(sug);
       setVerifiedSuggestions([]);
     },
-    [applyVerifiedPortionsToForm, attachOffReviewVerifiedLink, verifiedPickSig],
+    [applyVerifiedNutritionToForm, attachOffReviewVerifiedLink, verifiedPickSig],
   );
 
   const applyVerifiedPickFull = useCallback(
@@ -240,11 +249,11 @@ export function Home() {
       setShortName((prev) => (prev.trim() ? prev : sug.name));
       if (sug.brand) setBrand(sug.brand);
       if (sug.category) setCategory(sug.category);
-      applyVerifiedPortionsToForm(sug);
+      applyVerifiedNutritionToForm(sug);
       attachOffReviewVerifiedLink(sug);
       setVerifiedSuggestions([]);
     },
-    [applyVerifiedPortionsToForm, attachOffReviewVerifiedLink, verifiedPickSig],
+    [applyVerifiedNutritionToForm, attachOffReviewVerifiedLink, verifiedPickSig],
   );
 
   const isAlreadyInCatalog = useMemo(() => {
@@ -355,7 +364,7 @@ export function Home() {
     };
   }, [scannerOpen]);
 
-  // Suggest verified / MoH matches from name, short name, keywords, category.
+  // TSV matches only — for nutrition near product name.
   useEffect(() => {
     if (per100Basis === "ml" && !offReviewItem) {
       setVerifiedSuggestions([]);
@@ -371,12 +380,10 @@ export function Home() {
     }
     const scored = findScoredMatches(
       { name: verifiedSearchQuery, brand: brand.trim() || undefined },
-      { limit: 14 },
+      { limit: 10, source: "tsv" },
     );
     setVerifiedSuggestions(
-      scored.map(({ item, score }) =>
-        verifiedItemToSuggestionPick(item, score, verifiedRowToPickPortions(item)),
-      ),
+      scored.map(({ item, score }) => verifiedItemToSuggestionPick(item, score, {})),
     );
   }, [
     brand,
@@ -386,6 +393,49 @@ export function Home() {
     per100Basis,
     offReviewItem,
     verifiedPickedSig,
+    verifiedSearchQuery,
+  ]);
+
+  const nutritionReady = useMemo(() => {
+    const kcal = parseNum(kcal100);
+    if (kcal != null && kcal > 0) return true;
+    if (verifiedPicked) return true;
+    const offKcal = offReviewItem?.nutrition?.per100g?.calories;
+    return offKcal != null && offKcal > 0;
+  }, [kcal100, verifiedPicked, offReviewItem]);
+
+  // Ministry matches only — for packaging/measures section.
+  useEffect(() => {
+    if (!nutritionReady || mohPickedLabel || mohDismissed || isAlreadyInCatalog) {
+      setMohSuggestions([]);
+      return;
+    }
+    if (per100Basis === "ml" && !offReviewItem) {
+      setMohSuggestions([]);
+      return;
+    }
+    if (!verifiedSearchQueryReady(verifiedSearchQuery)) {
+      setMohSuggestions([]);
+      return;
+    }
+    const scored = findScoredMatches(
+      { name: verifiedSearchQuery, brand: brand.trim() || undefined },
+      { limit: 8, source: "ministry" },
+    );
+    setMohSuggestions(
+      scored.map(({ item, score }) =>
+        verifiedItemToSuggestionPick(item, score, verifiedRowToPickPortions(item)),
+      ),
+    );
+  }, [
+    brand,
+    findScoredMatches,
+    isAlreadyInCatalog,
+    mohDismissed,
+    mohPickedLabel,
+    nutritionReady,
+    per100Basis,
+    offReviewItem,
     verifiedSearchQuery,
   ]);
 
@@ -901,7 +951,6 @@ export function Home() {
               suggestions={verifiedSuggestions}
               verifiedPicked={verifiedPicked}
               isAlreadyInCatalog={isAlreadyInCatalog}
-              productName={name}
               searchQuery={verifiedSearchQuery}
               onPickNutrition={applyVerifiedPickNutrition}
               onPickFull={applyVerifiedPickFull}
@@ -1098,6 +1147,21 @@ export function Home() {
 
         <section className="rounded-2xl border border-white/10 bg-white/[0.03] p-4 space-y-3">
           <p className="text-sm font-semibold text-white">אריזה</p>
+          <MinistryPortionsPanel
+            suggestions={mohSuggestions}
+            searchQuery={verifiedSearchQuery}
+            nutritionReady={nutritionReady}
+            pickedLabel={mohPickedLabel}
+            onApprove={applyMohPortionsOnly}
+            onClearPicked={() => {
+              setMohPickedLabel(null);
+              setMohDismissed(false);
+            }}
+            onDismiss={() => {
+              setMohDismissed(true);
+              setMohSuggestions([]);
+            }}
+          />
           <div className="grid grid-cols-1 gap-3">
             <Field
               label={per100Basis === "ml" ? "נפח כולל של האריזה (מ״ל)" : "משקל כולל של האריזה (גרם)"}
