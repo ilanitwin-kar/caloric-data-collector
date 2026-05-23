@@ -34,7 +34,7 @@ function PortionStatusBadge({ item }: { item: OffPendingReview }) {
   if (level === "full") {
     return (
       <span
-        className="shrink-0 rounded-md border border-emerald-400/35 bg-emerald-500/10 px-1.5 py-0.5 text-[11px] font-semibold text-emerald-100"
+        className="shrink-0 rounded-md border border-emerald-400/35 bg-emerald-500/10 px-1.5 py-0.5 text-[12px] font-semibold text-emerald-100"
         title={hint ?? undefined}
       >
         מידות ✓{hint ? ` · ${hint}` : ""}
@@ -44,7 +44,7 @@ function PortionStatusBadge({ item }: { item: OffPendingReview }) {
   if (level === "packageOnly") {
     return (
       <span
-        className="shrink-0 rounded-md border border-amber-400/35 bg-amber-500/10 px-1.5 py-0.5 text-[11px] font-semibold text-amber-100"
+        className="shrink-0 rounded-md border border-amber-400/35 bg-amber-500/10 px-1.5 py-0.5 text-[12px] font-semibold text-amber-100"
         title={hint ?? undefined}
       >
         אריזה OFF{hint ? ` · ${hint}` : ""}
@@ -54,7 +54,7 @@ function PortionStatusBadge({ item }: { item: OffPendingReview }) {
   return (
     <span
       className={
-        "shrink-0 rounded-md border px-1.5 py-0.5 text-[11px] font-semibold " +
+        "shrink-0 rounded-md border px-1.5 py-0.5 text-[12px] font-semibold " +
         (needsEdit ?
           "border-rose-400/35 bg-rose-500/10 text-rose-100"
         : "border-white/15 bg-white/[0.04] text-ink-muted")
@@ -151,11 +151,11 @@ function OffReviewRow({
           className="min-w-0 flex-1 text-start"
           aria-expanded={expanded}
         >
-          <p className="font-mono text-[13px] font-semibold text-white/90" dir="ltr">
+          <p className="font-mono text-sm font-semibold text-white/90" dir="ltr">
             {item.gtin ?? item.id}
           </p>
           {withMatch && link ? (
-            <p className="mt-1 text-[13px] leading-snug text-ink-muted">
+            <p className="mt-1 text-sm leading-snug text-ink-muted">
               <span className="text-sky-100/90">OFF:</span> {offName}
               {offBrand ? ` · ${offBrand}` : ""}
               <span className="mx-1 text-ink-dim">|</span>
@@ -164,7 +164,7 @@ function OffReviewRow({
               <span className="text-violet-200/80"> · ציון {link.matchScore}</span>
             </p>
           ) : (
-            <p className="mt-1 text-[13px] leading-snug text-ink-muted">
+            <p className="mt-1 text-sm leading-snug text-ink-muted">
               {offName}
               {offBrand ? ` · ${offBrand}` : ""}
               {nutrition.offOnlyPer100?.calories != null ?
@@ -176,7 +176,7 @@ function OffReviewRow({
         <div className="flex shrink-0 flex-wrap items-center justify-end gap-1">
           <PortionStatusBadge item={item} />
           {inCatalog ? (
-            <span className="rounded-md border border-amber-400/30 bg-amber-500/10 px-1.5 py-0.5 text-[11px] font-semibold text-amber-100">
+            <span className="rounded-md border border-amber-400/30 bg-amber-500/10 px-1.5 py-0.5 text-[12px] font-semibold text-amber-100">
               במאגר
             </span>
           ) : null}
@@ -186,12 +186,12 @@ function OffReviewRow({
       {expanded ? (
         <div className="border-t border-white/10 px-3 pb-3 pt-2 space-y-3">
           {needsPortionEdit ? (
-            <p className="rounded-lg border border-rose-400/25 bg-rose-500/[0.07] px-2.5 py-2 text-[13px] leading-relaxed text-rose-100/95">
+            <p className="rounded-lg border border-rose-400/25 bg-rose-500/[0.07] px-2.5 py-2 text-sm leading-relaxed text-rose-100/95">
               יש התאמה למאגר המאומת אבל חסרות מידות (יחידה/כף/כוס). לחצי «ערוך ובדוק», בחרי הצעה
               מהמאגר — ואז «הוסף למאגר».
             </p>
           ) : portionLevel === "packageOnly" ? (
-            <p className="rounded-lg border border-amber-400/25 bg-amber-500/[0.07] px-2.5 py-2 text-[13px] leading-relaxed text-amber-100/95">
+            <p className="rounded-lg border border-amber-400/25 bg-amber-500/[0.07] px-2.5 py-2 text-sm leading-relaxed text-amber-100/95">
               יש משקל אריזה מ־OFF בלבד. ליחידה/כף/כוס — «ערוך ובדוק» ובחרי הצעה מהמאגר המאומת.
             </p>
           ) : null}
@@ -246,7 +246,7 @@ function OffReviewRow({
           <button
             type="button"
             onClick={onToggleExpand}
-            className="rounded-lg px-2 py-1 text-[12px] font-semibold text-ink-muted hover:text-white"
+            className="rounded-lg px-2 py-1 text-[14px] font-semibold text-ink-muted hover:text-white"
           >
             פרטים
           </button>
@@ -254,7 +254,7 @@ function OffReviewRow({
             type="button"
             disabled={busyId === item.id}
             onClick={() => navigate(`/?offReview=${encodeURIComponent(item.id)}`)}
-            className="rounded-lg px-2 py-1 text-[12px] font-semibold text-sky-200/90 hover:text-sky-50"
+            className="rounded-lg px-2 py-1 text-[14px] font-semibold text-sky-200/90 hover:text-sky-50"
           >
             ערוך
           </button>
@@ -265,7 +265,7 @@ function OffReviewRow({
               onBusy(item.id);
               void approveOffPendingReview(item).finally(() => onBusy(null));
             }}
-            className="rounded-lg px-2 py-1 text-[12px] font-semibold text-white/90 hover:text-white disabled:opacity-50"
+            className="rounded-lg px-2 py-1 text-[14px] font-semibold text-white/90 hover:text-white disabled:opacity-50"
           >
             הוסף
           </button>
@@ -276,7 +276,7 @@ function OffReviewRow({
               onBusy(item.id);
               void rejectOffPendingReview(item.id).finally(() => onBusy(null));
             }}
-            className="rounded-lg px-2 py-1 text-[12px] font-semibold text-red-200/90 hover:text-red-100"
+            className="rounded-lg px-2 py-1 text-[14px] font-semibold text-red-200/90 hover:text-red-100"
           >
             דחה
           </button>
@@ -358,10 +358,10 @@ function CollapsibleReviewSection({
             >
               {title} ({items.length.toLocaleString("he-IL")})
             </h2>
-            <p className="mt-0.5 text-[13px] leading-relaxed text-ink-muted">{subtitle}</p>
-            <p className="mt-1 text-[12px] text-ink-dim">{portionSummaryText(portionStats)}</p>
+            <p className="mt-0.5 text-sm leading-relaxed text-ink-muted">{subtitle}</p>
+            <p className="mt-1 text-[14px] text-ink-dim">{portionSummaryText(portionStats)}</p>
           </div>
-          <span className="shrink-0 text-[12px] text-ink-dim group-open:rotate-180 transition pt-1">
+          <span className="shrink-0 text-[14px] text-ink-dim group-open:rotate-180 transition pt-1">
             ▼
           </span>
         </div>
@@ -456,7 +456,7 @@ export function PendingOffReview() {
         <p className="font-display text-2xl font-semibold tracking-tight text-white sm:text-3xl">
           בדיקת OFF
         </p>
-        <p className="text-[13px] leading-relaxed text-ink-muted sm:text-sm">
+        <p className="text-sm leading-relaxed text-ink-muted sm:text-sm">
           שתי קבוצות מקופלות — תגית מידות בכל שורה. פריטים עם התאמה מאומתת אבל בלי מידות מופיעים
           ראשונים; «ערוך למידות» לפני «הוסף למאגר».
         </p>
@@ -521,7 +521,7 @@ export function PendingOffReview() {
                 type="button"
                 onClick={() => setPortionFilter(id)}
                 className={
-                  "rounded-lg border px-2.5 py-1.5 text-[13px] font-semibold transition " +
+                  "rounded-lg border px-2.5 py-1.5 text-sm font-semibold transition " +
                   (portionFilter === id ?
                     "border-white/30 bg-white/[0.1] text-white"
                   : "border-white/10 bg-transparent text-ink-muted hover:border-white/20 hover:text-white")
@@ -533,7 +533,7 @@ export function PendingOffReview() {
           </div>
 
           <label className="flex flex-col gap-1">
-            <span className="text-xs font-medium text-ink-muted">חיפוש (ברקוד, שם, מותג)</span>
+            <span className="text-sm font-medium text-ink-muted">חיפוש (ברקוד, שם, מותג)</span>
             <input
               type="search"
               value={search}

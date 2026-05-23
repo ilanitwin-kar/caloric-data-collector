@@ -179,7 +179,7 @@ function ProductNutritionDetails({ p }: { p: Product }) {
 
   return (
     <div className="mt-3 space-y-3 border-t border-white/10 pt-3 text-sm">
-      <p className="text-xs font-semibold text-ink-dim">אריזה</p>
+      <p className="text-sm font-semibold text-ink-dim">אריזה</p>
       <div className="grid grid-cols-2 gap-2">
         <div>
           <span className="text-ink-muted">משקל כולל</span>
@@ -194,7 +194,7 @@ function ProductNutritionDetails({ p }: { p: Product }) {
           <p className="tabular-nums text-white">{fmt1(p.unitWeight)} גרם</p>
         </div>
       </div>
-      <p className="text-xs font-semibold text-ink-dim">ל-100 גרם</p>
+      <p className="text-sm font-semibold text-ink-dim">ל-100 גרם</p>
       <div className="grid grid-cols-2 gap-2">
         <div>
           <span className="text-ink-muted">אנרגיה</span>
@@ -249,8 +249,8 @@ function ProductNutritionDetails({ p }: { p: Product }) {
           </p>
         </div>
       </div>
-      <p className="text-xs font-semibold text-ink-dim">לכף ולכוס (הערכה)</p>
-      <p className="text-[11px] leading-snug text-ink-dim">
+      <p className="text-sm font-semibold text-ink-dim">לכף ולכוס (הערכה)</p>
+      <p className="text-[14px] leading-snug text-ink-dim">
         כף {fmt1(gTb)} גרם, כוס {fmt1(gCup)} גרם.
       </p>
       <div className="grid grid-cols-2 gap-2">
@@ -292,12 +292,12 @@ function ProductNutritionDetails({ p }: { p: Product }) {
         </div>
       </div>
       {p.unitsPer100g && p.unitsPer100g > 0 ? (
-        <div className="rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-[11px] text-ink-muted">
+        <div className="rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-[14px] text-ink-muted">
           יחידה לפי 100 גרם: {fmt1(p.unitsPer100g)} יח׳ ב־100 גרם (≈ {fmt1(gPiece)}g ליחידה)
         </div>
       ) : null}
-      <p className="text-xs font-semibold text-ink-dim">הליכה — צעדים משוערים</p>
-      <p className="text-[11px] leading-snug text-ink-dim">
+      <p className="text-sm font-semibold text-ink-dim">הליכה — צעדים משוערים</p>
+      <p className="text-[14px] leading-snug text-ink-dim">
         MET {WALKING_MET}, לפי משקל גוף ב«הגדרות».
       </p>
       <div className="grid grid-cols-2 gap-2">
@@ -324,7 +324,7 @@ function ProductNutritionDetails({ p }: { p: Product }) {
           </div>
         ) : null}
       </div>
-      <p className="text-xs font-semibold text-ink-dim">ליחידה אחת</p>
+      <p className="text-sm font-semibold text-ink-dim">ליחידה אחת</p>
       <div className="grid grid-cols-2 gap-2">
         <div>
           <span className="text-ink-muted">אנרגיה</span>
@@ -609,7 +609,7 @@ export function History() {
               autoComplete="off"
               className="min-h-[48px] w-full rounded-2xl border border-white/15 bg-white/[0.06] px-4 text-base text-white placeholder:text-ink-dim focus:border-white/35 focus:outline-none focus:ring-2 focus:ring-white/15"
             />
-            <p className="text-[11px] text-ink-dim">
+            <p className="text-[14px] text-ink-dim">
               חיפוש מסנן את הרשימה למטה. לייצוא — לחצי על כפתור ייצוא ובחרי אילו מוצרים לכלול (ברירת מחדל: הכול).
             </p>
           </div>
@@ -628,7 +628,7 @@ export function History() {
             className="flex w-[4.25rem] shrink-0 flex-col items-center gap-1 rounded-xl border border-white/20 bg-white px-1 py-2 text-black transition enabled:active:scale-[0.97] enabled:hover:bg-neutral-100 disabled:cursor-not-allowed disabled:opacity-40"
           >
             <IconShareFile className="h-6 w-6 shrink-0" />
-            <span className="max-w-full text-center text-[9px] font-medium leading-tight text-black/80">
+            <span className="max-w-full text-center text-[14px] font-medium leading-tight text-black/80">
               שיתוף קובץ
             </span>
           </button>
@@ -641,7 +641,7 @@ export function History() {
             className="flex w-[4.25rem] shrink-0 flex-col items-center gap-1 rounded-xl border border-white/20 bg-white/[0.06] px-1 py-2 text-white transition enabled:active:scale-[0.97] enabled:hover:border-white/30 enabled:hover:bg-white/[0.1] disabled:cursor-not-allowed disabled:opacity-40"
           >
             <IconExcel className="h-6 w-6 shrink-0 opacity-90" />
-            <span className="max-w-full text-center text-[9px] font-medium leading-tight text-ink-muted">
+            <span className="max-w-full text-center text-[14px] font-medium leading-tight text-ink-muted">
               אקסל
             </span>
           </button>
@@ -654,7 +654,7 @@ export function History() {
             className="flex w-[4.25rem] shrink-0 flex-col items-center gap-1 rounded-xl border border-white/20 bg-white/[0.06] px-1 py-2 text-white transition enabled:active:scale-[0.97] enabled:hover:border-white/30 enabled:hover:bg-white/[0.1] disabled:cursor-not-allowed disabled:opacity-40"
           >
             <IconPdf className="h-6 w-6 shrink-0 opacity-90" />
-            <span className="max-w-full text-center text-[9px] font-medium leading-tight text-ink-muted">
+            <span className="max-w-full text-center text-[14px] font-medium leading-tight text-ink-muted">
               PDF
             </span>
           </button>
@@ -667,7 +667,7 @@ export function History() {
             className="flex w-[4.25rem] shrink-0 flex-col items-center gap-1 rounded-xl border border-white/15 bg-transparent px-1 py-2 text-ink-muted transition enabled:active:scale-[0.97] enabled:hover:border-white/25 enabled:hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
           >
             <IconCsv className="h-6 w-6 shrink-0" />
-            <span className="max-w-full text-center text-[9px] font-medium leading-tight">
+            <span className="max-w-full text-center text-[14px] font-medium leading-tight">
               CSV
             </span>
           </button>
@@ -680,7 +680,7 @@ export function History() {
             className="flex w-[4.25rem] shrink-0 flex-col items-center gap-1 rounded-xl border border-emerald-400/35 bg-emerald-500/15 px-1 py-2 text-emerald-100 transition enabled:hover:bg-emerald-500/25 disabled:cursor-not-allowed disabled:opacity-40"
           >
             <IconWhatsApp className="h-6 w-6 shrink-0" />
-            <span className="max-w-full text-center text-[9px] font-medium leading-tight text-emerald-100/90">
+            <span className="max-w-full text-center text-[14px] font-medium leading-tight text-emerald-100/90">
               ווטסאפ
             </span>
           </button>
@@ -693,12 +693,12 @@ export function History() {
             className="flex w-[4.25rem] shrink-0 flex-col items-center gap-1 rounded-xl border border-sky-400/35 bg-sky-500/15 px-1 py-2 text-sky-100 transition enabled:hover:bg-sky-500/25 disabled:cursor-not-allowed disabled:opacity-40"
           >
             <IconMail className="h-6 w-6 shrink-0" />
-            <span className="max-w-full text-center text-[9px] font-medium leading-tight text-sky-100/90">
+            <span className="max-w-full text-center text-[14px] font-medium leading-tight text-sky-100/90">
               אימייל
             </span>
           </button>
         </div>
-        <p className="text-[11px] leading-snug text-ink-dim">
+        <p className="text-[14px] leading-snug text-ink-dim">
           שיתוף קובץ: קודם Excel ואז PDF. טקסט לווטסאפ מוגבל באורך — למסר מלא עם כף/כוס וכל השדות העדיפי אימייל או קובץ;
           באקסל/PDF/CSV נוספו עמודות לכף ולכוס.
         </p>
@@ -737,7 +737,7 @@ export function History() {
                   <span className="mt-1 block font-mono text-sm text-ink-muted" dir="ltr">
                     {p.barcode ?? "— ללא ברקוד —"}
                   </span>
-                  <span className="mt-1 block text-xs text-ink-dim">
+                  <span className="mt-1 block text-sm text-ink-dim">
                     נשמר: {formatSavedAt(p.savedAt)}
                   </span>
                   <button
@@ -812,7 +812,7 @@ export function History() {
               <h2 id="export-picker-title" className="text-base font-semibold text-white">
                 {exportDialogTitle(exportKind)}
               </h2>
-              <p className="mt-1 text-xs text-ink-muted">
+              <p className="mt-1 text-sm text-ink-muted">
                 סמני מוצרים לייצוא. ברירת המחדל: כל הרשימה.
               </p>
             </div>
@@ -820,14 +820,14 @@ export function History() {
               <button
                 type="button"
                 onClick={selectAllExport}
-                className="rounded-lg border border-white/20 bg-white/[0.06] px-3 py-1.5 text-xs font-medium text-white transition hover:bg-white/[0.1]"
+                className="rounded-lg border border-white/20 bg-white/[0.06] px-3 py-1.5 text-sm font-medium text-white transition hover:bg-white/[0.1]"
               >
                 בחר הכל
               </button>
               <button
                 type="button"
                 onClick={clearAllExport}
-                className="rounded-lg border border-white/15 bg-transparent px-3 py-1.5 text-xs font-medium text-ink-muted transition hover:border-white/25 hover:text-white"
+                className="rounded-lg border border-white/15 bg-transparent px-3 py-1.5 text-sm font-medium text-ink-muted transition hover:border-white/25 hover:text-white"
               >
                 נקה הכל
               </button>

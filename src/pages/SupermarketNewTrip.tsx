@@ -16,7 +16,7 @@ function Field({
 }) {
   return (
     <label className="flex flex-col gap-1">
-      <span className="text-xs font-medium text-ink-muted">{label}</span>
+      <span className="text-sm font-medium text-ink-muted">{label}</span>
       <input
         value={value}
         onChange={(e) => onChange(e.target.value)}
@@ -80,7 +80,7 @@ export function SupermarketNewTrip() {
     <div className="space-y-6 pb-4">
       <header className="space-y-3 border-b border-white/10 pb-6">
         <p className="font-display text-2xl font-semibold tracking-tight text-white sm:text-3xl">סופר</p>
-        <p className="break-words text-[13px] leading-relaxed text-ink-muted sm:text-sm">
+        <p className="break-words text-sm leading-relaxed text-ink-muted">
           מעבר חדש — אחרי שמירת מוצר במילוי המהיר אפשר להמשיך באותו מעבר. למעבר אחר חזרי לכאן ובחרי מעבר מהרשימה או צרי חדש.
         </p>
       </header>
@@ -130,8 +130,8 @@ export function SupermarketNewTrip() {
                         className="flex min-h-[52px] w-full touch-manipulation flex-col gap-1 rounded-xl border border-white/10 bg-black/25 px-4 py-3 text-right transition active:scale-[0.99] hover:border-white/20 hover:bg-black/35"
                       >
                         <span className="break-words font-semibold text-white">{t.name}</span>
-                        <span className="break-words text-xs text-ink-muted">{t.category}</span>
-                        <span className="text-[11px] text-ink-dim">
+                        <span className="break-words text-sm text-ink-muted">{t.category}</span>
+                        <span className="text-[14px] text-ink-dim">
                           {n === 0 ? "אין עדיין מוצרים לעריכה במעבר" : `${n} מוצרים לעריכה במעבר`}
                         </span>
                       </button>

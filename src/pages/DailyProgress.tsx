@@ -103,7 +103,7 @@ export function DailyProgress() {
       )}
 
       <section className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
-        <h2 className="mb-3 text-xs font-semibold text-ink-dim">סיכום היום</h2>
+        <h2 className="mb-3 text-sm font-semibold text-ink-dim">סיכום היום</h2>
         <dl className="grid grid-cols-2 gap-3 text-sm">
           <div>
             <dt className="text-ink-muted">קלוריות (ארוחות)</dt>
@@ -133,7 +133,7 @@ export function DailyProgress() {
       </section>
 
       <section className="space-y-4">
-        <h2 className="text-xs font-semibold text-ink-dim">הוספת ארוחה</h2>
+        <h2 className="text-sm font-semibold text-ink-dim">הוספת ארוחה</h2>
         <form onSubmit={submitMeal} className="space-y-3">
           <input
             value={mealName}
@@ -158,7 +158,7 @@ export function DailyProgress() {
       </section>
 
       <section className="space-y-4">
-        <h2 className="text-xs font-semibold text-ink-dim">הוספת משקל</h2>
+        <h2 className="text-sm font-semibold text-ink-dim">הוספת משקל</h2>
         <form onSubmit={submitWeight} className="space-y-3">
           <input
             value={weightKg}
@@ -177,7 +177,7 @@ export function DailyProgress() {
       </section>
 
       <section className="space-y-4">
-        <h2 className="text-xs font-semibold text-ink-dim">הוספת פעילות</h2>
+        <h2 className="text-sm font-semibold text-ink-dim">הוספת פעילות</h2>
         <form onSubmit={submitAct} className="space-y-3">
           <input
             value={actName}
@@ -202,7 +202,7 @@ export function DailyProgress() {
       </section>
 
       <section className="space-y-2">
-        <h2 className="text-xs font-semibold text-ink-dim">היום היום</h2>
+        <h2 className="text-sm font-semibold text-ink-dim">היום היום</h2>
         <ul className="space-y-2 text-sm text-ink-muted">
           {todayMeals.length === 0 && todayWeight.length === 0 && todayAct.length === 0 ? (
             <li>אין רישומים להיום עדיין.</li>

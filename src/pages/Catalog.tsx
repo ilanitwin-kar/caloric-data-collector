@@ -177,7 +177,7 @@ function CompletenessBadge({
   onAction?: () => void;
 }) {
   const className =
-    "rounded-md border px-1.5 py-0.5 text-[9px] font-semibold " +
+    "rounded-md border px-1.5 py-0.5 text-[12px] font-semibold " +
     (ok ?
       "border-emerald-400/35 bg-emerald-500/10 text-emerald-100"
     : warn ?
@@ -237,11 +237,11 @@ function CatalogProductCard({
         <div className="min-w-0">
           <p className="font-display text-lg font-semibold text-white">{p.name}</p>
           {p.brand ? <p className="text-sm text-ink-muted">{p.brand}</p> : null}
-          {p.category ? <p className="text-[11px] text-ink-dim">{p.category}</p> : null}
-          <p className="mt-1 font-mono text-xs text-ink-dim" dir="ltr">
+          {p.category ? <p className="text-[14px] text-ink-dim">{p.category}</p> : null}
+          <p className="mt-1 font-mono text-sm text-ink-dim" dir="ltr">
             {p.gtin ?? p.id}
           </p>
-          <p className="mt-1 text-[10px] text-ink-dim">
+          <p className="mt-1 text-sm text-ink-dim">
             מקור: {sourceLabel(p)} · {report.recommendedScore.filled}/
             {report.recommendedScore.total} שדות מומלצים
           </p>
@@ -250,14 +250,14 @@ function CatalogProductCard({
           <button
             type="button"
             onClick={onEdit}
-            className="rounded-xl border border-white/15 bg-white/[0.06] px-3 py-2 text-xs font-semibold text-white transition hover:border-white/30"
+            className="rounded-xl border border-white/15 bg-white/[0.06] px-3 py-2 text-sm font-semibold text-white transition hover:border-white/30"
           >
             עריכה
           </button>
           <button
             type="button"
             onClick={onDelete}
-            className="rounded-xl border border-red-400/30 bg-red-500/10 px-3 py-2 text-xs font-semibold text-red-200 transition hover:border-red-400/45 hover:bg-red-500/15"
+            className="rounded-xl border border-red-400/30 bg-red-500/10 px-3 py-2 text-sm font-semibold text-red-200 transition hover:border-red-400/45 hover:bg-red-500/15"
           >
             מחק
           </button>
@@ -301,7 +301,7 @@ function CatalogProductCard({
           onAction={!keywordsOk ? () => onEditWithFocus("keywords") : undefined}
         />
         {report.isComplete ? (
-          <span className="rounded-md border border-sky-400/35 bg-sky-500/10 px-1.5 py-0.5 text-[9px] font-semibold text-sky-100">
+          <span className="rounded-md border border-sky-400/35 bg-sky-500/10 px-1.5 py-0.5 text-[12px] font-semibold text-sky-100">
             מלא ✓
           </span>
         ) : null}
@@ -327,13 +327,13 @@ function CatalogProductCard({
       </div>
 
       <details className="group mt-3 rounded-xl border border-white/10 bg-white/[0.02]">
-        <summary className="cursor-pointer list-none px-3 py-2 text-[11px] font-semibold text-ink-muted marker:content-none [&::-webkit-details-marker]:hidden">
+        <summary className="cursor-pointer list-none px-3 py-2 text-[14px] font-semibold text-ink-muted marker:content-none [&::-webkit-details-marker]:hidden">
           <span className="flex items-center justify-between gap-2">
             <span>פרטים — מה מולא / מה חסר</span>
-            <span className="text-[10px] text-ink-dim group-open:rotate-180 transition">▼</span>
+            <span className="text-sm text-ink-dim group-open:rotate-180 transition">▼</span>
           </span>
         </summary>
-        <div className="space-y-2 border-t border-white/10 px-3 pb-3 pt-2 text-[11px] leading-relaxed">
+        <div className="space-y-2 border-t border-white/10 px-3 pb-3 pt-2 text-[14px] leading-relaxed">
           {p.package?.totalWeightG || p.package?.unitWeightG ? (
             <p className="text-ink-muted">
               <span className="font-semibold text-white/90">אריזה: </span>
@@ -397,7 +397,7 @@ function Field({
 }) {
   return (
     <div className="space-y-1.5">
-      <label className="block text-xs font-medium text-ink-muted">{label}</label>
+      <label className="block text-sm font-medium text-ink-muted">{label}</label>
       <input
         value={value}
         onChange={(e) => onChange(e.target.value)}
@@ -603,13 +603,13 @@ function EditModal({
           <h2 id="edit-title" className="text-base font-semibold text-white">
             עריכת מוצר
           </h2>
-          <p className="mt-1 font-mono text-[11px] text-ink-dim" dir="ltr">
+          <p className="mt-1 font-mono text-[14px] text-ink-dim" dir="ltr">
             {product.id}
           </p>
         </div>
         <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto px-4 py-3 space-y-3">
           {initialFocus !== "general" ? (
-            <p className="rounded-xl border border-teal-400/25 bg-teal-500/10 px-3 py-2 text-[11px] text-teal-50">
+            <p className="rounded-xl border border-teal-400/25 bg-teal-500/10 px-3 py-2 text-[14px] text-teal-50">
               {initialFocus === "nutrition" ?
                 "מילוי תזונה — הצעות מהמאגר המאומת (TSV)"
               : initialFocus === "packaging" ?
@@ -636,13 +636,13 @@ function EditModal({
           </div>
           <Field label="מותג" value={draft.brand} onChange={(v) => setDraft((d) => (d ? { ...d, brand: v } : d))} />
           <div className="space-y-1.5">
-            <p className="text-xs font-medium text-ink-muted">הערכים הם ל־</p>
+            <p className="text-sm font-medium text-ink-muted">הערכים הם ל־</p>
             <div className="flex flex-wrap gap-2">
               <button
                 type="button"
                 onClick={() => setDraft((d) => (d ? { ...d, per100Basis: "g" } : d))}
                 className={
-                  "rounded-full px-3 py-1.5 text-xs font-semibold transition " +
+                  "rounded-full px-3 py-1.5 text-sm font-semibold transition " +
                   (draft.per100Basis === "g"
                     ? "border border-white/20 bg-white/[0.12] text-white"
                     : "border border-white/15 bg-white/[0.06] text-ink-muted hover:border-white/25 hover:text-white")
@@ -654,7 +654,7 @@ function EditModal({
                 type="button"
                 onClick={() => setDraft((d) => (d ? { ...d, per100Basis: "ml" } : d))}
                 className={
-                  "rounded-full px-3 py-1.5 text-xs font-semibold transition " +
+                  "rounded-full px-3 py-1.5 text-sm font-semibold transition " +
                   (draft.per100Basis === "ml"
                     ? "border border-white/20 bg-white/[0.12] text-white"
                     : "border border-white/15 bg-white/[0.06] text-ink-muted hover:border-white/25 hover:text-white")
@@ -677,7 +677,7 @@ function EditModal({
             />
           </div>
           <div className="space-y-1.5">
-            <p className="text-xs font-medium text-ink-muted">סוג שימוש</p>
+            <p className="text-sm font-medium text-ink-muted">סוג שימוש</p>
             <div className="flex flex-wrap gap-2">
               {USAGE_OPTIONS.map((opt) => {
                 const active = draft.usageTags.includes(opt.id);
@@ -698,7 +698,7 @@ function EditModal({
                       )
                     }
                     className={
-                      "rounded-full px-3 py-1.5 text-xs font-semibold transition " +
+                      "rounded-full px-3 py-1.5 text-sm font-semibold transition " +
                       (active
                         ? "border border-emerald-300/30 bg-emerald-500/15 text-emerald-50"
                         : "border border-white/15 bg-white/[0.06] text-ink-muted hover:border-white/25 hover:text-white")
@@ -711,7 +711,7 @@ function EditModal({
             </div>
           </div>
           <div className="space-y-1.5">
-            <p className="text-xs font-medium text-ink-muted">ברירת מחדל ביומן</p>
+            <p className="text-sm font-medium text-ink-muted">ברירת מחדל ביומן</p>
             <div className="flex flex-wrap gap-2">
               {MEASURE_OPTIONS.map((opt) => {
                 const active = draft.defaultMeasure === opt.id;
@@ -731,7 +731,7 @@ function EditModal({
                       )
                     }
                     className={
-                      "rounded-full px-3 py-1.5 text-xs font-semibold transition " +
+                      "rounded-full px-3 py-1.5 text-sm font-semibold transition " +
                       (active
                         ? "border border-sky-300/30 bg-sky-500/15 text-sky-50"
                         : "border border-white/15 bg-white/[0.06] text-ink-muted hover:border-white/25 hover:text-white")
@@ -742,7 +742,7 @@ function EditModal({
                 );
               })}
             </div>
-            <p className="mt-2 text-xs font-medium text-ink-muted">מידות נפוצות</p>
+            <p className="mt-2 text-sm font-medium text-ink-muted">מידות נפוצות</p>
             <div className="flex flex-wrap gap-2">
               {MEASURE_OPTIONS.map((opt) => {
                 const active = draft.commonMeasures.includes(opt.id);
@@ -763,7 +763,7 @@ function EditModal({
                       })
                     }
                     className={
-                      "rounded-full px-3 py-1.5 text-xs font-semibold transition " +
+                      "rounded-full px-3 py-1.5 text-sm font-semibold transition " +
                       (active
                         ? "border border-white/20 bg-white/[0.12] text-white"
                         : "border border-white/15 bg-white/[0.06] text-ink-muted hover:border-white/25 hover:text-white")
@@ -783,7 +783,7 @@ function EditModal({
               "emerald",
             )}
           >
-            <p className="text-xs font-semibold text-emerald-100">תזונה ל־100g</p>
+            <p className="text-sm font-semibold text-emerald-100">תזונה ל־100g</p>
             {draft.per100Basis === "g" ? (
               <VerifiedSuggestionsPanel
                 suggestions={suggestions.verifiedSuggestions}
@@ -796,7 +796,7 @@ function EditModal({
                 onDismiss={suggestions.dismissVerified}
               />
             ) : (
-              <p className="text-[11px] text-ink-dim">
+              <p className="text-[14px] text-ink-dim">
                 הצעות TSV זמינות ל־100g — עבורי ל־100g אם המוצר מוצג לפי משקל.
               </p>
             )}
@@ -815,7 +815,7 @@ function EditModal({
               "teal",
             )}
           >
-            <p className="text-xs font-semibold text-teal-100">אריזה</p>
+            <p className="text-sm font-semibold text-teal-100">אריזה</p>
             {draft.per100Basis === "g" ? (
               <MinistryPortionsPanel
                 suggestions={suggestions.mohSuggestions}
@@ -827,7 +827,7 @@ function EditModal({
                 onDismiss={suggestions.dismissMoh}
               />
             ) : (
-              <p className="text-[11px] text-ink-dim">
+              <p className="text-[14px] text-ink-dim">
                 הצעות משרד הבריאות זמינות למוצרים לפי 100g.
               </p>
             )}
@@ -835,7 +835,7 @@ function EditModal({
               <Field label="משקל אריזה (g)" value={draft.totalWeightG} onChange={(v) => setDraft((d) => (d ? { ...d, totalWeightG: v } : d))} inputMode="decimal" />
               <Field label="יחידות באריזה" value={draft.unitsPerPack} onChange={(v) => setDraft((d) => (d ? { ...d, unitsPerPack: v } : d))} inputMode="decimal" />
             </div>
-            <div className="rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-xs text-ink-muted">
+            <div className="rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-ink-muted">
               משקל יחידה מחושב: {pkg.unitWeightG ? `${fmt1(pkg.unitWeightG)}g` : "—"}
             </div>
           </div>
@@ -844,9 +844,9 @@ function EditModal({
             ref={measuresSectionRef}
             className={editSectionRing(initialFocus === "measures", "teal")}
           >
-            <p className="text-xs font-semibold text-teal-100">מידות (כף / כוס / יחידה)</p>
+            <p className="text-sm font-semibold text-teal-100">מידות (כף / כוס / יחידה)</p>
             {initialFocus === "measures" && draft.per100Basis === "g" && !suggestions.nutritionReady ? (
-              <p className="text-[11px] text-amber-100/90">
+              <p className="text-[14px] text-amber-100/90">
                 מלאי קודם תזונה ל־100g — ואז יופיעו הצעות משרד הבריאות ב«אריזה» למעלה.
               </p>
             ) : null}
@@ -1047,7 +1047,7 @@ export function Catalog() {
                   setExporting(null);
                 }
               }}
-              className="rounded-xl border border-white/20 bg-white/[0.06] px-3 py-2 text-xs font-semibold text-white transition hover:border-white/30 disabled:opacity-60"
+              className="rounded-xl border border-white/20 bg-white/[0.06] px-3 py-2 text-sm font-semibold text-white transition hover:border-white/30 disabled:opacity-60"
             >
               {exporting === "csv" ? "מכין…" : "CSV"}
             </button>
@@ -1060,7 +1060,7 @@ export function Catalog() {
                   .catch(() => showToast("ייצוא Excel נכשל", "error"))
                   .finally(() => setExporting(null));
               }}
-              className="rounded-xl border border-white/20 bg-white/[0.06] px-3 py-2 text-xs font-semibold text-white transition hover:border-white/30 disabled:opacity-60"
+              className="rounded-xl border border-white/20 bg-white/[0.06] px-3 py-2 text-sm font-semibold text-white transition hover:border-white/30 disabled:opacity-60"
             >
               {exporting === "xlsx" ? "מכין…" : "Excel"}
             </button>
@@ -1074,17 +1074,17 @@ export function Catalog() {
                   .catch(() => showToast("ייצוא PDF נכשל", "error"))
                   .finally(() => setExporting(null));
               }}
-              className="rounded-xl border border-white/20 bg-white/[0.06] px-3 py-2 text-xs font-semibold text-white transition hover:border-white/30 disabled:opacity-60"
+              className="rounded-xl border border-white/20 bg-white/[0.06] px-3 py-2 text-sm font-semibold text-white transition hover:border-white/30 disabled:opacity-60"
             >
               {exporting === "pdf" ? "מכין…" : "PDF"}
             </button>
           </div>
         </div>
-        <p className="text-xs text-ink-muted">
+        <p className="text-sm text-ink-muted">
           {catalog.length.toLocaleString("he-IL")} מוצרים · חיפוש כולל גם מילות מפתח.
         </p>
         {!loading && catalog.length > 0 ? (
-          <div className="rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2.5 text-xs text-ink-muted leading-relaxed space-y-1">
+          <div className="rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2.5 text-sm text-ink-muted leading-relaxed space-y-1">
             <p>
               <span className="text-sky-200/90">
                 {completenessTotals.complete.toLocaleString("he-IL")} מלאים
@@ -1132,7 +1132,7 @@ export function Catalog() {
               type="button"
               onClick={() => setCompletenessFilter(id)}
               className={
-                "rounded-lg border px-2.5 py-1.5 text-[11px] font-semibold transition " +
+                "rounded-lg border px-2.5 py-1.5 text-[14px] font-semibold transition " +
                 (completenessFilter === id ?
                   "border-white/30 bg-white/[0.1] text-white"
                 : "border-white/10 bg-transparent text-ink-muted hover:border-white/20 hover:text-white")
@@ -1153,7 +1153,7 @@ export function Catalog() {
           <button
             type="button"
             onClick={() => fileRef.current?.click()}
-            className="rounded-xl border border-white/20 bg-white/[0.06] px-3 py-2 text-xs font-semibold text-white transition hover:border-white/30"
+            className="rounded-xl border border-white/20 bg-white/[0.06] px-3 py-2 text-sm font-semibold text-white transition hover:border-white/30"
           >
             ייבוא CSV
           </button>
@@ -1178,12 +1178,12 @@ export function Catalog() {
         ) : null}
         {error ? (
           <div className="rounded-xl border border-amber-400/30 bg-amber-500/10 px-3 py-2">
-            <p className="text-xs text-amber-200">{error}</p>
+            <p className="text-sm text-amber-200">{error}</p>
             {!cloudSyncPaused ? (
               <button
                 type="button"
                 onClick={pauseCloudSync}
-                className="mt-2 rounded-lg border border-white/15 bg-white/[0.06] px-3 py-1.5 text-xs font-semibold text-white/90"
+                className="mt-2 rounded-lg border border-white/15 bg-white/[0.06] px-3 py-1.5 text-sm font-semibold text-white/90"
               >
                 עצור סנכרון
               </button>
@@ -1191,7 +1191,7 @@ export function Catalog() {
               <button
                 type="button"
                 onClick={resumeCloudSync}
-                className="mt-2 rounded-lg border border-white/15 bg-white/[0.06] px-3 py-1.5 text-xs font-semibold text-white/90"
+                className="mt-2 rounded-lg border border-white/15 bg-white/[0.06] px-3 py-1.5 text-sm font-semibold text-white/90"
               >
                 נסה שוב
               </button>

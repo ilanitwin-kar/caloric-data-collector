@@ -53,7 +53,7 @@ function PortionsPreviewTable({ sug }: { sug: VerifiedSuggestionPick }) {
     rows.push({ label: "גרם בכפית", value: formatG(100 / m.tspPer100g) });
   }
   if (rows.length === 0) {
-    return <p className="text-[11px] text-ink-dim">אין נתוני אריזה/מידות לפריט זה</p>;
+    return <p className="text-[14px] text-ink-dim">אין נתוני אריזה/מידות לפריט זה</p>;
   }
   return <PreviewTable rows={rows} />;
 }
@@ -65,14 +65,14 @@ function PreviewTable({
 }) {
   return (
     <div className="overflow-hidden rounded-lg border border-white/10 bg-black/25">
-      <table className="w-full text-[11px]">
+      <table className="w-full text-[14px]">
         <tbody>
           {rows.map((r) => (
             <tr key={`${r.label}|${r.value}`} className="border-b border-white/5 last:border-0">
               <td className="w-[42%] px-2 py-1.5 text-ink-dim">
                 {r.label}
                 {r.sub ? (
-                  <span className="mt-0.5 block text-[9px] text-ink-dim/80">{r.sub}</span>
+                  <span className="mt-0.5 block text-[14px] text-ink-dim/80">{r.sub}</span>
                 ) : null}
               </td>
               <td className="px-2 py-1.5 font-medium text-white tabular-nums">{r.value}</td>
@@ -105,17 +105,17 @@ function MinistrySuggestionRow({
           aria-expanded={expanded}
         >
           <span className="inline-flex flex-wrap items-center gap-1">
-            <span className="rounded-md border border-teal-400/35 bg-teal-500/15 px-1.5 py-0.5 text-[9px] font-semibold text-teal-100">
+            <span className="rounded-md border border-teal-400/35 bg-teal-500/15 px-1.5 py-0.5 text-[12px] font-semibold text-teal-100">
               משרד הבריאות
             </span>
             {kindLabel && kindLabel !== "מצרך" ? (
-              <span className="rounded-md border border-white/15 bg-white/[0.06] px-1.5 py-0.5 text-[9px] font-semibold text-ink-muted">
+              <span className="rounded-md border border-white/15 bg-white/[0.06] px-1.5 py-0.5 text-[12px] font-semibold text-ink-muted">
                 {kindLabel}
               </span>
             ) : null}
           </span>
-          <p className="mt-1 text-[11px] font-medium text-white">{sug.name}</p>
-          <p className="text-[10px] text-ink-muted">
+          <p className="mt-1 text-[14px] font-medium text-white">{sug.name}</p>
+          <p className="text-sm text-ink-muted">
             {portionHint ? portionHint : "ללא מידות — פתחי לפרטים"}
             {sug.matchScore != null ? ` · ציון ${sug.matchScore}` : ""}
           </p>
@@ -123,7 +123,7 @@ function MinistrySuggestionRow({
         <button
           type="button"
           onClick={() => setExpanded((e) => !e)}
-          className="shrink-0 rounded-lg px-2 py-1 text-[10px] font-semibold text-ink-muted hover:text-white"
+          className="shrink-0 rounded-lg px-2 py-1 text-sm font-semibold text-ink-muted hover:text-white"
         >
           {expanded ? "סגור" : "בדיקה"}
         </button>
@@ -131,14 +131,14 @@ function MinistrySuggestionRow({
 
       {expanded ? (
         <div className="border-t border-white/10 px-3 pb-3 pt-2 space-y-2">
-          <p className="text-[10px] text-ink-dim leading-relaxed">
+          <p className="text-sm text-ink-dim leading-relaxed">
             ודאי שזה המצרך הנכון. אישור ימלא <span className="text-white/90">רק אריזה ומידות</span> — לא
             ישנה קלוריות/מאקרו שכבר מולאו מהמאגר המאומת או ידנית.
           </p>
           <PortionsPreviewTable sug={sug} />
           <button
             type="button"
-            className="min-h-[40px] w-full rounded-xl bg-teal-400/90 px-3 py-2 text-xs font-semibold text-black hover:bg-teal-300"
+            className="min-h-[40px] w-full rounded-xl bg-teal-400/90 px-3 py-2 text-sm font-semibold text-black hover:bg-teal-300"
             onClick={() => onApprove(sug)}
           >
             אשר — מלא אריזה ומידות
@@ -148,7 +148,7 @@ function MinistrySuggestionRow({
         <div className="flex flex-wrap gap-1.5 border-t border-white/5 px-3 pb-2 pt-1">
           <button
             type="button"
-            className="rounded-lg px-2 py-1 text-[10px] font-semibold text-ink-muted hover:text-white"
+            className="rounded-lg px-2 py-1 text-sm font-semibold text-ink-muted hover:text-white"
             onClick={() => setExpanded(true)}
           >
             בדיקה לפני אישור
@@ -182,7 +182,7 @@ export function MinistryPortionsPanel({
 
   if (!nutritionReady) {
     return (
-      <p className="rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-[11px] text-ink-dim">
+      <p className="rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-[14px] text-ink-dim">
         קודם מלאי תזונה ל־100g (מהמאגר המאומת או ידנית) — ואז יופיעו כאן הצעות אריזה/מידות ממשרד
         הבריאות.
       </p>
@@ -191,7 +191,7 @@ export function MinistryPortionsPanel({
 
   if (!verifiedSearchQueryReady(searchQuery) && !pickedLabel) {
     return (
-      <p className="rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-[11px] text-ink-dim">
+      <p className="rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-[14px] text-ink-dim">
         הזיני לפחות 3 תווים בשם / שם קצר / מילות חיפוש כדי לחפש מצרכים במשרד הבריאות.
       </p>
     );
@@ -201,18 +201,18 @@ export function MinistryPortionsPanel({
     <div className="space-y-2 rounded-xl border border-teal-400/20 bg-teal-500/[0.04] p-3">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div>
-          <p className="text-xs font-semibold text-teal-100">הצעות משרד הבריאות — אריזה ומידות בלבד</p>
-          <p className="mt-0.5 text-[10px] text-ink-dim">
+          <p className="text-sm font-semibold text-teal-100">הצעות משרד הבריאות — אריזה ומידות בלבד</p>
+          <p className="mt-0.5 text-sm text-ink-dim">
             חיפוש: «{searchQuery}»
             {hasAny ? ` · ${suggestions.length} התאמות` : " · אין התאמות"}
           </p>
-          <p className="mt-0.5 text-[9px] text-ink-dim/80">מתכונים MoH לא מוצגים כאן — רק ב«בדיקת OFF».</p>
+          <p className="mt-0.5 text-[14px] text-ink-dim/80">מתכונים MoH לא מוצגים כאן — רק ב«בדיקת OFF».</p>
         </div>
         {hasAny && !pickedLabel ? (
           <button
             type="button"
             onClick={onDismiss}
-            className="rounded-lg border border-white/15 px-2 py-1 text-[10px] font-semibold text-ink-muted hover:text-white"
+            className="rounded-lg border border-white/15 px-2 py-1 text-sm font-semibold text-ink-muted hover:text-white"
           >
             התעלם
           </button>
@@ -221,12 +221,12 @@ export function MinistryPortionsPanel({
 
       {pickedLabel ? (
         <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-teal-400/25 bg-teal-500/10 px-3 py-2">
-          <span className="text-[11px] font-semibold text-teal-50">
+          <span className="text-[14px] font-semibold text-teal-50">
             ✓ אריזה/מידות: {pickedLabel}
           </span>
           <button
             type="button"
-            className="rounded-lg border border-white/15 bg-transparent px-3 py-1.5 text-[11px] font-semibold text-ink-muted hover:border-white/25 hover:text-white"
+            className="rounded-lg border border-white/15 bg-transparent px-3 py-1.5 text-[14px] font-semibold text-ink-muted hover:border-white/25 hover:text-white"
             onClick={onClearPicked}
           >
             הצג שוב
@@ -247,7 +247,7 @@ export function MinistryPortionsPanel({
       ) : null}
 
       {!pickedLabel && !hasAny && verifiedSearchQueryReady(searchQuery) ? (
-        <p className="text-[11px] text-ink-dim">
+        <p className="text-[14px] text-ink-dim">
           לא נמצאו מצרכים — נסי מילה גנéric יותר (למשל «גבינה צהובה») או «סנכרן משרד הבריאות» בהגדרות.
         </p>
       ) : null}

@@ -85,7 +85,7 @@ function Field({
 }) {
   return (
     <label className="flex flex-col gap-1">
-      <span className="text-xs font-medium text-ink-muted">{label}</span>
+      <span className="text-sm font-medium text-ink-muted">{label}</span>
       <input
         value={value}
         onChange={(e) => onChange(e.target.value)}
@@ -125,17 +125,17 @@ function MohRecipeIdBox({
 }) {
   return (
     <div className="rounded-xl border border-amber-400/30 bg-amber-500/10 px-3 py-2.5 space-y-1">
-      <p className="text-xs font-semibold text-amber-100">מתכון משרד הבריאות</p>
-      <p className="font-mono text-xs text-white" dir="ltr">
+      <p className="text-sm font-semibold text-amber-100">מתכון משרד הבריאות</p>
+      <p className="font-mono text-sm text-white" dir="ltr">
         {catalogId}
       </p>
       {ministryCode != null ? (
-        <p className="text-[11px] text-amber-100/90">קוד MoH: {ministryCode}</p>
+        <p className="text-[14px] text-amber-100/90">קוד MoH: {ministryCode}</p>
       ) : null}
-      <p className="text-[10px] text-ink-dim">קטגוריה: {MOH_RECIPE_CATEGORY}</p>
+      <p className="text-sm text-ink-dim">קטגוריה: {MOH_RECIPE_CATEGORY}</p>
       <button
         type="button"
-        className="mt-1 rounded-lg border border-white/15 px-2 py-1 text-[10px] font-semibold text-ink-muted hover:text-white"
+        className="mt-1 rounded-lg border border-white/15 px-2 py-1 text-sm font-semibold text-ink-muted hover:text-white"
         onClick={onClear}
       >
         בטל מצב מתכון
@@ -997,7 +997,7 @@ export function Home() {
               showFormHint
             />
             {!offReviewItem.offReviewMeta.verifiedLink && !verifiedPicked && !mohRecipePick ? (
-              <p className="text-xs leading-relaxed text-violet-100/90">
+              <p className="text-sm leading-relaxed text-violet-100/90">
                 אין התאמה אוטומטית — שנה שם או מותג למטה ופתחי «הצעות מהמאגר המאומת». בחירת
                 הצעה תמלא מהמאומת (100g) ותשאיר את הברקוד מ־OFF.
               </p>
@@ -1005,12 +1005,12 @@ export function Home() {
             {mohRecipePick ? (
               <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-amber-400/30 bg-amber-500/10 px-3 py-2.5">
                 <div>
-                  <p className="text-[11px] font-semibold text-amber-50">✓ מתכון MoH נבחר</p>
-                  <p className="text-[11px] text-amber-100/90">{mohRecipePick.name}</p>
+                  <p className="text-[14px] font-semibold text-amber-50">✓ מתכון MoH נבחר</p>
+                  <p className="text-[14px] text-amber-100/90">{mohRecipePick.name}</p>
                 </div>
                 <button
                   type="button"
-                  className="rounded-lg border border-white/15 px-2 py-1 text-[10px] font-semibold text-ink-muted hover:text-white"
+                  className="rounded-lg border border-white/15 px-2 py-1 text-sm font-semibold text-ink-muted hover:text-white"
                   onClick={() => {
                     setMohRecipePick(null);
                     setMohPickedLabel(null);
@@ -1080,7 +1080,7 @@ export function Home() {
                 >
                   סרוק ברקוד
                 </button>
-                <div className="flex min-w-[9rem] items-center justify-center rounded-xl border border-white/10 bg-black/30 px-3 text-xs text-ink-muted">
+                <div className="flex min-w-[9rem] items-center justify-center rounded-xl border border-white/10 bg-black/30 px-3 text-sm text-ink-muted">
                   {offLoading ? "טוען OFF…" : barcodeDigits ? `מנורמל: ${barcodeDigits}` : "—"}
                 </div>
               </div>
@@ -1101,24 +1101,24 @@ export function Home() {
               {existingByBarcode && existingBarcodeDismissed !== barcodeDigits ? (
                 <div className="rounded-xl border border-amber-400/30 bg-amber-500/10 px-3 py-2">
                   <div className="flex items-start justify-between gap-2">
-                    <p className="text-xs font-semibold text-amber-100">המוצר כבר קיים במאגר.</p>
+                    <p className="text-sm font-semibold text-amber-100">המוצר כבר קיים במאגר.</p>
                     <button
                       type="button"
-                      className="rounded-md border border-white/15 bg-transparent px-2 py-1 text-[11px] font-semibold text-ink-muted hover:border-white/25 hover:text-white"
+                      className="rounded-md border border-white/15 bg-transparent px-2 py-1 text-[14px] font-semibold text-ink-muted hover:border-white/25 hover:text-white"
                       onClick={() => setExistingBarcodeDismissed(barcodeDigits || null)}
                       aria-label="סגור"
                     >
                       סגור
                     </button>
                   </div>
-                  <p className="mt-1 text-[11px] text-amber-100/90">
+                  <p className="mt-1 text-[14px] text-amber-100/90">
                     {existingByBarcode.name}
                     {existingByBarcode.brand ? ` · ${existingByBarcode.brand}` : ""}
                   </p>
                   <div className="mt-2 flex flex-wrap gap-2">
                     <button
                       type="button"
-                      className="rounded-lg border border-white/15 bg-white/[0.06] px-3 py-1.5 text-[11px] font-semibold text-white/90 hover:border-white/25"
+                      className="rounded-lg border border-white/15 bg-white/[0.06] px-3 py-1.5 text-[14px] font-semibold text-white/90 hover:border-white/25"
                       onClick={() => navigate(`/catalog?edit=${encodeURIComponent(existingByBarcode.id)}`)}
                     >
                       פתח במאגר
@@ -1129,8 +1129,8 @@ export function Home() {
             </div>
           ) : (
             <div className="rounded-xl border border-white/10 bg-black/30 px-3 py-2">
-              <p className="text-xs text-ink-muted">מזהה פנימי</p>
-              <p className="mt-1 font-mono text-xs text-white" dir="ltr">
+              <p className="text-sm text-ink-muted">מזהה פנימי</p>
+              <p className="mt-1 font-mono text-sm text-white" dir="ltr">
                 {internalId}
               </p>
             </div>
@@ -1155,20 +1155,20 @@ export function Home() {
             ) : null}
             {!isMohRecipeEditMode && showCatalogNameHint ? (
               <div className="rounded-xl border border-sky-400/25 bg-sky-500/10 px-3 py-2">
-                <p className="text-[11px] font-semibold text-sky-50">ייתכן שכבר קיים במאגר:</p>
+                <p className="text-[14px] font-semibold text-sky-50">ייתכן שכבר קיים במאגר:</p>
                 <div className="mt-2 space-y-2">
                   {catalogNameMatches.map((p) => {
                     const checked = Boolean(catalogMatchCheckedIds[p.id]);
                     return (
                       <div key={p.id} className="flex flex-wrap items-center justify-between gap-2">
-                        <span className="text-[11px] text-sky-100/90">
+                        <span className="text-[14px] text-sky-100/90">
                           {p.name}
                           {p.brand ? ` · ${p.brand}` : ""}
                         </span>
                         <div className="flex flex-wrap gap-2">
                           <button
                             type="button"
-                            className="rounded-lg border border-white/15 bg-white/[0.06] px-3 py-1.5 text-[11px] font-semibold text-white/90 hover:border-white/25"
+                            className="rounded-lg border border-white/15 bg-white/[0.06] px-3 py-1.5 text-[14px] font-semibold text-white/90 hover:border-white/25"
                             onClick={() => navigate(`/catalog?edit=${encodeURIComponent(p.id)}`)}
                           >
                             פתח במאגר
@@ -1176,7 +1176,7 @@ export function Home() {
                           <button
                             type="button"
                             disabled={checked}
-                            className="rounded-lg border border-white/15 bg-transparent px-3 py-1.5 text-[11px] font-semibold text-ink-muted hover:border-white/25 hover:text-white disabled:opacity-60"
+                            className="rounded-lg border border-white/15 bg-transparent px-3 py-1.5 text-[14px] font-semibold text-ink-muted hover:border-white/25 hover:text-white disabled:opacity-60"
                             onClick={() => setCatalogMatchCheckedIds((prev) => ({ ...prev, [p.id]: true }))}
                           >
                             {checked ? "נבדק" : "נבדק ✔"}
@@ -1189,7 +1189,7 @@ export function Home() {
                 <div className="mt-2 flex flex-wrap gap-2">
                   <button
                     type="button"
-                    className="rounded-lg border border-white/15 bg-transparent px-3 py-1.5 text-[11px] font-semibold text-ink-muted hover:border-white/25 hover:text-white"
+                    className="rounded-lg border border-white/15 bg-transparent px-3 py-1.5 text-[14px] font-semibold text-ink-muted hover:border-white/25 hover:text-white"
                     onClick={() => {
                       if (!catalogMatchSig) return;
                       setCatalogMatchIgnoredSig(catalogMatchSig);
@@ -1225,7 +1225,7 @@ export function Home() {
               placeholder={isMohRecipeEditMode ? "ביתי, …" : "למשל גבינה צהובה, עמק, 9 אחוז"}
             />
             <div className="space-y-1.5">
-              <p className="text-xs font-medium text-ink-muted">סוג שימוש</p>
+              <p className="text-sm font-medium text-ink-muted">סוג שימוש</p>
               <div className="flex flex-wrap gap-2">
                 {USAGE_OPTIONS.map((opt) => {
                   const active = usageTags.includes(opt.id);
@@ -1241,7 +1241,7 @@ export function Home() {
                         )
                       }
                       className={
-                        "rounded-full px-3 py-1.5 text-xs font-semibold transition " +
+                        "rounded-full px-3 py-1.5 text-sm font-semibold transition " +
                         (active
                           ? "border border-emerald-300/30 bg-emerald-500/15 text-emerald-50"
                           : "border border-white/15 bg-white/[0.06] text-ink-muted hover:border-white/25 hover:text-white")
@@ -1252,7 +1252,7 @@ export function Home() {
                   );
                 })}
               </div>
-              <p className="text-[11px] leading-snug text-ink-dim">
+              <p className="text-[14px] leading-snug text-ink-dim">
                 אפשר לבחור כמה. ברירת מחדל: {isMohRecipeEditMode ? "מבושל" : isInternal ? "חומר גלם" : "מוכן"}.
               </p>
             </div>
@@ -1264,7 +1264,7 @@ export function Home() {
             <p className="text-sm font-semibold text-white">
               {per100Basis === "ml" ? "ל־100 מ״ל" : "ל־100 גרם"}
             </p>
-            <div className="flex items-center gap-2 text-xs" dir="rtl">
+            <div className="flex items-center gap-2 text-sm" dir="rtl">
               <span className={per100Basis === "g" ? "text-white" : "text-ink-muted"}>100g</span>
               <button
                 type="button"
@@ -1341,7 +1341,7 @@ export function Home() {
               />
             </div>
           </div>
-          <div className="rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-xs text-ink-muted">
+          <div className="rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-ink-muted">
             {per100Basis === "ml"
               ? "נפח יחידה מחושב לפי (נפח כולל ÷ יחידות) (או להפך)."
               : "משקל יחידה מחושב לפי (משקל כולל ÷ יחידות) (או להפך)."}
@@ -1351,7 +1351,7 @@ export function Home() {
 
         <section className="rounded-2xl border border-white/10 bg-white/[0.03] p-4 space-y-3">
           <p className="text-sm font-semibold text-white">מידות (אופציונלי)</p>
-          <p className="text-[11px] leading-snug text-ink-dim">
+          <p className="text-[14px] leading-snug text-ink-dim">
             הכי נוח: שקלי/מדדי פעם אחת כמה {per100Basis === "ml" ? "מ״ל" : "גרם"} יש בכף/כפית/כוס, והאפליקציה תחושב אוטומטית.
           </p>
           <div className="grid grid-cols-2 gap-3">
@@ -1442,43 +1442,43 @@ export function Home() {
           <p className="text-sm font-semibold text-white">צעדים לקיזוז (MET {WALKING_MET})</p>
           <div className="grid grid-cols-2 gap-3 text-sm">
             <div className="rounded-xl border border-white/10 bg-black/30 px-3 py-2">
-              <p className="text-xs text-ink-muted">ל־100g</p>
+              <p className="text-sm text-ink-muted">ל־100g</p>
               <p className="mt-1 font-medium tabular-nums text-white">
                 {stepsFor(per100.calories)}
               </p>
             </div>
             <div className="rounded-xl border border-white/10 bg-black/30 px-3 py-2">
-              <p className="text-xs text-ink-muted">ליחידה (אריזה)</p>
+              <p className="text-sm text-ink-muted">ליחידה (אריזה)</p>
               <p className="mt-1 font-medium tabular-nums text-white">
                 {stepsFor(kcalFor(gramsPer.gUnit))}
               </p>
             </div>
             <div className="rounded-xl border border-white/10 bg-black/30 px-3 py-2">
-              <p className="text-xs text-ink-muted">לכף</p>
+              <p className="text-sm text-ink-muted">לכף</p>
               <p className="mt-1 font-medium tabular-nums text-white">
                 {stepsFor(kcalFor(gramsPer.gTbsp))}
               </p>
             </div>
             <div className="rounded-xl border border-white/10 bg-black/30 px-3 py-2">
-              <p className="text-xs text-ink-muted">לכפית</p>
+              <p className="text-sm text-ink-muted">לכפית</p>
               <p className="mt-1 font-medium tabular-nums text-white">
                 {stepsFor(kcalFor(gramsPer.gTsp))}
               </p>
             </div>
             <div className="rounded-xl border border-white/10 bg-black/30 px-3 py-2">
-              <p className="text-xs text-ink-muted">לכוס</p>
+              <p className="text-sm text-ink-muted">לכוס</p>
               <p className="mt-1 font-medium tabular-nums text-white">
                 {stepsFor(kcalFor(gramsPer.gCup))}
               </p>
             </div>
             <div className="rounded-xl border border-white/10 bg-black/30 px-3 py-2">
-              <p className="text-xs text-ink-muted">ליחידה (לפי 100g)</p>
+              <p className="text-sm text-ink-muted">ליחידה (לפי 100g)</p>
               <p className="mt-1 font-medium tabular-nums text-white">
                 {stepsFor(kcalFor(gramsPer.gPiece))}
               </p>
             </div>
           </div>
-          <p className="text-[11px] text-ink-dim">
+          <p className="text-[14px] text-ink-dim">
             אם צעדים יוצאים “—” לרוב חסר משקל גוף ב־הגדרות, או שחסר מידע על המידה (גרמים).
           </p>
         </section>

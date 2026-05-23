@@ -49,11 +49,11 @@ function RecipeRow({
           className="min-w-0 flex-1 text-start"
           aria-expanded={expanded}
         >
-          <span className="rounded-md border border-amber-400/35 bg-amber-500/15 px-1.5 py-0.5 text-[11px] font-semibold text-amber-100">
+          <span className="rounded-md border border-amber-400/35 bg-amber-500/15 px-1.5 py-0.5 text-[12px] font-semibold text-amber-100">
             {ministryKindLabel("recipe")}
           </span>
-          <p className="mt-1 text-[13px] font-medium text-white">{sug.name}</p>
-          <p className="text-[12px] text-ink-muted">
+          <p className="mt-1 text-sm font-medium text-white">{sug.name}</p>
+          <p className="text-[14px] text-ink-muted">
             {portionHint ?? "ללא מידות"}
             {nutrition ? ` · ${nutrition}` : ""}
             {sug.matchScore != null ? ` · ציון ${sug.matchScore}` : ""}
@@ -62,7 +62,7 @@ function RecipeRow({
         <button
           type="button"
           onClick={() => setExpanded((e) => !e)}
-          className="shrink-0 rounded-lg px-2 py-1 text-[12px] font-semibold text-ink-muted hover:text-white"
+          className="shrink-0 rounded-lg px-2 py-1 text-[14px] font-semibold text-ink-muted hover:text-white"
         >
           {expanded ? "סגור" : "פרטים"}
         </button>
@@ -70,13 +70,13 @@ function RecipeRow({
 
       {expanded ? (
         <div className="border-t border-white/10 px-3 pb-3 pt-2 space-y-2">
-          <p className="text-[12px] text-ink-dim leading-relaxed">
+          <p className="text-[14px] text-ink-dim leading-relaxed">
             מתכון מורכב ממשרד הבריאות — לא מוצר מסחרי. ערכי את השדות למטה ובחרי מה להכניס למאגר.
             תזונה MoH מוצגת לעיון; ברירת מחדל: מילוי שם + מידות בלבד.
           </p>
           {sug.portionLines?.length ? (
             <div className="overflow-hidden rounded-lg border border-white/10 bg-black/25">
-              <table className="w-full text-[13px]">
+              <table className="w-full text-sm">
                 <tbody>
                   {sug.portionLines.map((line) => (
                     <tr
@@ -93,7 +93,7 @@ function RecipeRow({
               </table>
             </div>
           ) : (
-            <p className="text-[13px] text-ink-dim">אין שורות מידה לפריט זה</p>
+            <p className="text-sm text-ink-dim">אין שורות מידה לפריט זה</p>
           )}
           <div className="flex flex-col gap-2">
             {onApplyNamePortions ? (
@@ -172,7 +172,7 @@ export function MinistryRecipesPanel({
     <div className="space-y-3 rounded-2xl border border-amber-400/25 bg-amber-500/[0.05] p-4">
       <div>
         <p className="text-sm font-semibold text-amber-50">מתכונים משרד הבריאות</p>
-        <p className="mt-1 text-[11px] leading-relaxed text-ink-dim">
+        <p className="mt-1 text-[14px] leading-relaxed text-ink-dim">
           רק במסך בדיקת OFF — לא מופיעים בהצעות חיפוש רגילות. בחרי מתכון, ערכי בטופס, והחליטי אם
           להוסיף למאגר.
         </p>
@@ -180,7 +180,7 @@ export function MinistryRecipesPanel({
 
       {controlledQuery == null ? (
         <label className="flex flex-col gap-1">
-          <span className="text-xs font-medium text-ink-muted">חיפוש מתכון</span>
+          <span className="text-sm font-medium text-ink-muted">חיפוש מתכון</span>
           <input
             type="search"
             value={localQuery}
@@ -192,14 +192,14 @@ export function MinistryRecipesPanel({
       ) : null}
 
       {!canSearch ? (
-        <p className="text-[11px] text-ink-dim">הזיני לפחות 3 תווים לחיפוש מתכונים.</p>
+        <p className="text-[14px] text-ink-dim">הזיני לפחות 3 תווים לחיפוש מתכונים.</p>
       ) : suggestions.length === 0 ? (
-        <p className="text-[11px] text-ink-dim">
+        <p className="text-[14px] text-ink-dim">
           לא נמצאו מתכונים — נסי מילה אחרת או «סנכרן משרד הבריאות» בהגדרות.
         </p>
       ) : (
         <div className="space-y-2">
-          <p className="text-[10px] text-ink-dim">
+          <p className="text-sm text-ink-dim">
             {suggestions.length} מתכונים{searchQuery.trim() ? ` · «${searchQuery.trim()}»` : ""}
           </p>
           {suggestions.map((sug, i) => (
