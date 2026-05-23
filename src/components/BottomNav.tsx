@@ -36,7 +36,7 @@ function IconSettings({ className }: { className?: string }) {
 }
 
 const tab =
-  "flex min-h-[52px] flex-1 flex-col items-center justify-center gap-1 rounded-xl px-2 text-[11px] font-medium transition-colors";
+  "flex min-h-[52px] flex-1 flex-col items-center justify-center gap-1 rounded-xl px-2 text-[14px] font-medium transition-colors";
 
 export function BottomNav() {
   const { offPendingReviews, offPendingReady } = useCatalog();
@@ -69,7 +69,7 @@ export function BottomNav() {
           <span className="flex items-center gap-1">
             בדיקת OFF
             {offCount > 0 ? (
-              <span className="rounded-full bg-sky-500 px-1.5 py-0.5 text-[9px] font-bold text-white">
+              <span className="rounded-full bg-sky-500 px-1.5 py-0.5 text-[12px] font-bold text-white">
                 {offCount > 99 ? "99+" : offCount}
               </span>
             ) : null}

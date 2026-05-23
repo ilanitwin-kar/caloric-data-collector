@@ -54,7 +54,7 @@ export function Charts() {
       )}
 
       <section className="space-y-3">
-        <h2 className="text-xs font-semibold text-ink-dim">
+        <h2 className="text-sm font-semibold text-ink-dim">
           קלוריות לפי יום (7 ימים אחרונים)
         </h2>
         <div className="flex h-44 items-end justify-between gap-1 rounded-2xl border border-white/10 bg-white/[0.03] px-2 pb-2 pt-4">
@@ -71,7 +71,7 @@ export function Charts() {
                 }}
                 title={`${key}: ${Math.round(calories)} קק״ל`}
               />
-              <span className="truncate text-[10px] text-ink-dim">
+              <span className="truncate text-sm text-ink-dim">
                 {key.slice(5)}
               </span>
             </div>
@@ -80,7 +80,7 @@ export function Charts() {
       </section>
 
       <section className="space-y-3">
-        <h2 className="text-xs font-semibold text-ink-dim">משקל (14 רישומים אחרונים)</h2>
+        <h2 className="text-sm font-semibold text-ink-dim">משקל (14 רישומים אחרונים)</h2>
         {recentWeight.length === 0 ? (
           <p className="text-sm text-ink-muted">אין עדיין רישומי משקל.</p>
         ) : (
@@ -108,7 +108,7 @@ export function Charts() {
                   .join(" ")}
               />
             </svg>
-            <ul className="grid grid-cols-2 gap-2 text-xs text-ink-muted sm:grid-cols-3">
+            <ul className="grid grid-cols-2 gap-2 text-sm text-ink-muted sm:grid-cols-3">
               {recentWeight.map((w) => (
                 <li key={w.id} className="tabular-nums">
                   {new Date(w.createdAt).toLocaleDateString("he-IL")}:{" "}

@@ -33,7 +33,7 @@ function Field({
 }) {
   return (
     <label className="flex flex-col gap-1">
-      <span className="text-xs font-medium text-ink-muted">{label}</span>
+      <span className="text-sm font-medium text-ink-muted">{label}</span>
       <input
         value={value}
         onChange={(e) => onChange(e.target.value)}
@@ -453,14 +453,14 @@ export function SupermarketQuickFill() {
               <button
                 type="button"
                 onClick={() => navigate("/supermarket")}
-                className="min-h-[44px] touch-manipulation flex-1 rounded-xl border border-white/15 px-3 py-2 text-xs font-semibold text-white transition hover:border-white/25 hover:bg-white/[0.06] active:scale-[0.99] sm:flex-none sm:px-4"
+                className="min-h-[44px] touch-manipulation flex-1 rounded-xl border border-white/15 px-3 py-2 text-sm font-semibold text-white transition hover:border-white/25 hover:bg-white/[0.06] active:scale-[0.99] sm:flex-none sm:px-4"
               >
                 מעבר אחר
               </button>
               <button
                 type="button"
                 onClick={() => navigate("/")}
-                className="min-h-[44px] touch-manipulation flex-1 rounded-xl border border-white/15 px-3 py-2 text-xs font-semibold text-ink-muted transition hover:text-white active:scale-[0.99] sm:flex-none sm:px-4"
+                className="min-h-[44px] touch-manipulation flex-1 rounded-xl border border-white/15 px-3 py-2 text-sm font-semibold text-ink-muted transition hover:text-white active:scale-[0.99] sm:flex-none sm:px-4"
               >
                 בית
               </button>
@@ -471,7 +471,7 @@ export function SupermarketQuickFill() {
               <p className="break-words text-sm text-ink-muted">
                 מעבר: <span className="text-white">{tripMeta.name}</span> · {tripMeta.category}
               </p>
-              <p className="text-[11px] leading-relaxed text-ink-dim sm:text-xs">
+              <p className="text-sm leading-relaxed text-ink-dim">
                 אחרי לחיצה על &quot;שמור והמשך&quot; המוצר נשמר לעריכה מאוחרת והטופס מתרוקן — אותו מעבר ואותה קטגוריה, מוצר נוסף.
               </p>
             </>
@@ -497,7 +497,7 @@ export function SupermarketQuickFill() {
                   >
                     סרוק ברקוד
                   </button>
-                  <div className="flex min-h-[44px] min-w-0 items-center justify-center rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-xs text-ink-muted sm:min-w-[9rem]">
+                  <div className="flex min-h-[44px] min-w-0 items-center justify-center rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-ink-muted sm:min-w-[9rem]">
                     <span className="truncate" dir="ltr" title={barcodeDigits || undefined}>
                       {offLoading
                         ? "טוען OFF…"
@@ -514,20 +514,20 @@ export function SupermarketQuickFill() {
 
               {showCatalogNameHint ? (
                 <div className="rounded-xl border border-sky-400/25 bg-sky-500/10 px-3 py-2">
-                  <p className="text-[11px] font-semibold text-sky-50">ייתכן שכבר קיים במאגר שלך:</p>
+                  <p className="text-[14px] font-semibold text-sky-50">ייתכן שכבר קיים במאגר שלך:</p>
                   <div className="mt-2 space-y-2">
                     {catalogNameMatches.map((p) => {
                       const checked = Boolean(catalogMatchCheckedIds[p.id]);
                       return (
                         <div key={p.id} className="flex flex-wrap items-center justify-between gap-2">
-                          <span className="text-[11px] text-sky-100/90">
+                          <span className="text-[14px] text-sky-100/90">
                             {p.name}
                             {p.brand ? ` · ${p.brand}` : ""}
                           </span>
                           <div className="flex flex-wrap gap-2">
                             <button
                               type="button"
-                              className="rounded-lg border border-white/15 bg-emerald-500/20 px-3 py-1.5 text-[11px] font-semibold text-emerald-50 hover:border-white/25"
+                              className="rounded-lg border border-white/15 bg-emerald-500/20 px-3 py-1.5 text-[14px] font-semibold text-emerald-50 hover:border-white/25"
                               onClick={() => applyFromCatalog(p)}
                             >
                               מלא מהמאגר
@@ -535,7 +535,7 @@ export function SupermarketQuickFill() {
                             <button
                               type="button"
                               disabled={checked}
-                              className="rounded-lg border border-white/15 bg-transparent px-3 py-1.5 text-[11px] font-semibold text-ink-muted hover:border-white/25 hover:text-white disabled:opacity-60"
+                              className="rounded-lg border border-white/15 bg-transparent px-3 py-1.5 text-[14px] font-semibold text-ink-muted hover:border-white/25 hover:text-white disabled:opacity-60"
                               onClick={() => setCatalogMatchCheckedIds((prev) => ({ ...prev, [p.id]: true }))}
                             >
                               {checked ? "נבדק" : "נבדק ✔"}
@@ -548,7 +548,7 @@ export function SupermarketQuickFill() {
                   <div className="mt-2 flex flex-wrap gap-2">
                     <button
                       type="button"
-                      className="rounded-lg border border-white/15 bg-transparent px-3 py-1.5 text-[11px] font-semibold text-ink-muted hover:border-white/25 hover:text-white"
+                      className="rounded-lg border border-white/15 bg-transparent px-3 py-1.5 text-[14px] font-semibold text-ink-muted hover:border-white/25 hover:text-white"
                       onClick={() => {
                         if (!catalogMatchSig) return;
                         setCatalogMatchIgnoredSig(catalogMatchSig);
@@ -605,7 +605,7 @@ export function SupermarketQuickFill() {
             <section className="rounded-2xl border border-white/10 bg-white/[0.03] p-4 space-y-3">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <p className="text-sm font-semibold text-white">{per100Basis === "ml" ? "ל־100 מ״ל" : "ל־100 גרם"}</p>
-                <div className="flex items-center gap-2 text-xs" dir="rtl">
+                <div className="flex items-center gap-2 text-sm" dir="rtl">
                   <span className={per100Basis === "g" ? "text-white" : "text-ink-muted"}>100g</span>
                   <button
                     type="button"

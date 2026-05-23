@@ -26,11 +26,11 @@ function NutritionMacroTable({
 
   return (
     <div className="mt-2 overflow-hidden rounded-lg border border-white/10 bg-black/25">
-      <p className="border-b border-white/10 bg-white/[0.04] px-2 py-1 text-[10px] font-medium text-ink-dim">
+      <p className="border-b border-white/10 bg-white/[0.04] px-2 py-1 text-sm font-medium text-ink-dim">
         תזונה ל־{unitLabel}
         {!hasAny ? " · אין נתונים" : ""}
       </p>
-      <table className="w-full text-[11px]">
+      <table className="w-full text-[14px]">
         <tbody>
           {rows.map((r) => (
             <tr key={r.label} className="border-b border-white/5 last:border-0">
@@ -68,9 +68,9 @@ function SourceColumn({
   const titleColor = accent === "sky" ? "text-sky-50" : "text-emerald-50";
   return (
     <div className={`rounded-xl border px-3 py-2.5 ${border}`}>
-      <p className={`text-xs font-semibold ${titleColor}`}>{title}</p>
-      <p className="text-[10px] text-ink-dim">{subtitle}</p>
-      <dl className="mt-2 space-y-1.5 text-[11px]">
+      <p className={`text-sm font-semibold ${titleColor}`}>{title}</p>
+      <p className="text-sm text-ink-dim">{subtitle}</p>
+      <dl className="mt-2 space-y-1.5 text-[14px]">
         <div>
           <dt className="text-ink-dim">שם</dt>
           <dd className="font-medium text-white">{name || "—"}</dd>
@@ -136,7 +136,7 @@ export function OffVerifiedComparePanel({
   if (!link) {
     return (
       <div className="space-y-2">
-        <p className="text-[11px] font-semibold text-amber-100/95">
+        <p className="text-[14px] font-semibold text-amber-100/95">
           Open Food Facts — אין התאמה למאגר המאומת
         </p>
         <SourceColumn
@@ -148,7 +148,7 @@ export function OffVerifiedComparePanel({
           basis={per100Basis}
           accent="sky"
         />
-        <p className="text-[10px] text-ink-dim leading-relaxed">
+        <p className="text-sm text-ink-dim leading-relaxed">
           בדקי שם, מותג ותזונה לפני «הוסף למאגר». «ערוך» מאפשר חיפוש במאגר המאומת לפי שם/מותג.
         </p>
       </div>
@@ -159,7 +159,7 @@ export function OffVerifiedComparePanel({
 
   return (
     <div className="space-y-2">
-      <p className="text-[11px] font-semibold text-violet-100">השוואה לפני החלטה (לא לפי ברקוד)</p>
+      <p className="text-[14px] font-semibold text-violet-100">השוואה לפני החלטה (לא לפי ברקוד)</p>
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
         <SourceColumn
           title="Open Food Facts"
@@ -181,7 +181,7 @@ export function OffVerifiedComparePanel({
           accent="emerald"
         />
       </div>
-      <p className="text-[10px] text-ink-dim leading-relaxed">
+      <p className="text-sm text-ink-dim leading-relaxed">
         ציון התאמה: {link.matchScore} (אוטו מ־{VERIFIED_AUTO_APPLY_MIN_SCORE}+) · תזונה בטופס:{" "}
         {link.nutritionFromVerified ? "מהמאומת (100g)" : "מ־OFF"}
         {appliedPer100 ?
@@ -192,7 +192,7 @@ export function OffVerifiedComparePanel({
         : null}
       </p>
       {showFormHint ? (
-        <p className="rounded-lg border border-white/10 bg-white/[0.04] px-2.5 py-2 text-[10px] text-ink-muted leading-relaxed">
+        <p className="rounded-lg border border-white/10 bg-white/[0.04] px-2.5 py-2 text-sm text-ink-muted leading-relaxed">
           השדות בעריכה = מה שיישמר במאגר. אם השם/מותג לא תואמים — תקני לפני «הוסף למאגר».
         </p>
       ) : null}

@@ -46,16 +46,16 @@ function GapListSection<T extends { key: string }>({
             <h2 className={`text-sm font-semibold ${heading}`}>
               {title} ({items.length.toLocaleString("he-IL")})
             </h2>
-            <p className="mt-0.5 text-[11px] leading-relaxed text-ink-muted">{subtitle}</p>
+            <p className="mt-0.5 text-[14px] leading-relaxed text-ink-muted">{subtitle}</p>
           </div>
-          <span className="shrink-0 pt-1 text-[10px] text-ink-dim transition group-open:rotate-180">
+          <span className="shrink-0 pt-1 text-sm text-ink-dim transition group-open:rotate-180">
             ▼
           </span>
         </div>
       </summary>
       <div className="space-y-2 border-t border-white/10 px-3 pb-3 pt-2">
         {items.length === 0 ? (
-          <p className="py-4 text-center text-xs text-ink-muted">{emptyText}</p>
+          <p className="py-4 text-center text-sm text-ink-muted">{emptyText}</p>
         ) : (
           <>
             {visible.map((item) => (
@@ -65,7 +65,7 @@ function GapListSection<T extends { key: string }>({
               <button
                 type="button"
                 onClick={() => setVisibleCount((n) => n + PAGE_SIZE)}
-                className="w-full min-h-[44px] rounded-xl border border-white/15 bg-white/[0.04] text-xs font-semibold text-white hover:border-white/25"
+                className="w-full min-h-[44px] rounded-xl border border-white/15 bg-white/[0.04] text-sm font-semibold text-white hover:border-white/25"
               >
                 הצג עוד {Math.min(PAGE_SIZE, items.length - visibleCount).toLocaleString("he-IL")}{" "}
                 (נשארו {(items.length - visibleCount).toLocaleString("he-IL")})
@@ -82,8 +82,8 @@ function VerifiedGapCard({ row }: { row: VerifiedGapRow & { key: string } }) {
   return (
     <div className="rounded-xl border border-white/10 bg-black/25 px-3 py-2.5">
       <p className="text-sm font-medium text-white">{row.name}</p>
-      {row.brand ? <p className="mt-0.5 text-xs text-ink-muted">{row.brand}</p> : null}
-      <div className="mt-1 flex flex-wrap gap-2 text-[10px] text-ink-dim">
+      {row.brand ? <p className="mt-0.5 text-sm text-ink-muted">{row.brand}</p> : null}
+      <div className="mt-1 flex flex-wrap gap-2 text-sm text-ink-dim">
         {row.category ? <span>{row.category}</span> : null}
         {row.calories100 != null ? (
           <span>{row.calories100.toLocaleString("he-IL")} קל׳/100g</span>
@@ -97,12 +97,12 @@ function OffGapCard({ row }: { row: OffGapRow & { key: string } }) {
   return (
     <div className="rounded-xl border border-white/10 bg-black/25 px-3 py-2.5">
       <p className="text-sm font-medium text-white">{row.name}</p>
-      {row.brand ? <p className="mt-0.5 text-xs text-ink-muted">{row.brand}</p> : null}
-      <p className="mt-1 font-mono text-[10px] text-ink-dim" dir="ltr">
+      {row.brand ? <p className="mt-0.5 text-sm text-ink-muted">{row.brand}</p> : null}
+      <p className="mt-1 font-mono text-sm text-ink-dim" dir="ltr">
         {row.gtin}
       </p>
       {row.hasVerifiedMatch ? (
-        <p className="mt-1 text-[10px] text-violet-200">יש התאמה במאגר מאומת</p>
+        <p className="mt-1 text-sm text-violet-200">יש התאמה במאגר מאומת</p>
       ) : null}
     </div>
   );
@@ -153,7 +153,7 @@ export function CatalogGaps() {
         <button
           type="button"
           onClick={() => navigate("/settings")}
-          className="text-xs font-semibold text-ink-muted transition hover:text-white"
+          className="text-sm font-semibold text-ink-muted transition hover:text-white"
         >
           ← חזרה להגדרות
         </button>
@@ -161,7 +161,7 @@ export function CatalogGaps() {
           <p className="font-display text-2xl font-semibold tracking-tight text-white md:text-3xl">
             מה חסר במאגר
           </p>
-          <p className="mt-2 text-xs leading-relaxed text-ink-muted">
+          <p className="mt-2 text-sm leading-relaxed text-ink-muted">
             השוואה למאגר המאומת (לפי שם/מותג) ולבדיקת OFF שכבר ייבאת (ברקוד). לא סורק אתרי סופר.
           </p>
         </div>
@@ -174,7 +174,7 @@ export function CatalogGaps() {
         </div>
       ) : (
         <>
-          <div className="grid grid-cols-2 gap-2 text-xs">
+          <div className="grid grid-cols-2 gap-2 text-sm">
             <div className="rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2">
               <p className="text-ink-dim">במאגר שלך</p>
               <p className="mt-0.5 text-lg font-semibold text-white">
@@ -186,7 +186,7 @@ export function CatalogGaps() {
               <p className="mt-0.5 text-lg font-semibold text-violet-50">
                 {stats.verifiedGapCount.toLocaleString("he-IL")}
               </p>
-              <p className="text-[10px] text-ink-dim">
+              <p className="text-sm text-ink-dim">
                 מתוך {stats.verifiedTotal.toLocaleString("he-IL")}
               </p>
             </div>
@@ -195,7 +195,7 @@ export function CatalogGaps() {
               <p className="mt-0.5 text-lg font-semibold text-sky-50">
                 {stats.offGapCount.toLocaleString("he-IL")}
               </p>
-              <p className="text-[10px] text-ink-dim">
+              <p className="text-sm text-ink-dim">
                 {stats.offPendingTotal.toLocaleString("he-IL")} בבדיקה ·{" "}
                 {stats.offInCatalog.toLocaleString("he-IL")} כבר במאגר
               </p>
@@ -206,14 +206,14 @@ export function CatalogGaps() {
                 <button
                   type="button"
                   onClick={() => navigate("/off-review")}
-                  className="text-left text-[11px] font-semibold text-sky-300 underline"
+                  className="text-left text-[14px] font-semibold text-sky-300 underline"
                 >
                   בדיקת OFF
                 </button>
                 <button
                   type="button"
                   onClick={() => navigate("/")}
-                  className="text-left text-[11px] font-semibold text-white/80 underline"
+                  className="text-left text-[14px] font-semibold text-white/80 underline"
                 >
                   הוספה ידנית (בית)
                 </button>
@@ -222,7 +222,7 @@ export function CatalogGaps() {
           </div>
 
           <label className="flex flex-col gap-1">
-            <span className="text-xs font-medium text-ink-muted">חיפוש בשתי הרשימות</span>
+            <span className="text-sm font-medium text-ink-muted">חיפוש בשתי הרשימות</span>
             <input
               value={search}
               onChange={(e) => setSearch(e.target.value)}

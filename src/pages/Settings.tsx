@@ -195,12 +195,12 @@ export function Settings() {
 
       <section className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
         <h2 className="text-sm font-semibold text-white">משקל גוף</h2>
-        <p className="mt-1 text-xs text-ink-muted">
+        <p className="mt-1 text-sm text-ink-muted">
           לחישוב צעדי הליכה להוצאת קלוריות (לפי MET {WALKING_MET}, כ־{STEPS_PER_MINUTE} צעדים לדקה).
         </p>
         <div className="mt-3 flex flex-wrap items-end gap-2">
           <label className="flex min-w-[8rem] flex-1 flex-col gap-1">
-            <span className="text-xs text-ink-dim">קילוגרם</span>
+            <span className="text-sm text-ink-dim">קילוגרם</span>
             <input
               type="number"
               inputMode="decimal"
@@ -236,19 +236,19 @@ export function Settings() {
             שמור
           </button>
         </div>
-        {bodyError ? <p className="mt-2 text-xs text-red-200">{bodyError}</p> : null}
+        {bodyError ? <p className="mt-2 text-sm text-red-200">{bodyError}</p> : null}
         {bodySavedAt ? (
-          <p className="mt-2 text-xs text-emerald-200">נשמר</p>
+          <p className="mt-2 text-sm text-emerald-200">נשמר</p>
         ) : null}
       </section>
 
       <section className="rounded-2xl border border-white/10 bg-white/[0.03] p-4 space-y-3">
         <h2 className="text-sm font-semibold text-white">מה חסר במאגר</h2>
-        <p className="text-xs leading-relaxed text-ink-muted">
+        <p className="text-sm leading-relaxed text-ink-muted">
           השוואה למאגר המאומת (שם/מותג) ולמוצרים שכבר ב־<button type="button" className="text-sky-300 underline" onClick={() => navigate("/off-review")}>בדיקת OFF</button> — בלי לשנות את ייבוא OFF.
         </p>
         {gapPreview ? (
-          <p className="text-xs text-ink-dim">
+          <p className="text-sm text-ink-dim">
             חסרים:{" "}
             <span className="text-violet-200">
               {gapPreview.verifiedMissing.toLocaleString("he-IL")} מאומת
@@ -259,7 +259,7 @@ export function Settings() {
             </span>
           </p>
         ) : loading || !offPendingReady ? (
-          <p className="inline-flex items-center gap-2 text-xs text-ink-muted">
+          <p className="inline-flex items-center gap-2 text-sm text-ink-muted">
             <Spinner className="!h-4 !w-4" />
             מחשב…
           </p>
@@ -275,19 +275,19 @@ export function Settings() {
 
       <section className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
         <h2 className="text-sm font-semibold text-white">מאגר מאומת (100g)</h2>
-        <p className="mt-1 text-xs text-ink-muted">
+        <p className="mt-1 text-sm text-ink-muted">
           קובץ TSV/CSV (קטגוריה, מותג, שם, חלבון, שומן, פחמימה, קלוריות). משמש להצעות תזונה
           ולעדיפות תזונה בייבוא OFF. סנכרון משרד הבריאות מוסיף ~4,600 מצרכים עם מידות (יחידה, כף,
           כוס) בלבד — לא תזונה, ולא מעדכן מוצרים קיימים בקטלוג.
         </p>
         <div className="mt-3 flex flex-wrap items-center gap-2">
           {loading ? (
-            <span className="inline-flex items-center gap-2 text-xs text-ink-muted">
+            <span className="inline-flex items-center gap-2 text-sm text-ink-muted">
               <Spinner className="!h-4 !w-4" />
               טוען מהענן…
             </span>
           ) : (
-            <span className="text-xs text-ink-muted">
+            <span className="text-sm text-ink-muted">
               {items.length.toLocaleString("he-IL")} פריטים זמינים
             </span>
           )}
@@ -295,7 +295,7 @@ export function Settings() {
             type="button"
             disabled={importing}
             onClick={() => fileRef.current?.click()}
-            className="rounded-xl border border-white/20 bg-white/[0.06] px-3 py-2 text-xs font-semibold text-white transition disabled:opacity-50 hover:border-white/30"
+            className="rounded-xl border border-white/20 bg-white/[0.06] px-3 py-2 text-sm font-semibold text-white transition disabled:opacity-50 hover:border-white/30"
           >
             {importing ? "מייבא…" : "ייבוא קובץ מאגר"}
           </button>
@@ -312,14 +312,14 @@ export function Settings() {
                 setMohSyncing(false);
               });
             }}
-            className="rounded-xl border border-emerald-400/35 bg-emerald-500/10 px-3 py-2 text-xs font-semibold text-emerald-100 transition disabled:opacity-50 hover:bg-emerald-500/20"
+            className="rounded-xl border border-emerald-400/35 bg-emerald-500/10 px-3 py-2 text-sm font-semibold text-emerald-100 transition disabled:opacity-50 hover:bg-emerald-500/20"
           >
             {mohSyncing ? "מסנכרן משרד הבריאות…" : "סנכרן משרד הבריאות"}
           </button>
           {mohSyncing ? (
             <button
               type="button"
-              className="rounded-xl border border-white/15 bg-transparent px-3 py-2 text-xs font-semibold text-ink-muted hover:border-white/25 hover:text-white"
+              className="rounded-xl border border-white/15 bg-transparent px-3 py-2 text-sm font-semibold text-ink-muted hover:border-white/25 hover:text-white"
               onClick={() => mohAbortRef.current?.abort()}
             >
               ביטול
@@ -343,12 +343,12 @@ export function Settings() {
 
       <section className="rounded-2xl border border-white/10 bg-white/[0.03] p-4 space-y-3">
         <h2 className="text-sm font-semibold text-white">ייבוא Open Food Facts (ישראל)</h2>
-        <p className="text-xs leading-relaxed text-ink-muted">
+        <p className="text-sm leading-relaxed text-ink-muted">
           שלב 1: מוצרים נכנסים ל־<button type="button" className="text-sky-300 underline" onClick={() => navigate("/off-review")}>בדיקת OFF</button> (לא ישר למאגר).
           שלב 2: אחרי &quot;הוסף למאגר&quot; — נכנס לקטלוג. כל לחיצה סורקת עד {OFF_IMPORT_PAGES_PER_RUN} עמודים — אז «המשך ייבוא».
           0 חדשים = רוב הברקודים כבר ברשימת הבדיקה; עדיין צריך להמשיך לעמודים הבאים.
         </p>
-        <p className="text-xs text-ink-dim">
+        <p className="text-sm text-ink-dim">
           במאגר: {catalog.length.toLocaleString("he-IL")} · מ־OFF (למחיקה):{" "}
           {offInCatalogCount.toLocaleString("he-IL")} · ממתינים לבדיקה:{" "}
           {offPendingReady ? offPendingReviews.length.toLocaleString("he-IL") : "…"}
@@ -356,14 +356,14 @@ export function Settings() {
 
         {offImportCheckpointReady && !offImporting ? (
           resumePage ? (
-            <p className="rounded-xl border border-amber-400/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-100 leading-relaxed">
+            <p className="rounded-xl border border-amber-400/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-100 leading-relaxed">
               ייבוא לא הסתיים — לחצי «המשך ייבוא (מעמוד {resumePage})».
               {importProgressHint ? ` ${importProgressHint}.` : ""}
               {" "}
               (~6 שניות בין עמודים). «ייבא OFF» מאפס רק אחרי אישור.
             </p>
           ) : (
-            <p className="rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-xs text-ink-muted leading-relaxed">
+            <p className="rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-sm text-ink-muted leading-relaxed">
               {offImportCheckpoint && !offImportCheckpointIsResumable(offImportCheckpoint) ?
                 `סריקת OFF הגיעה לסוף (עמוד ${offImportCheckpoint.lastPageFetched ?? "?"}). אין המשך — או «ייבא OFF» מחדש מאושר.`
               : "אין התקדמות שמורה — «ייבא OFF» מתחיל מעמוד 1 (עד 4 עמודים בכל פעם)."}
@@ -411,12 +411,12 @@ export function Settings() {
           ) : null}
         </div>
 
-        <p className="text-[11px] text-ink-dim leading-relaxed">
+        <p className="text-[14px] text-ink-dim leading-relaxed">
           סדר מומלץ: מחק ייבוא OFF מהמאגר → ייבא OFF מחדש → בדיקת OFF → הוסף למאגר.
         </p>
 
         {offProgress ? (
-          <div className="rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-xs text-ink-muted">
+          <div className="rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-ink-muted">
             {offProgress.phase === "fetch" ? (
               <p>
                 שלב איסוף
@@ -430,7 +430,7 @@ export function Settings() {
             )}
           </div>
         ) : null}
-        {offResult ? <p className="text-xs text-emerald-200 leading-relaxed">{offResult}</p> : null}
+        {offResult ? <p className="text-sm text-emerald-200 leading-relaxed">{offResult}</p> : null}
       </section>
     </div>
   );

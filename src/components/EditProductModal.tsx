@@ -24,7 +24,7 @@ function Field({
 }) {
   return (
     <div className="space-y-1.5">
-      <label htmlFor={id} className="block text-xs font-medium text-ink-muted">
+      <label htmlFor={id} className="block text-sm font-medium text-ink-muted">
         {label}
       </label>
       <input
@@ -267,8 +267,8 @@ export function EditProductModal({ product, onClose, onSave }: Props) {
             />
           </div>
           <div className="rounded-xl border border-white/10 bg-white/[0.03] p-3">
-            <p className="text-xs font-semibold text-white">המרות לפי 100 גרם (אופציונלי)</p>
-            <p className="mt-1 text-[11px] leading-snug text-ink-dim">
+            <p className="text-sm font-semibold text-white">המרות לפי 100 גרם (אופציונלי)</p>
+            <p className="mt-1 text-[14px] leading-snug text-ink-dim">
               לדוגמה: ענבים — כמה יחידות יש ב־100 גרם; אורז — כמה כפות ב־100 גרם.
             </p>
             <div className="mt-3 grid grid-cols-2 gap-3">
