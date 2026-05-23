@@ -3,6 +3,7 @@ import { ministryKindLabel } from "../utils/ministryNutrition";
 import { useVerified100 } from "../context/Verified100Context";
 import { verifiedRowToPickPortions } from "../utils/verifiedMeasures";
 import { verifiedSearchQueryReady } from "../utils/verifiedSearch";
+import { formatPer100gLine } from "../utils/nutritionDisplay";
 import {
   verifiedItemToSuggestionPick,
   verifiedPortionHintFromPick,
@@ -15,16 +16,13 @@ function formatG(v: number | undefined): string {
 }
 
 function nutritionPreview(sug: VerifiedSuggestionPick): string | null {
-  const parts: string[] = [];
-  if (sug.calories100 != null) parts.push(`${Math.round(sug.calories100)} קק״ל/100g`);
-  if (sug.protein100 != null) parts.push(`חלבון ${fmtMacro(sug.protein100)}`);
-  if (sug.carbs100 != null) parts.push(`פחמימה ${fmtMacro(sug.carbs100)}`);
-  if (sug.fat100 != null) parts.push(`שומן ${fmtMacro(sug.fat100)}`);
-  return parts.length ? parts.join(" · ") : null;
-}
-
-function fmtMacro(n: number): string {
-  return `${Math.round(n * 10) / 10}g`;
+  const line = formatPer100gLine({
+    calories: sug.calories100,
+    proteinG: sug.protein100,
+    carbsG: sug.carbs100,
+    fatG: sug.fat100,
+  });
+  return line === "—" ? null : `${line}/100g`;
 }
 
 function RecipeRow({
