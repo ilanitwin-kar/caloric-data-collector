@@ -1,3 +1,6 @@
+import type { MinistryFoodKind, MinistryPortionLine } from "../utils/ministryNutrition";
+import { ministryPortionHintFromLines } from "../utils/ministryNutrition";
+
 export type VerifiedSuggestionSource = "ministry" | "tsv";
 
 export type VerifiedSuggestionPick = {
@@ -9,6 +12,7 @@ export type VerifiedSuggestionPick = {
   carbs100?: number;
   fat100?: number;
   unitWeightG?: number;
+  servingWeightG?: number;
   packWeightG?: number;
   unitsPerPack?: number;
   measures?: {
@@ -17,6 +21,8 @@ export type VerifiedSuggestionPick = {
     tspPer100g?: number;
     cupsPer100g?: number;
   };
+  portionLines?: MinistryPortionLine[];
+  ministryKind?: MinistryFoodKind;
   commonMeasures?: ("unit" | "tbsp" | "tsp" | "cup" | "g100")[];
   defaultMeasure?: "unit" | "tbsp" | "tsp" | "cup" | "g100";
   source?: VerifiedSuggestionSource;
@@ -26,7 +32,12 @@ export type VerifiedSuggestionPick = {
 };
 
 export function verifiedPortionHintFromPick(sug: VerifiedSuggestionPick): string | null {
+  const fromLines = ministryPortionHintFromLines(sug.portionLines);
+  if (fromLines) return fromLines;
   const parts: string[] = [];
+  if (sug.servingWeightG != null && sug.servingWeightG > 0) {
+    parts.push(`מנה ~${Math.round(sug.servingWeightG)}g`);
+  }
   if (sug.unitWeightG != null && sug.unitWeightG > 0) {
     parts.push(`יחידה ~${Math.round(sug.unitWeightG)}g`);
   }
@@ -46,9 +57,12 @@ export function verifiedItemToSuggestionPick(
     carbs100?: number;
     fat100?: number;
     unitWeightG?: number;
+    servingWeightG?: number;
     packWeightG?: number;
     unitsPerPack?: number;
     measures?: VerifiedSuggestionPick["measures"];
+    portionLines?: MinistryPortionLine[];
+    ministryKind?: MinistryFoodKind;
     ministryCode?: number;
   },
   score: number,
@@ -65,9 +79,12 @@ export function verifiedItemToSuggestionPick(
     carbs100: item.carbs100,
     fat100: item.fat100,
     unitWeightG: item.unitWeightG,
+    servingWeightG: item.servingWeightG,
     packWeightG: item.packWeightG,
     unitsPerPack: item.unitsPerPack,
     measures: item.measures,
+    portionLines: item.portionLines,
+    ministryKind: item.ministryKind,
     source,
     ministryCode: item.ministryCode,
     verifiedId: item.id,

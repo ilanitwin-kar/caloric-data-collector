@@ -1,3 +1,5 @@
+import type { MinistryFoodKind, MinistryPortionLine } from "./ministryNutrition";
+
 export type VerifiedPortionMeasures = {
   unitsPer100g?: number;
   tbspPer100g?: number;
@@ -15,7 +17,10 @@ export type Verified100Row = {
   calories100?: number;
   /** Ministry of Health food code (data.gov.il). */
   ministryCode?: number;
+  ministryKind?: MinistryFoodKind;
+  portionLines?: MinistryPortionLine[];
   unitWeightG?: number;
+  servingWeightG?: number;
   packWeightG?: number;
   unitsPerPack?: number;
   measures?: VerifiedPortionMeasures;

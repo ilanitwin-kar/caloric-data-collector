@@ -18,7 +18,8 @@ import {
   VERIFIED_AUTO_APPLY_MIN_SCORE,
   type Verified100Row,
 } from "../utils/verifiedTsv";
-import { fetchMinistryVerifiedRows } from "../utils/ministryNutrition";
+import { fetchMinistryVerifiedRows, ministryKindSortPenalty } from "../utils/ministryNutrition";
+import type { MinistryFoodKind } from "../utils/ministryNutrition";
 import { verifiedHasPortions } from "../utils/verifiedMeasures";
 
 export type Verified100Item = Verified100Row & {
@@ -42,7 +43,12 @@ type Verified100ContextValue = {
   findMatches: (q: { name: string; brand?: string }, opts?: { limit?: number }) => Verified100Item[];
   findScoredMatches: (
     q: { name: string; brand?: string },
-    opts?: { limit?: number; source?: "all" | "tsv" | "ministry" },
+    opts?: {
+      limit?: number;
+      source?: "all" | "tsv" | "ministry";
+      excludeKinds?: MinistryFoodKind[];
+      kindsOnly?: MinistryFoodKind[];
+    },
   ) => Array<{ item: Verified100Item; score: number }>;
 };
 
@@ -218,7 +224,7 @@ export function Verified100Provider({ children }: { children: ReactNode }) {
         return { written: 0, enriched: 0 };
       }
       try {
-        showToast("מסנכרן מאגר משרד הבריאות (תזונה + מידות)…", "success");
+        showToast("מסנכרן מאגר משרד הבריאות (מידות + מתכונים)…", "success");
         const ministryRows = await fetchMinistryVerifiedRows(opts?.signal);
         const now = new Date().toISOString();
         const basePath = `users/${user.uid}/verified100/items`;
@@ -233,6 +239,7 @@ export function Verified100Provider({ children }: { children: ReactNode }) {
           let best: (typeof ministryRows)[number] | null = null;
           let bestScore = 0;
           for (const m of ministryRows) {
+            if (m.ministryKind === "recipe") continue;
             const s = scoreVerifiedMatch(m, { name: existing.name, brand: existing.brand });
             if (s > bestScore) {
               bestScore = s;
@@ -246,7 +253,10 @@ export function Verified100Provider({ children }: { children: ReactNode }) {
             ...existing,
             updatedAt: now,
             ministryCode: best.ministryCode,
+            ...(best.ministryKind ? { ministryKind: best.ministryKind } : {}),
+            ...(best.portionLines?.length ? { portionLines: best.portionLines } : {}),
             ...(best.unitWeightG ? { unitWeightG: best.unitWeightG } : {}),
+            ...(best.servingWeightG ? { servingWeightG: best.servingWeightG } : {}),
             ...(best.packWeightG ? { packWeightG: best.packWeightG } : {}),
             ...(best.unitsPerPack ? { unitsPerPack: best.unitsPerPack } : {}),
             ...(best.measures ? { measures: best.measures } : {}),
@@ -276,10 +286,23 @@ export function Verified100Provider({ children }: { children: ReactNode }) {
               createdAt: now,
               updatedAt: now,
               ministryCode: row.ministryCode,
+              ministryKind: row.ministryKind,
+              ...(row.portionLines?.length ? { portionLines: row.portionLines } : {}),
               ...(row.unitWeightG ? { unitWeightG: row.unitWeightG } : {}),
+              ...(row.servingWeightG ? { servingWeightG: row.servingWeightG } : {}),
               ...(row.packWeightG ? { packWeightG: row.packWeightG } : {}),
               ...(row.unitsPerPack ? { unitsPerPack: row.unitsPerPack } : {}),
               ...(row.measures ? { measures: row.measures } : {}),
+              ...(row.ministryKind === "recipe" && row.protein100 != null
+                ? { protein100: row.protein100 }
+                : {}),
+              ...(row.ministryKind === "recipe" && row.fat100 != null ? { fat100: row.fat100 } : {}),
+              ...(row.ministryKind === "recipe" && row.carbs100 != null
+                ? { carbs100: row.carbs100 }
+                : {}),
+              ...(row.ministryKind === "recipe" && row.calories100 != null
+                ? { calories100: row.calories100 }
+                : {}),
             };
             updates[id] = cleanForRtdb(item);
           }
@@ -320,23 +343,42 @@ export function Verified100Provider({ children }: { children: ReactNode }) {
   );
 
   const findScoredMatches = useCallback(
-    (q: { name: string; brand?: string }, opts?: { limit?: number; source?: "all" | "tsv" | "ministry" }) => {
+    (
+      q: { name: string; brand?: string },
+      opts?: {
+        limit?: number;
+        source?: "all" | "tsv" | "ministry";
+        excludeKinds?: MinistryFoodKind[];
+        kindsOnly?: MinistryFoodKind[];
+      },
+    ) => {
       if (!q.name.trim() || items.length === 0) return [];
       const source = opts?.source ?? "all";
+      const excludeKinds = new Set(opts?.excludeKinds ?? []);
+      const kindsOnly = opts?.kindsOnly?.length ? new Set(opts.kindsOnly) : null;
+      if (source === "ministry" && !kindsOnly && excludeKinds.size === 0) {
+        excludeKinds.add("recipe");
+      }
       const scored: Match[] = [];
       for (const it of items) {
         const isMoh = it.id.startsWith("moh:");
         if (source === "tsv" && isMoh) continue;
         if (source === "ministry" && !isMoh) continue;
+        const kind = it.ministryKind;
+        if (kindsOnly && (!kind || !kindsOnly.has(kind))) continue;
+        if (kind && excludeKinds.has(kind)) continue;
         const s = scoreVerifiedMatch(it, q);
         if (s >= 35) scored.push({ item: it, score: s });
       }
       scored.sort((a, b) => {
+        const adjA = a.score - ministryKindSortPenalty(a.item.ministryKind);
+        const adjB = b.score - ministryKindSortPenalty(b.item.ministryKind);
         if (source === "all") {
           const aMoh = a.item.id.startsWith("moh:") ? 1 : 0;
           const bMoh = b.item.id.startsWith("moh:") ? 1 : 0;
           if (bMoh !== aMoh) return bMoh - aMoh;
         }
+        if (adjB !== adjA) return adjB - adjA;
         return b.score - a.score;
       });
       const limit = Math.max(1, Math.min(30, opts?.limit ?? 12));

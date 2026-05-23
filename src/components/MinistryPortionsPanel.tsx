@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { ministryKindLabel } from "../utils/ministryNutrition";
 import { verifiedSearchQueryReady } from "../utils/verifiedSearch";
 import {
   verifiedPortionHintFromPick,
@@ -11,12 +12,32 @@ function formatG(v: number | undefined): string {
 }
 
 function PortionsPreviewTable({ sug }: { sug: VerifiedSuggestionPick }) {
-  const rows: Array<{ label: string; value: string }> = [];
+  const lines = sug.portionLines;
+  if (lines?.length) {
+    return (
+      <PreviewTable
+        rows={lines.map((line) => ({
+          label: line.label,
+          value: formatG(line.grams),
+          sub: line.role === "serving" ? "מנה סטנדרטית" : undefined,
+        }))}
+      />
+    );
+  }
+
+  const rows: Array<{ label: string; value: string; sub?: string }> = [];
   if (sug.packWeightG != null && sug.packWeightG > 0) {
     rows.push({ label: "משקל אריזה", value: formatG(sug.packWeightG) });
   }
   if (sug.unitsPerPack != null && sug.unitsPerPack > 0) {
     rows.push({ label: "יחידות באריזה", value: String(sug.unitsPerPack) });
+  }
+  if (sug.servingWeightG != null && sug.servingWeightG > 0) {
+    rows.push({
+      label: "מנה סטנדרטית",
+      value: formatG(sug.servingWeightG),
+      sub: "קוד 800–803",
+    });
   }
   if (sug.unitWeightG != null && sug.unitWeightG > 0) {
     rows.push({ label: "משקל יחידה", value: formatG(sug.unitWeightG) });
@@ -34,13 +55,26 @@ function PortionsPreviewTable({ sug }: { sug: VerifiedSuggestionPick }) {
   if (rows.length === 0) {
     return <p className="text-[11px] text-ink-dim">אין נתוני אריזה/מידות לפריט זה</p>;
   }
+  return <PreviewTable rows={rows} />;
+}
+
+function PreviewTable({
+  rows,
+}: {
+  rows: Array<{ label: string; value: string; sub?: string }>;
+}) {
   return (
     <div className="overflow-hidden rounded-lg border border-white/10 bg-black/25">
       <table className="w-full text-[11px]">
         <tbody>
           {rows.map((r) => (
-            <tr key={r.label} className="border-b border-white/5 last:border-0">
-              <td className="w-[42%] px-2 py-1.5 text-ink-dim">{r.label}</td>
+            <tr key={`${r.label}|${r.value}`} className="border-b border-white/5 last:border-0">
+              <td className="w-[42%] px-2 py-1.5 text-ink-dim">
+                {r.label}
+                {r.sub ? (
+                  <span className="mt-0.5 block text-[9px] text-ink-dim/80">{r.sub}</span>
+                ) : null}
+              </td>
               <td className="px-2 py-1.5 font-medium text-white tabular-nums">{r.value}</td>
             </tr>
           ))}
@@ -59,6 +93,7 @@ function MinistrySuggestionRow({
 }) {
   const [expanded, setExpanded] = useState(false);
   const portionHint = verifiedPortionHintFromPick(sug);
+  const kindLabel = sug.ministryKind ? ministryKindLabel(sug.ministryKind) : null;
 
   return (
     <div className="rounded-xl border border-teal-400/25 bg-teal-500/[0.06] overflow-hidden">
@@ -69,8 +104,15 @@ function MinistrySuggestionRow({
           className="min-w-0 flex-1 text-start"
           aria-expanded={expanded}
         >
-          <span className="rounded-md border border-teal-400/35 bg-teal-500/15 px-1.5 py-0.5 text-[9px] font-semibold text-teal-100">
-            משרד הבריאות
+          <span className="inline-flex flex-wrap items-center gap-1">
+            <span className="rounded-md border border-teal-400/35 bg-teal-500/15 px-1.5 py-0.5 text-[9px] font-semibold text-teal-100">
+              משרד הבריאות
+            </span>
+            {kindLabel && kindLabel !== "מצרך" ? (
+              <span className="rounded-md border border-white/15 bg-white/[0.06] px-1.5 py-0.5 text-[9px] font-semibold text-ink-muted">
+                {kindLabel}
+              </span>
+            ) : null}
           </span>
           <p className="mt-1 text-[11px] font-medium text-white">{sug.name}</p>
           <p className="text-[10px] text-ink-muted">
@@ -164,6 +206,7 @@ export function MinistryPortionsPanel({
             חיפוש: «{searchQuery}»
             {hasAny ? ` · ${suggestions.length} התאמות` : " · אין התאמות"}
           </p>
+          <p className="mt-0.5 text-[9px] text-ink-dim/80">מתכונים MoH לא מוצגים כאן — רק ב«בדיקת OFF».</p>
         </div>
         {hasAny && !pickedLabel ? (
           <button

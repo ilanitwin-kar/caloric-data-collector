@@ -7,6 +7,7 @@ import {
 } from "../components/OffVerifiedComparePanel";
 import { VerifiedSuggestionsPanel } from "../components/VerifiedSuggestionsPanel";
 import { MinistryPortionsPanel } from "../components/MinistryPortionsPanel";
+import { MinistryRecipesPanel } from "../components/MinistryRecipesPanel";
 import {
   verifiedItemToSuggestionPick,
   type VerifiedSuggestionPick,
@@ -94,6 +95,7 @@ export function Home() {
   const [searchParams, setSearchParams] = useSearchParams();
   const draftParam = searchParams.get("draft");
   const offReviewParam = searchParams.get("offReview");
+  const mohRecipeParam = searchParams.get("mohRecipe");
   const {
     catalog,
     upsertByBarcode,
@@ -111,6 +113,7 @@ export function Home() {
 
   const hydratedDraftParamRef = useRef<string | null>(null);
   const hydratedOffReviewRef = useRef<string | null>(null);
+  const hydratedMohRecipeRef = useRef<string | null>(null);
   const [offReviewItem, setOffReviewItem] = useState<OffPendingReview | null>(null);
   const offReviewOffPer100Ref = useRef<CatalogNutritionPer100g | undefined>(undefined);
   const [pendingDraftId, setPendingDraftId] = useState<string | null>(null);
@@ -191,6 +194,29 @@ export function Home() {
     setMohPickedLabel(sug.name);
     setMohSuggestions([]);
   }, []);
+
+  const applyMohRecipeToForm = useCallback(
+    (sug: VerifiedSuggestionPick, withNutrition: boolean) => {
+      setName(sug.name);
+      setShortName((prev) => (prev.trim() ? prev : sug.name));
+      applyMohPortionsOnly(sug);
+      if (withNutrition) {
+        applyVerifiedNutritionToForm(sug);
+        setVerifiedPicked(false);
+        setVerifiedPickedSig(null);
+      }
+      if (!offReviewItem) {
+        setIsInternal(true);
+        setUsageTags((prev) => {
+          const next = new Set(prev);
+          next.add("cooked");
+          return [...next] as UsageTag[];
+        });
+      }
+      showToast(withNutrition ? "מתכון MoH — שם, מידות ותזונה" : "מתכון MoH — שם ומידות", "success");
+    },
+    [applyMohPortionsOnly, applyVerifiedNutritionToForm, offReviewItem, showToast],
+  );
 
   const attachOffReviewVerifiedLink = useCallback(
     (sug: VerifiedSuggestionPick) => {
@@ -394,6 +420,39 @@ export function Home() {
     offReviewItem,
     verifiedPickedSig,
     verifiedSearchQuery,
+  ]);
+
+  useEffect(() => {
+    if (!mohRecipeParam) {
+      hydratedMohRecipeRef.current = null;
+      return;
+    }
+    if (hydratedMohRecipeRef.current === mohRecipeParam) return;
+    const code = parseInt(mohRecipeParam, 10);
+    if (!Number.isFinite(code) || code <= 0) return;
+    const item =
+      verifiedItems.find((i) => i.ministryCode === code || i.id === `moh:${code}`) ?? null;
+    if (!item || item.ministryKind !== "recipe") {
+      showToast("מתכון MoH לא נמצא — סנכרן משרד הבריאות בהגדרות", "error");
+      return;
+    }
+    hydratedMohRecipeRef.current = mohRecipeParam;
+    const sug = verifiedItemToSuggestionPick(item, 100, verifiedRowToPickPortions(item));
+    applyMohRecipeToForm(sug, true);
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        next.delete("mohRecipe");
+        return next;
+      },
+      { replace: true },
+    );
+  }, [
+    applyMohRecipeToForm,
+    mohRecipeParam,
+    setSearchParams,
+    showToast,
+    verifiedItems,
   ]);
 
   const nutritionReady = useMemo(() => {
@@ -851,6 +910,12 @@ export function Home() {
                 הצעה תמלא מהמאומת (100g) ותשאיר את הברקוד מ־OFF.
               </p>
             ) : null}
+            <MinistryRecipesPanel
+              searchQuery={verifiedSearchQuery}
+              defaultSearch={verifiedSearchQuery}
+              onApplyNamePortions={(sug) => applyMohRecipeToForm(sug, false)}
+              onApplyWithNutrition={(sug) => applyMohRecipeToForm(sug, true)}
+            />
           </div>
         ) : null}
 
