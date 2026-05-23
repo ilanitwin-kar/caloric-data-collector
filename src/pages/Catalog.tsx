@@ -1,8 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
+import { MinistryPortionsPanel } from "../components/MinistryPortionsPanel";
 import { Spinner } from "../components/Spinner";
+import { VerifiedSuggestionsPanel } from "../components/VerifiedSuggestionsPanel";
+import type { VerifiedSuggestionPick } from "../components/verifiedSuggestionTypes";
 import { useCatalog, type CatalogProduct } from "../context/CatalogContext";
 import { useToast } from "../context/ToastContext";
+import { useCatalogEditSuggestions } from "../hooks/useCatalogEditSuggestions";
 import { normalizeBarcode } from "../utils/openFoodFacts";
 import { catalogToCsv, parseCatalogCsv } from "../utils/catalogCsv";
 import { catalogToPdfBlob, downloadCatalogXlsx } from "../utils/catalogExport";
@@ -16,6 +20,13 @@ import {
   matchesCompletenessFilter,
   type CatalogCompletenessFilter,
 } from "../utils/catalogCompleteness";
+import {
+  applyMohPortionsToDraft,
+  applyVerifiedFullToDraft,
+  applyVerifiedNutritionToDraft,
+  parseCatalogEditFocus,
+  type CatalogEditFocus,
+} from "../utils/catalogEditDraftApply";
 import { catalogProductPortionHint } from "../utils/verifiedMeasures";
 
 function matchProduct(p: CatalogProduct, q: string): boolean {
@@ -143,34 +154,48 @@ function CompletenessBadge({
   ok,
   label,
   warn,
+  onAction,
 }: {
   ok: boolean;
   label: string;
   warn?: boolean;
+  onAction?: () => void;
 }) {
+  const className =
+    "rounded-md border px-1.5 py-0.5 text-[9px] font-semibold " +
+    (ok ?
+      "border-emerald-400/35 bg-emerald-500/10 text-emerald-100"
+    : warn ?
+      "border-amber-400/35 bg-amber-500/10 text-amber-100"
+    : "border-white/15 bg-white/[0.04] text-ink-muted");
+
+  if (ok || !onAction) {
+    return <span className={className}>{label}</span>;
+  }
+
   return (
-    <span
+    <button
+      type="button"
+      onClick={onAction}
       className={
-        "rounded-md border px-1.5 py-0.5 text-[9px] font-semibold " +
-        (ok ?
-          "border-emerald-400/35 bg-emerald-500/10 text-emerald-100"
-        : warn ?
-          "border-amber-400/35 bg-amber-500/10 text-amber-100"
-        : "border-white/15 bg-white/[0.04] text-ink-muted")
+        className +
+        " cursor-pointer transition hover:brightness-125 hover:border-white/30 underline-offset-2 hover:underline"
       }
     >
-      {label}
-    </span>
+      {label} →
+    </button>
   );
 }
 
 function CatalogProductCard({
   product: p,
   onEdit,
+  onEditWithFocus,
   onDelete,
 }: {
   product: CatalogProduct;
   onEdit: () => void;
+  onEditWithFocus: (focus: CatalogEditFocus) => void;
   onDelete: () => void;
 }) {
   const per = p.nutrition?.per100g;
@@ -223,11 +248,16 @@ function CatalogProductCard({
       </div>
 
       <div className="mt-2 flex flex-wrap gap-1">
-        <CompletenessBadge ok={nutritionOk} label={nutritionOk ? "תזונה ✓" : "חסר תזונה"} />
+        <CompletenessBadge
+          ok={nutritionOk}
+          label={nutritionOk ? "תזונה ✓" : "חסר תזונה"}
+          onAction={!nutritionOk ? () => onEditWithFocus("nutrition") : undefined}
+        />
         <CompletenessBadge
           ok={packageOk}
           label={packageOk ? "אריזה ✓" : "חסר אריזה"}
           warn={!packageOk}
+          onAction={!packageOk ? () => onEditWithFocus("packaging") : undefined}
         />
         <CompletenessBadge
           ok={portionsOk}
@@ -239,6 +269,9 @@ function CatalogProductCard({
             : "חסר מידות"
           }
           warn={portionWarn}
+          onAction={
+            !portionsOk || portionWarn ? () => onEditWithFocus("measures") : undefined
+          }
         />
         {report.isComplete ? (
           <span className="rounded-md border border-sky-400/35 bg-sky-500/10 px-1.5 py-0.5 text-[9px] font-semibold text-sky-100">
@@ -373,23 +406,63 @@ function computeDerivedPackage(d: EditDraft) {
   return { totalWeightG, unitsPerPack, unitWeightG };
 }
 
+function editSectionRing(active: boolean, accent: "emerald" | "teal"): string {
+  if (!active) return "space-y-3";
+  const ring =
+    accent === "emerald" ? "ring-emerald-400/50" : "ring-teal-400/50";
+  return `space-y-3 rounded-xl p-2 -mx-2 ring-2 ${ring} ring-offset-2 ring-offset-neutral-950`;
+}
+
 function EditModal({
   product,
+  initialFocus,
   onClose,
 }: {
   product: CatalogProduct | null;
+  initialFocus: CatalogEditFocus;
   onClose: () => void;
 }) {
   const { updateProduct, deleteProduct } = useCatalog();
   const [draft, setDraft] = useState<EditDraft | null>(product ? productToDraft(product) : null);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const nutritionSectionRef = useRef<HTMLDivElement>(null);
+  const packagingSectionRef = useRef<HTMLDivElement>(null);
+  const measuresSectionRef = useRef<HTMLDivElement>(null);
 
-  // Keep the draft in sync with the currently edited product.
-  // The modal component stays mounted, so we must update draft when `product` changes.
+  const suggestions = useCatalogEditSuggestions(product?.id ?? null, draft, Boolean(product && draft));
+
   useEffect(() => {
     setDraft(product ? productToDraft(product) : null);
   }, [product]);
+
+  useEffect(() => {
+    if (!product || initialFocus === "general") return;
+    const target =
+      initialFocus === "nutrition" ? nutritionSectionRef
+      : initialFocus === "measures" ? measuresSectionRef
+      : packagingSectionRef;
+    const t = window.setTimeout(() => {
+      target.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 150);
+    return () => window.clearTimeout(t);
+  }, [product?.id, initialFocus]);
+
+  const applyVerifiedPickNutrition = (sug: VerifiedSuggestionPick) => {
+    setDraft((d) => (d ? applyVerifiedNutritionToDraft(d, sug) : d));
+    suggestions.onVerifiedPicked();
+  };
+
+  const applyVerifiedPickFull = (sug: VerifiedSuggestionPick) => {
+    setDraft((d) => (d ? applyVerifiedFullToDraft(d, sug) : d));
+    suggestions.onVerifiedPicked();
+  };
+
+  const applyMohPortions = (sug: VerifiedSuggestionPick) => {
+    setDraft((d) => (d ? applyMohPortionsToDraft(d, sug) : d));
+    suggestions.onMohApproved(sug);
+  };
 
   if (!product || !draft) return null;
 
@@ -495,7 +568,17 @@ function EditModal({
             {product.id}
           </p>
         </div>
-        <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3 space-y-3">
+        <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto px-4 py-3 space-y-3">
+          {initialFocus !== "general" ? (
+            <p className="rounded-xl border border-teal-400/25 bg-teal-500/10 px-3 py-2 text-[11px] text-teal-50">
+              {initialFocus === "nutrition" ?
+                "מילוי תזונה — הצעות מהמאגר המאומת (TSV)"
+              : initialFocus === "packaging" ?
+                "מילוי אריזה — הצעות ממשרד הבריאות (לא משנה תזונה)"
+              : "מילוי מידות — הצעות ממשרד הבריאות"}
+            </p>
+          ) : null}
+
           <Field label="שם" value={draft.name} onChange={(v) => setDraft((d) => (d ? { ...d, name: v } : d))} />
           <Field
             label="שם קצר ליומן (אופציונלי)"
@@ -635,22 +718,81 @@ function EditModal({
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-2">
-            <Field label='קלוריות ל־100g' value={draft.calories100} onChange={(v) => setDraft((d) => (d ? { ...d, calories100: v } : d))} inputMode="decimal" />
-            <Field label="חלבון ל־100g" value={draft.protein100} onChange={(v) => setDraft((d) => (d ? { ...d, protein100: v } : d))} inputMode="decimal" />
-            <Field label="פחמימות ל־100g" value={draft.carbs100} onChange={(v) => setDraft((d) => (d ? { ...d, carbs100: v } : d))} inputMode="decimal" />
-            <Field label="שומן ל־100g" value={draft.fat100} onChange={(v) => setDraft((d) => (d ? { ...d, fat100: v } : d))} inputMode="decimal" />
+          <div
+            ref={nutritionSectionRef}
+            className={editSectionRing(
+              initialFocus === "nutrition",
+              "emerald",
+            )}
+          >
+            <p className="text-xs font-semibold text-emerald-100">תזונה ל־100g</p>
+            {draft.per100Basis === "g" ? (
+              <VerifiedSuggestionsPanel
+                suggestions={suggestions.verifiedSuggestions}
+                verifiedPicked={suggestions.verifiedPicked}
+                isAlreadyInCatalog={false}
+                searchQuery={suggestions.searchQuery}
+                onPickNutrition={applyVerifiedPickNutrition}
+                onPickFull={applyVerifiedPickFull}
+                onClearPicked={suggestions.clearVerifiedPicked}
+                onDismiss={suggestions.dismissVerified}
+              />
+            ) : (
+              <p className="text-[11px] text-ink-dim">
+                הצעות TSV זמינות ל־100g — עבורי ל־100g אם המוצר מוצג לפי משקל.
+              </p>
+            )}
+            <div className="grid grid-cols-2 gap-2">
+              <Field label='קלוריות ל־100g' value={draft.calories100} onChange={(v) => setDraft((d) => (d ? { ...d, calories100: v } : d))} inputMode="decimal" />
+              <Field label="חלבון ל־100g" value={draft.protein100} onChange={(v) => setDraft((d) => (d ? { ...d, protein100: v } : d))} inputMode="decimal" />
+              <Field label="פחמימות ל־100g" value={draft.carbs100} onChange={(v) => setDraft((d) => (d ? { ...d, carbs100: v } : d))} inputMode="decimal" />
+              <Field label="שומן ל־100g" value={draft.fat100} onChange={(v) => setDraft((d) => (d ? { ...d, fat100: v } : d))} inputMode="decimal" />
+            </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-2">
-            <Field label="משקל אריזה (g)" value={draft.totalWeightG} onChange={(v) => setDraft((d) => (d ? { ...d, totalWeightG: v } : d))} inputMode="decimal" />
-            <Field label="יחידות באריזה" value={draft.unitsPerPack} onChange={(v) => setDraft((d) => (d ? { ...d, unitsPerPack: v } : d))} inputMode="decimal" />
-          </div>
-          <div className="rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-xs text-ink-muted">
-            משקל יחידה מחושב: {pkg.unitWeightG ? `${fmt1(pkg.unitWeightG)}g` : "—"}
+          <div
+            ref={packagingSectionRef}
+            className={editSectionRing(
+              initialFocus === "packaging",
+              "teal",
+            )}
+          >
+            <p className="text-xs font-semibold text-teal-100">אריזה</p>
+            {draft.per100Basis === "g" ? (
+              <MinistryPortionsPanel
+                suggestions={suggestions.mohSuggestions}
+                searchQuery={suggestions.searchQuery}
+                nutritionReady={suggestions.nutritionReady}
+                pickedLabel={suggestions.mohPickedLabel}
+                onApprove={applyMohPortions}
+                onClearPicked={suggestions.clearMohPicked}
+                onDismiss={suggestions.dismissMoh}
+              />
+            ) : (
+              <p className="text-[11px] text-ink-dim">
+                הצעות משרד הבריאות זמינות למוצרים לפי 100g.
+              </p>
+            )}
+            <div className="grid grid-cols-2 gap-2">
+              <Field label="משקל אריזה (g)" value={draft.totalWeightG} onChange={(v) => setDraft((d) => (d ? { ...d, totalWeightG: v } : d))} inputMode="decimal" />
+              <Field label="יחידות באריזה" value={draft.unitsPerPack} onChange={(v) => setDraft((d) => (d ? { ...d, unitsPerPack: v } : d))} inputMode="decimal" />
+            </div>
+            <div className="rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-xs text-ink-muted">
+              משקל יחידה מחושב: {pkg.unitWeightG ? `${fmt1(pkg.unitWeightG)}g` : "—"}
+            </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-2">
+          <div
+            ref={measuresSectionRef}
+            className={editSectionRing(initialFocus === "measures", "teal")}
+          >
+            <p className="text-xs font-semibold text-teal-100">מידות (כף / כוס / יחידה)</p>
+            {initialFocus === "measures" && draft.per100Basis === "g" && !suggestions.nutritionReady ? (
+              <p className="text-[11px] text-amber-100/90">
+                מלאי קודם תזונה ל־100g — ואז יופיעו הצעות משרד הבריאות ב«אריזה» למעלה.
+              </p>
+            ) : null}
+            <div className="grid grid-cols-2 gap-2">
             <Field
               label="גרם בכוס (סטנדרט)"
               value={(() => {
@@ -704,6 +846,7 @@ function EditModal({
               inputMode="decimal"
             />
           </div>
+          </div>
         </div>
         <div className="flex shrink-0 gap-2 border-t border-white/10 p-3">
           <button
@@ -744,18 +887,28 @@ export function Catalog() {
   const [q, setQ] = useState("");
   const [completenessFilter, setCompletenessFilter] = useState<CatalogCompletenessFilter>("all");
   const [editing, setEditing] = useState<CatalogProduct | null>(null);
+  const [editFocus, setEditFocus] = useState<CatalogEditFocus>("general");
   const fileRef = useRef<HTMLInputElement | null>(null);
   const [exporting, setExporting] = useState<null | "csv" | "xlsx" | "pdf">(null);
+
+  const openEdit = (p: CatalogProduct, focus: CatalogEditFocus = "general") => {
+    setEditing(p);
+    setEditFocus(focus);
+  };
 
   useEffect(() => {
     const qp = (searchParams.get("q") ?? "").trim();
     const editId = (searchParams.get("edit") ?? "").trim();
+    const focusParam = parseCatalogEditFocus(searchParams.get("focus"));
 
     if (qp) setQ(qp);
 
     if (editId) {
       const p = catalog.find((x) => x.id === editId || x.gtin === editId);
-      if (p) setEditing(p);
+      if (p) {
+        setEditing(p);
+        setEditFocus(focusParam ?? "general");
+      }
     }
   }, [searchParams, catalog]);
 
@@ -999,7 +1152,8 @@ export function Catalog() {
           <CatalogProductCard
             key={p.id}
             product={p}
-            onEdit={() => setEditing(p)}
+            onEdit={() => openEdit(p, "general")}
+            onEditWithFocus={(focus) => openEdit(p, focus)}
             onDelete={() => {
               if (!window.confirm("למחוק מוצר מהמאגר?")) return;
               void deleteProduct(p.id).catch(() => showToast("מחיקה נכשלה", "error"));
@@ -1008,7 +1162,14 @@ export function Catalog() {
         ))}
       </ul>
 
-      <EditModal product={editing} onClose={() => setEditing(null)} />
+      <EditModal
+        product={editing}
+        initialFocus={editFocus}
+        onClose={() => {
+          setEditing(null);
+          setEditFocus("general");
+        }}
+      />
     </div>
   );
 }
