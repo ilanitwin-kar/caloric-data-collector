@@ -3,10 +3,23 @@ import { fmt1, parseNum } from "./number";
 import { buildVerifiedSearchQuery } from "./verifiedSearch";
 import { verifiedRowToPickPortions } from "./verifiedMeasures";
 
-export type CatalogEditFocus = "nutrition" | "packaging" | "measures" | "general";
+export type CatalogEditFocus =
+  | "nutrition"
+  | "packaging"
+  | "measures"
+  | "shortName"
+  | "keywords"
+  | "general";
 
 export function parseCatalogEditFocus(raw: string | null | undefined): CatalogEditFocus | null {
-  if (raw === "nutrition" || raw === "packaging" || raw === "measures" || raw === "general") {
+  if (
+    raw === "nutrition" ||
+    raw === "packaging" ||
+    raw === "measures" ||
+    raw === "shortName" ||
+    raw === "keywords" ||
+    raw === "general"
+  ) {
     return raw;
   }
   return null;

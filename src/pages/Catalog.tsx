@@ -213,6 +213,8 @@ function CatalogProductCard({
   const packageOk = report.hasPackage;
   const portionsOk = report.portionLevel === "full";
   const portionWarn = report.portionLevel === "packageOnly";
+  const shortNameOk = report.filled.includes("shortName");
+  const keywordsOk = report.filled.includes("keywords");
 
   return (
     <li className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
@@ -272,6 +274,16 @@ function CatalogProductCard({
           onAction={
             !portionsOk || portionWarn ? () => onEditWithFocus("measures") : undefined
           }
+        />
+        <CompletenessBadge
+          ok={shortNameOk}
+          label={shortNameOk ? "שם קצר ✓" : "חסר שם קצר"}
+          onAction={!shortNameOk ? () => onEditWithFocus("shortName") : undefined}
+        />
+        <CompletenessBadge
+          ok={keywordsOk}
+          label={keywordsOk ? "מילות חיפוש ✓" : "חסר מילות חיפוש"}
+          onAction={!keywordsOk ? () => onEditWithFocus("keywords") : undefined}
         />
         {report.isComplete ? (
           <span className="rounded-md border border-sky-400/35 bg-sky-500/10 px-1.5 py-0.5 text-[9px] font-semibold text-sky-100">
@@ -406,11 +418,17 @@ function computeDerivedPackage(d: EditDraft) {
   return { totalWeightG, unitsPerPack, unitWeightG };
 }
 
-function editSectionRing(active: boolean, accent: "emerald" | "teal"): string {
-  if (!active) return "space-y-3";
+function editSectionRing(
+  active: boolean,
+  accent: "emerald" | "teal" | "violet",
+): string {
+  const base = "space-y-3";
+  if (!active) return base;
   const ring =
-    accent === "emerald" ? "ring-emerald-400/50" : "ring-teal-400/50";
-  return `space-y-3 rounded-xl p-2 -mx-2 ring-2 ${ring} ring-offset-2 ring-offset-neutral-950`;
+    accent === "emerald" ? "ring-emerald-400/50"
+    : accent === "teal" ? "ring-teal-400/50"
+    : "ring-violet-400/50";
+  return `${base} rounded-xl p-2 -mx-2 ring-2 ${ring} ring-offset-2 ring-offset-neutral-950`;
 }
 
 function EditModal({
@@ -427,6 +445,8 @@ function EditModal({
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const shortNameSectionRef = useRef<HTMLDivElement>(null);
+  const keywordsSectionRef = useRef<HTMLDivElement>(null);
   const nutritionSectionRef = useRef<HTMLDivElement>(null);
   const packagingSectionRef = useRef<HTMLDivElement>(null);
   const measuresSectionRef = useRef<HTMLDivElement>(null);
@@ -442,7 +462,11 @@ function EditModal({
     const target =
       initialFocus === "nutrition" ? nutritionSectionRef
       : initialFocus === "measures" ? measuresSectionRef
-      : packagingSectionRef;
+      : initialFocus === "packaging" ? packagingSectionRef
+      : initialFocus === "shortName" ? shortNameSectionRef
+      : initialFocus === "keywords" ? keywordsSectionRef
+      : null;
+    if (!target) return;
     const t = window.setTimeout(() => {
       target.current?.scrollIntoView({ behavior: "smooth", block: "start" });
     }, 150);
@@ -575,17 +599,26 @@ function EditModal({
                 "מילוי תזונה — הצעות מהמאגר המאומת (TSV)"
               : initialFocus === "packaging" ?
                 "מילוי אריזה — הצעות ממשרד הבריאות (לא משנה תזונה)"
-              : "מילוי מידות — הצעות ממשרד הבריאות"}
+              : initialFocus === "measures" ?
+                "מילוי מידות — הצעות ממשרד הבריאות ב«אריזה»"
+              : initialFocus === "shortName" ?
+                "מילוי שם קצר ליומן — מוצג בחיפוש וביומן"
+              : "מילוי מילות חיפוש — עוזר למצוא את המוצר ולהציע ממשרד הבריאות/TSV"}
             </p>
           ) : null}
 
           <Field label="שם" value={draft.name} onChange={(v) => setDraft((d) => (d ? { ...d, name: v } : d))} />
-          <Field
-            label="שם קצר ליומן (אופציונלי)"
-            value={draft.shortName}
-            onChange={(v) => setDraft((d) => (d ? { ...d, shortName: v } : d))}
-            placeholder="למשל עמק 9%"
-          />
+          <div
+            ref={shortNameSectionRef}
+            className={editSectionRing(initialFocus === "shortName", "violet")}
+          >
+            <Field
+              label="שם קצר ליומן (אופציונלי)"
+              value={draft.shortName}
+              onChange={(v) => setDraft((d) => (d ? { ...d, shortName: v } : d))}
+              placeholder="למשל עמק 9%"
+            />
+          </div>
           <Field label="מותג" value={draft.brand} onChange={(v) => setDraft((d) => (d ? { ...d, brand: v } : d))} />
           <div className="space-y-1.5">
             <p className="text-xs font-medium text-ink-muted">הערכים הם ל־</p>
@@ -617,7 +650,17 @@ function EditModal({
             </div>
           </div>
           <Field label="קטגוריה" value={draft.category} onChange={(v) => setDraft((d) => (d ? { ...d, category: v } : d))} />
-          <Field label="מילות חיפוש (פסיקים)" value={draft.keywords} onChange={(v) => setDraft((d) => (d ? { ...d, keywords: v } : d))} />
+          <div
+            ref={keywordsSectionRef}
+            className={editSectionRing(initialFocus === "keywords", "violet")}
+          >
+            <Field
+              label="מילות חיפוש (פסיקים)"
+              value={draft.keywords}
+              onChange={(v) => setDraft((d) => (d ? { ...d, keywords: v } : d))}
+              placeholder="למשל גבינה צהובה, עמק"
+            />
+          </div>
           <div className="space-y-1.5">
             <p className="text-xs font-medium text-ink-muted">סוג שימוש</p>
             <div className="flex flex-wrap gap-2">
