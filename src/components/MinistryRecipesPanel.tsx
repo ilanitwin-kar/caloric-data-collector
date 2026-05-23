@@ -49,11 +49,11 @@ function RecipeRow({
           className="min-w-0 flex-1 text-start"
           aria-expanded={expanded}
         >
-          <span className="rounded-md border border-amber-400/35 bg-amber-500/15 px-1.5 py-0.5 text-[9px] font-semibold text-amber-100">
+          <span className="rounded-md border border-amber-400/35 bg-amber-500/15 px-1.5 py-0.5 text-[11px] font-semibold text-amber-100">
             {ministryKindLabel("recipe")}
           </span>
-          <p className="mt-1 text-[11px] font-medium text-white">{sug.name}</p>
-          <p className="text-[10px] text-ink-muted">
+          <p className="mt-1 text-[13px] font-medium text-white">{sug.name}</p>
+          <p className="text-[12px] text-ink-muted">
             {portionHint ?? "ללא מידות"}
             {nutrition ? ` · ${nutrition}` : ""}
             {sug.matchScore != null ? ` · ציון ${sug.matchScore}` : ""}
@@ -62,7 +62,7 @@ function RecipeRow({
         <button
           type="button"
           onClick={() => setExpanded((e) => !e)}
-          className="shrink-0 rounded-lg px-2 py-1 text-[10px] font-semibold text-ink-muted hover:text-white"
+          className="shrink-0 rounded-lg px-2 py-1 text-[12px] font-semibold text-ink-muted hover:text-white"
         >
           {expanded ? "סגור" : "פרטים"}
         </button>
@@ -70,13 +70,13 @@ function RecipeRow({
 
       {expanded ? (
         <div className="border-t border-white/10 px-3 pb-3 pt-2 space-y-2">
-          <p className="text-[10px] text-ink-dim leading-relaxed">
+          <p className="text-[12px] text-ink-dim leading-relaxed">
             מתכון מורכב ממשרד הבריאות — לא מוצר מסחרי. ערכי את השדות למטה ובחרי מה להכניס למאגר.
             תזונה MoH מוצגת לעיון; ברירת מחדל: מילוי שם + מידות בלבד.
           </p>
           {sug.portionLines?.length ? (
             <div className="overflow-hidden rounded-lg border border-white/10 bg-black/25">
-              <table className="w-full text-[11px]">
+              <table className="w-full text-[13px]">
                 <tbody>
                   {sug.portionLines.map((line) => (
                     <tr
@@ -93,13 +93,13 @@ function RecipeRow({
               </table>
             </div>
           ) : (
-            <p className="text-[11px] text-ink-dim">אין שורות מידה לפריט זה</p>
+            <p className="text-[13px] text-ink-dim">אין שורות מידה לפריט זה</p>
           )}
           <div className="flex flex-col gap-2">
             {onApplyNamePortions ? (
               <button
                 type="button"
-                className="min-h-[40px] w-full rounded-xl border border-amber-400/40 bg-amber-500/20 px-3 py-2 text-xs font-semibold text-amber-50 hover:bg-amber-500/30"
+                className="min-h-[40px] w-full rounded-xl border border-amber-400/40 bg-amber-500/20 px-3 py-2 text-sm font-semibold text-amber-50 hover:bg-amber-500/30"
                 onClick={() => onApplyNamePortions(sug)}
               >
                 החל שם + מידות לטופס
@@ -108,7 +108,7 @@ function RecipeRow({
             {onApplyWithNutrition ? (
               <button
                 type="button"
-                className="min-h-[40px] w-full rounded-xl bg-amber-400/90 px-3 py-2 text-xs font-semibold text-black hover:bg-amber-300"
+                className="min-h-[40px] w-full rounded-xl bg-amber-400/90 px-3 py-2 text-sm font-semibold text-black hover:bg-amber-300"
                 onClick={() => onApplyWithNutrition(sug)}
               >
                 החל שם + מידות + תזונה MoH
@@ -117,7 +117,7 @@ function RecipeRow({
             {onOpenEdit ? (
               <button
                 type="button"
-                className="min-h-[40px] w-full rounded-xl border border-white/20 px-3 py-2 text-xs font-semibold text-white hover:border-white/35"
+                className="min-h-[40px] w-full rounded-xl border border-white/20 px-3 py-2 text-sm font-semibold text-white hover:border-white/35"
                 onClick={() => onOpenEdit(sug)}
               >
                 ערוך בטופס מלא

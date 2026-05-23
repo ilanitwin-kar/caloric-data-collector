@@ -45,13 +45,30 @@ const USAGE_OPTIONS: Array<{ id: UsageTag; label: string }> = [
   { id: "dry", label: "יבש" },
 ];
 
-const MEASURE_OPTIONS: Array<{ id: MeasureKey; label: string }> = [
-  { id: "unit", label: "יחידה" },
-  { id: "tbsp", label: "כף" },
-  { id: "tsp", label: "כפית" },
-  { id: "cup", label: "כוס" },
-  { id: "g100", label: "100g" },
-];
+function inferJournalMeasuresForSave(opts: {
+  isMohRecipeEditMode: boolean;
+  unitWeightG?: number;
+  measures: {
+    unitsPer100g?: number;
+    tbspPer100g?: number;
+    tspPer100g?: number;
+    cupsPer100g?: number;
+  };
+}): { defaultMeasure: MeasureKey; commonMeasures: MeasureKey[] } {
+  if (opts.isMohRecipeEditMode) {
+    return { defaultMeasure: "g100", commonMeasures: ["g100"] };
+  }
+  const cm: MeasureKey[] = [];
+  const uw = opts.unitWeightG;
+  if (uw != null && uw > 0) cm.push("unit");
+  if (opts.measures.tbspPer100g != null && opts.measures.tbspPer100g > 0) cm.push("tbsp");
+  if (opts.measures.tspPer100g != null && opts.measures.tspPer100g > 0) cm.push("tsp");
+  if (opts.measures.cupsPer100g != null && opts.measures.cupsPer100g > 0) cm.push("cup");
+  cm.push("g100");
+  const commonMeasures = [...new Set(cm)].slice(0, 4) as MeasureKey[];
+  const defaultMeasure: MeasureKey = uw != null && uw > 0 ? "unit" : "g100";
+  return { defaultMeasure, commonMeasures };
+}
 
 function Field({
   label,
@@ -170,8 +187,6 @@ export function Home() {
   const [keywordsRaw, setKeywordsRaw] = useState("");
   const [category, setCategory] = useState("");
   const [usageTags, setUsageTags] = useState<UsageTag[]>(["ready"]);
-  const [defaultMeasure, setDefaultMeasure] = useState<MeasureKey>("unit");
-  const [commonMeasures, setCommonMeasures] = useState<MeasureKey[]>(["unit", "g100"]);
 
   const [per100Basis, setPer100Basis] = useState<"g" | "ml">("g");
 
@@ -228,10 +243,6 @@ export function Home() {
     if (portions.measures?.cupsPer100g != null) {
       setCupsPer100g(String(portions.measures.cupsPer100g));
     }
-    if (portions.commonMeasures?.length) {
-      setCommonMeasures(portions.commonMeasures.slice(0, 4) as MeasureKey[]);
-    }
-    if (portions.defaultMeasure) setDefaultMeasure(portions.defaultMeasure as MeasureKey);
     setMohPickedLabel(sug.name);
     setMohSuggestions([]);
   }, []);
@@ -424,8 +435,6 @@ export function Home() {
       setTbspPer100g,
       setTspPer100g,
       setCupsPer100g,
-      setCommonMeasures,
-      setDefaultMeasure,
       setVerifiedPicked,
       setVerifiedPickedSig,
     },
@@ -702,10 +711,6 @@ export function Home() {
     setCategory(d.category ?? "");
     if (d.usageTags?.length) setUsageTags(d.usageTags as UsageTag[]);
     else setUsageTags(internal ? ["ingredient"] : ["ready"]);
-    if (d.defaultMeasure) setDefaultMeasure(d.defaultMeasure as MeasureKey);
-    else setDefaultMeasure(internal ? "g100" : "unit");
-    if (d.commonMeasures?.length) setCommonMeasures(d.commonMeasures.slice(0, 4) as MeasureKey[]);
-    else setCommonMeasures(internal ? ["g100", "unit"] : ["unit", "g100"]);
     setPer100Basis(d.per100Basis === "ml" ? "ml" : "g");
     setKcal100(d.calories100 != null ? String(d.calories100) : "");
     setProt100(d.protein100 != null ? String(d.protein100) : "");
@@ -814,10 +819,13 @@ export function Home() {
     const keywords = parseKeywords(keywordsRaw);
     const usage = usageTags.length ? usageTags : (isInternal ? (["ingredient"] as UsageTag[]) : (["ready"] as UsageTag[]));
 
-    const saveDefaultMeasure: MeasureKey = isMohRecipeEditMode ? "g100" : defaultMeasure;
-    const saveCommonMeasures: MeasureKey[] = isMohRecipeEditMode
-      ? (["g100"] as MeasureKey[])
-      : commonMeasures;
+    const unitWForJournal = pkg.unitW;
+    const { defaultMeasure: saveDefaultMeasure, commonMeasures: saveCommonMeasures } =
+      inferJournalMeasuresForSave({
+        isMohRecipeEditMode,
+        unitWeightG: unitWForJournal,
+        measures,
+      });
 
     const totalW = pkg.totalW ?? pkg.unitW;
     if (!isMohRecipeEditMode && !totalW) {
@@ -1039,8 +1047,6 @@ export function Home() {
                   setMohRecipePick(null);
                 }
                 setUsageTags(next ? ["ingredient"] : ["ready"]);
-                setDefaultMeasure(next ? "g100" : "unit");
-                setCommonMeasures(next ? ["g100", "unit"] : ["unit", "g100"]);
               }}
             />
             פריט ללא ברקוד (ירקות/בישול ביתי)
@@ -1250,72 +1256,6 @@ export function Home() {
                 אפשר לבחור כמה. ברירת מחדל: {isMohRecipeEditMode ? "מבושל" : isInternal ? "חומר גלם" : "מוכן"}.
               </p>
             </div>
-            {!isMohRecipeEditMode ? (
-            <div className="space-y-1.5">
-              <p className="text-xs font-medium text-ink-muted">ברירת מחדל ביומן</p>
-              <div className="flex flex-wrap gap-2">
-                {MEASURE_OPTIONS.map((opt) => {
-                  const active = defaultMeasure === opt.id;
-                  return (
-                    <button
-                      key={opt.id}
-                      type="button"
-                      onClick={() => {
-                        setDefaultMeasure(opt.id);
-                        setCommonMeasures((prev) => {
-                          const next = prev.includes(opt.id) ? prev : [opt.id, ...prev];
-                          return next.slice(0, 4);
-                        });
-                      }}
-                      className={
-                        "rounded-full px-3 py-1.5 text-xs font-semibold transition " +
-                        (active
-                          ? "border border-sky-300/30 bg-sky-500/15 text-sky-50"
-                          : "border border-white/15 bg-white/[0.06] text-ink-muted hover:border-white/25 hover:text-white")
-                      }
-                    >
-                      {opt.label}
-                    </button>
-                  );
-                })}
-              </div>
-              <p className="mt-2 text-xs font-medium text-ink-muted">מידות נפוצות (ליומן)</p>
-              <div className="flex flex-wrap gap-2">
-                {MEASURE_OPTIONS.map((opt) => {
-                  const active = commonMeasures.includes(opt.id);
-                  return (
-                    <button
-                      key={`cm-${opt.id}`}
-                      type="button"
-                      onClick={() =>
-                        setCommonMeasures((prev) => {
-                          const next = prev.includes(opt.id)
-                            ? prev.filter((x) => x !== opt.id)
-                            : [...prev, opt.id];
-                          // Keep default measure always included
-                          const withDefault = next.includes(defaultMeasure)
-                            ? next
-                            : [defaultMeasure, ...next];
-                          return withDefault.slice(0, 4);
-                        })
-                      }
-                      className={
-                        "rounded-full px-3 py-1.5 text-xs font-semibold transition " +
-                        (active
-                          ? "border border-white/20 bg-white/[0.12] text-white"
-                          : "border border-white/15 bg-white/[0.06] text-ink-muted hover:border-white/25 hover:text-white")
-                      }
-                    >
-                      {opt.label}
-                    </button>
-                  );
-                })}
-              </div>
-              <p className="text-[11px] leading-snug text-ink-dim">
-                ביומן יוצגו הכפתורים לפי “מידות נפוצות”. מומלץ 2–4.
-              </p>
-            </div>
-            ) : null}
           </div>
         </section>
 
