@@ -21,6 +21,7 @@ import { db } from "../firebase";
 import { useAuth } from "./AuthContext";
 import { useToast } from "./ToastContext";
 import { normalizeBarcode } from "../utils/openFoodFacts";
+import { catalogProductStorageKey, isPrefixedCatalogId } from "../utils/recipeCatalogId";
 import {
   buildCatalogProductFromOffRecord,
   catalogEntryBlocksOffImport,
@@ -95,6 +96,7 @@ export type CatalogProduct = {
    * Key in the catalog.
    * - Barcode products: normalized digits (EAN/GTIN).
    * - Internal products: "internal:<uuid>".
+   * - MoH recipes: "recipe:<ministryCode>".
    */
   id: string;
   /** Barcode digits when available (EAN/GTIN). */
@@ -107,6 +109,8 @@ export type CatalogProduct = {
   keywords?: string[];
   /** Optional category (e.g. "שימורים"). */
   category?: string;
+  /** Ministry of Health food code when id is recipe:*. */
+  ministryCode?: number;
   /** How this item is typically used (supports multiple tags). */
   usageTags?: CatalogUsageTag[];
   /** Are nutrition values per 100g or per 100ml (as on label). */
@@ -203,6 +207,7 @@ type CatalogContextValue = {
     brand?: string;
     keywords?: string[];
     category?: string;
+    ministryCode?: number;
     usageTags?: CatalogUsageTag[];
     per100Basis?: CatalogPer100Basis;
     defaultMeasure?: CatalogMeasureKey;
@@ -578,6 +583,7 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
       unitsPerPack?: number;
       measures?: CatalogMeasures;
       sourceType: CatalogSourceType;
+      ministryCode?: number;
     }) => {
       if (!user) {
         showToast("צריך להתחבר כדי לשמור לקטלוג", "error");
@@ -585,11 +591,12 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
       }
 
       const id = input.id.trim();
-      if (!id || !id.startsWith("internal:")) {
-        showToast("מזהה פנימי לא תקין", "error");
+      if (!id || !isPrefixedCatalogId(id)) {
+        showToast("מזהה פנימי/מתכון לא תקין", "error");
         return;
       }
 
+      const existing = catalog.find((p) => p.id === id);
       const now = new Date().toISOString();
       const units =
         typeof input.unitsPerPack === "number" && input.unitsPerPack > 0
@@ -613,6 +620,9 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
         keywords:
           input.keywords?.filter((k) => k.trim()).map((k) => k.trim()) ?? undefined,
         category: input.category?.trim() || undefined,
+        ...(input.ministryCode != null && input.ministryCode > 0
+          ? { ministryCode: input.ministryCode }
+          : {}),
         usageTags: input.usageTags?.length ? input.usageTags : undefined,
         per100Basis: input.per100Basis ?? "g",
         defaultMeasure: input.defaultMeasure ?? inferredDefaultMeasure,
@@ -621,9 +631,11 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
           : (Array.from(
               new Set<CatalogMeasureKey>([input.defaultMeasure ?? inferredDefaultMeasure, "unit", "g100"]),
             ).slice(0, 4) as CatalogMeasureKey[]),
-        createdAt: now,
+        createdAt: existing?.createdAt ?? now,
         updatedAt: now,
-        sources: [{ type: input.sourceType, at: now }],
+        sources: existing?.sources?.length
+          ? [...existing.sources, { type: input.sourceType, at: now }]
+          : [{ type: input.sourceType, at: now }],
         package: {
           totalWeightG: totalW,
           unitsPerPack: units,
@@ -647,7 +659,7 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
       );
       showToast("נשמר לקטלוג", "success");
     },
-    [user, showToast],
+    [user, catalog, showToast],
   );
 
   const updateProduct = useCallback(
@@ -657,10 +669,7 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
         return;
       }
       const now = new Date().toISOString();
-      const key =
-        product.id?.startsWith("internal:")
-          ? product.id
-          : normalizeBarcode(product.gtin ?? product.id);
+      const key = catalogProductStorageKey(product);
       if (!key) {
         showToast("מזהה מוצר לא תקין", "error");
         return;
@@ -697,11 +706,8 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
         const now = new Date().toISOString();
         const updates: Record<string, CatalogProduct> = {};
         for (const p of chunk) {
-          const key =
-            p.id?.startsWith("internal:")
-              ? p.id
-              : normalizeBarcode(p.gtin ?? p.id);
-          if (!key || key.length < 6) continue;
+          const key = catalogProductStorageKey(p);
+          if (!key || (key.length < 6 && !isPrefixedCatalogId(key))) continue;
           updates[`${basePath}/${key}`] = cleanForRtdb({ ...p, id: key, updatedAt: now });
         }
         if (Object.keys(updates).length > 0) {
@@ -752,10 +758,8 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
 
       const existingById = new Map<string, CatalogProduct>();
       for (const p of catalog) {
-        const key = p.id.startsWith("internal:")
-          ? p.id
-          : normalizeBarcode(p.gtin ?? p.id);
-        if (key.length >= 6) existingById.set(key, p);
+        const key = catalogProductStorageKey(p);
+        if (key.length >= 6 || isPrefixedCatalogId(key)) existingById.set(key, p);
       }
       const pendingSnap = await get(
         ref(db, `users/${user.uid}/catalog/offPendingReview`),
@@ -1101,8 +1105,8 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
       const chunk = toRemove.slice(i, i + chunkSize);
       const updates: Record<string, null> = {};
       for (const p of chunk) {
-        const key = p.id.startsWith("internal:") ? p.id : normalizeBarcode(p.gtin ?? p.id);
-        if (key.length >= 6) updates[`${base}/${key}`] = null;
+        const key = catalogProductStorageKey(p);
+        if (key.length >= 6 || isPrefixedCatalogId(key)) updates[`${base}/${key}`] = null;
       }
       if (Object.keys(updates).length > 0) await update(ref(db), updates);
     }
@@ -1182,7 +1186,7 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
         showToast("צריך להתחבר כדי למחוק", "error");
         return;
       }
-      const key = id.startsWith("internal:") ? id : normalizeBarcode(id);
+      const key = isPrefixedCatalogId(id) ? id : normalizeBarcode(id);
       if (!key) {
         showToast("מזהה לא תקין", "error");
         return;

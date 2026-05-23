@@ -28,6 +28,11 @@ import {
   type CatalogEditFocus,
 } from "../utils/catalogEditDraftApply";
 import { catalogProductPortionHint } from "../utils/verifiedMeasures";
+import { isPrefixedCatalogId, isRecipeCatalogId } from "../utils/recipeCatalogId";
+
+function isNonBarcodeProduct(p: CatalogProduct): boolean {
+  return isPrefixedCatalogId(p.id);
+}
 
 function matchProduct(p: CatalogProduct, q: string): boolean {
   const s = q.trim().toLowerCase();
@@ -110,7 +115,9 @@ function productToDraft(p: CatalogProduct): EditDraft {
   const per = p.nutrition?.per100g;
   const tags = (p.usageTags as UsageTag[] | undefined) ?? [];
   const basis = (p.per100Basis as "g" | "ml" | undefined) ?? "g";
-  const dm = (p.defaultMeasure as MeasureKey | undefined) ?? (p.id.startsWith("internal:") ? "g100" : "unit");
+  const dm =
+    (p.defaultMeasure as MeasureKey | undefined) ??
+    (isNonBarcodeProduct(p) ? "g100" : "unit");
   const cmRaw = (p.commonMeasures as MeasureKey[] | undefined) ?? [dm, "g100"];
   const cm = Array.from(new Set([dm, ...cmRaw])).slice(0, 4);
   return {
@@ -120,7 +127,11 @@ function productToDraft(p: CatalogProduct): EditDraft {
     shortName: p.shortName ?? "",
     brand: p.brand ?? "",
     keywords: (p.keywords ?? []).join(", "),
-    usageTags: tags.length ? tags : p.id.startsWith("internal:") ? ["ingredient"] : ["ready"],
+    usageTags:
+      tags.length ? tags
+      : isRecipeCatalogId(p.id) ? ["cooked"]
+      : p.id.startsWith("internal:") ? ["ingredient"]
+      : ["ready"],
     category: p.category ?? "",
     per100Basis: basis,
     defaultMeasure: dm,
@@ -146,7 +157,11 @@ function sourceLabel(p: CatalogProduct): string {
   if (types.includes("verified100")) parts.push("מאומת");
   if (types.includes("manual")) parts.push("ידני");
   if (types.includes("ocr")) parts.push("OCR");
-  if (parts.length === 0) return p.id.startsWith("internal:") ? "פנימי" : "—";
+  if (parts.length === 0) {
+    if (isRecipeCatalogId(p.id)) return "מתכון MoH";
+    if (p.id.startsWith("internal:")) return "פנימי";
+    return "—";
+  }
   return parts.join(" + ");
 }
 
