@@ -15,8 +15,11 @@ import {
   parseVerifiedTsv,
   scoreVerifiedMatch,
   stableId,
+  VERIFIED_AUTO_APPLY_MIN_SCORE,
   type Verified100Row,
 } from "../utils/verifiedTsv";
+import { fetchMinistryVerifiedRows } from "../utils/ministryNutrition";
+import { verifiedHasPortions } from "../utils/verifiedMeasures";
 
 export type Verified100Item = Verified100Row & {
   id: string;
@@ -34,6 +37,7 @@ type Verified100ContextValue = {
   pauseCloudSync: () => void;
   resumeCloudSync: () => void;
   importTsv: (file: File) => Promise<void>;
+  syncFromMinistry: (opts?: { signal?: AbortSignal }) => Promise<{ written: number; enriched: number }>;
   findBestMatch: (q: { name: string; brand?: string }) => Verified100Item | null;
   findMatches: (q: { name: string; brand?: string }, opts?: { limit?: number }) => Verified100Item[];
 };
@@ -203,6 +207,104 @@ export function Verified100Provider({ children }: { children: ReactNode }) {
     [user, showToast],
   );
 
+  const syncFromMinistry = useCallback(
+    async (opts?: { signal?: AbortSignal }) => {
+      if (!user) {
+        showToast("צריך להתחבר כדי לסנכרן", "error");
+        return { written: 0, enriched: 0 };
+      }
+      try {
+        showToast("מסנכרן מאגר משרד הבריאות (תזונה + מידות)…", "success");
+        const ministryRows = await fetchMinistryVerifiedRows(opts?.signal);
+        const now = new Date().toISOString();
+        const basePath = `users/${user.uid}/verified100/items`;
+        const baseRef = ref(db, basePath);
+        const chunkSize = 200;
+        let written = 0;
+        let enriched = 0;
+
+        const enrichUpdates: Record<string, unknown> = {};
+        for (const existing of items) {
+          if (existing.id.startsWith("moh:")) continue;
+          let best: (typeof ministryRows)[number] | null = null;
+          let bestScore = 0;
+          for (const m of ministryRows) {
+            const s = scoreVerifiedMatch(m, { name: existing.name, brand: existing.brand });
+            if (s > bestScore) {
+              bestScore = s;
+              best = m;
+            }
+          }
+          if (!best || bestScore < VERIFIED_AUTO_APPLY_MIN_SCORE || !verifiedHasPortions(best)) {
+            continue;
+          }
+          const patch: Verified100Item = {
+            ...existing,
+            updatedAt: now,
+            ministryCode: best.ministryCode,
+            ...(best.unitWeightG ? { unitWeightG: best.unitWeightG } : {}),
+            ...(best.packWeightG ? { packWeightG: best.packWeightG } : {}),
+            ...(best.unitsPerPack ? { unitsPerPack: best.unitsPerPack } : {}),
+            ...(best.measures ? { measures: best.measures } : {}),
+          };
+          enrichUpdates[existing.id] = cleanForRtdb(patch);
+          enriched += 1;
+        }
+
+        if (Object.keys(enrichUpdates).length > 0) {
+          const ids = Object.keys(enrichUpdates);
+          for (let i = 0; i < ids.length; i += chunkSize) {
+            const chunkIds = ids.slice(i, i + chunkSize);
+            const updates: Record<string, unknown> = {};
+            for (const id of chunkIds) updates[id] = enrichUpdates[id];
+            await update(baseRef, updates);
+          }
+        }
+
+        for (let i = 0; i < ministryRows.length; i += chunkSize) {
+          const chunk = ministryRows.slice(i, i + chunkSize);
+          const updates: Record<string, unknown> = {};
+          for (const row of chunk) {
+            const id = `moh:${row.ministryCode}`;
+            const item: Verified100Item = {
+              id,
+              name: row.name,
+              createdAt: now,
+              updatedAt: now,
+              ministryCode: row.ministryCode,
+              ...(row.protein100 != null ? { protein100: row.protein100 } : {}),
+              ...(row.fat100 != null ? { fat100: row.fat100 } : {}),
+              ...(row.carbs100 != null ? { carbs100: row.carbs100 } : {}),
+              ...(row.calories100 != null ? { calories100: row.calories100 } : {}),
+              ...(row.unitWeightG ? { unitWeightG: row.unitWeightG } : {}),
+              ...(row.packWeightG ? { packWeightG: row.packWeightG } : {}),
+              ...(row.unitsPerPack ? { unitsPerPack: row.unitsPerPack } : {}),
+              ...(row.measures ? { measures: row.measures } : {}),
+            };
+            updates[id] = cleanForRtdb(item);
+          }
+          await update(baseRef, updates);
+          written += chunk.length;
+        }
+
+        showToast(
+          `סנכרון משרד הבריאות — ${written.toLocaleString("he-IL")} מצרכים, ${enriched.toLocaleString("he-IL")} פריטים קיימים הועשרו במידות`,
+          "success",
+        );
+        return { written, enriched };
+      } catch (e) {
+        if (e instanceof DOMException && e.name === "AbortError") {
+          showToast("סנכרון משרד הבריאות הופסק", "error");
+          return { written: 0, enriched: 0 };
+        }
+        const message = e instanceof Error && e.message ? e.message : "שגיאה בסנכרון";
+        showToast(`סנכרון נכשל: ${message}`, "error");
+        return { written: 0, enriched: 0 };
+      }
+    },
+    [user, items, showToast],
+  );
+
   const findBestMatch = useCallback(
     (q: { name: string; brand?: string }) => {
       if (!q.name.trim() || items.length === 0) return null;
@@ -241,6 +343,7 @@ export function Verified100Provider({ children }: { children: ReactNode }) {
       pauseCloudSync,
       resumeCloudSync,
       importTsv,
+      syncFromMinistry,
       findBestMatch,
       findMatches,
     }),
@@ -253,6 +356,7 @@ export function Verified100Provider({ children }: { children: ReactNode }) {
       pauseCloudSync,
       resumeCloudSync,
       importTsv,
+      syncFromMinistry,
       findBestMatch,
       findMatches,
     ],

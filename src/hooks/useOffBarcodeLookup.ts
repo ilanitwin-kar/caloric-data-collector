@@ -6,6 +6,9 @@ import { fetchOpenFoodFactsProduct } from "../utils/openFoodFacts";
 import { offDataToFormValues } from "../utils/offFormFill";
 import { findBestVerifiedForOff, type OffVerifiedLinkMeta } from "../utils/offCatalog";
 import { stableId } from "../utils/verifiedTsv";
+import { verifiedHasPortions, verifiedRowToPickPortions } from "../utils/verifiedMeasures";
+
+type MeasureKey = "unit" | "tbsp" | "tsp" | "cup" | "g100";
 
 export type OffBarcodeFormSetters = {
   setName: (v: string) => void;
@@ -19,6 +22,12 @@ export type OffBarcodeFormSetters = {
   setTotalWeightG: (v: string) => void;
   setUnitsPerPack: (v: string) => void;
   setUnitWeightG: (v: string) => void;
+  setUnitsPer100g?: (v: string) => void;
+  setTbspPer100g?: (v: string) => void;
+  setTspPer100g?: (v: string) => void;
+  setCupsPer100g?: (v: string) => void;
+  setCommonMeasures?: (v: MeasureKey[]) => void;
+  setDefaultMeasure?: (v: MeasureKey) => void;
   setVerifiedPicked?: (v: boolean) => void;
   setVerifiedPickedSig?: (v: string | null) => void;
 };
@@ -118,6 +127,26 @@ export function useOffBarcodeLookup({
           s.setTotalWeightG(form.totalWeightG);
           s.setUnitsPerPack(form.unitsPerPack);
           s.setUnitWeightG(form.unitWeightG);
+
+          if (verifiedHit && verifiedHasPortions(verifiedHit.item)) {
+            const portions = verifiedRowToPickPortions(verifiedHit.item);
+            if (portions.measures?.unitsPer100g != null) {
+              s.setUnitsPer100g?.(String(portions.measures.unitsPer100g));
+            }
+            if (portions.measures?.tbspPer100g != null) {
+              s.setTbspPer100g?.(String(portions.measures.tbspPer100g));
+            }
+            if (portions.measures?.tspPer100g != null) {
+              s.setTspPer100g?.(String(portions.measures.tspPer100g));
+            }
+            if (portions.measures?.cupsPer100g != null) {
+              s.setCupsPer100g?.(String(portions.measures.cupsPer100g));
+            }
+            if (portions.commonMeasures?.length) {
+              s.setCommonMeasures?.(portions.commonMeasures.slice(0, 4) as MeasureKey[]);
+            }
+            if (portions.defaultMeasure) s.setDefaultMeasure?.(portions.defaultMeasure as MeasureKey);
+          }
 
           if (form.fromVerified && s.setVerifiedPicked && s.setVerifiedPickedSig) {
             const sig = `${form.name}|${form.brand}||`;

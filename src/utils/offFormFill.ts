@@ -1,6 +1,7 @@
 import { fmt1 } from "./number";
 import type { OpenFoodFactsProduct } from "./openFoodFacts";
 import type { Verified100Row } from "./verifiedTsv";
+import { verifiedHasPortions, verifiedRowToPickPortions } from "./verifiedMeasures";
 
 /** True when OFF quantity text suggests liquid (ml / liter). */
 export function offProductIsPerMl(off: {
@@ -46,6 +47,19 @@ export function offDataToFormValues(
       unitsPerPack = "1";
       unitWeightG = fmt1(quantityG);
     }
+  }
+
+  if (verified && verifiedHasPortions(verified)) {
+    const portions = verifiedRowToPickPortions(verified);
+    if (portions.packWeightG != null) {
+      totalWeightG = fmt1(portions.packWeightG);
+    } else if (portions.unitWeightG != null) {
+      totalWeightG = fmt1(portions.unitWeightG);
+      unitsPerPack = "1";
+      unitWeightG = fmt1(portions.unitWeightG);
+    }
+    if (portions.unitsPerPack != null) unitsPerPack = String(portions.unitsPerPack);
+    if (portions.unitWeightG != null) unitWeightG = fmt1(portions.unitWeightG);
   }
 
   const n = (v: number | undefined) =>

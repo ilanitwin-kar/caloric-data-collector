@@ -1,3 +1,10 @@
+export type VerifiedPortionMeasures = {
+  unitsPer100g?: number;
+  tbspPer100g?: number;
+  tspPer100g?: number;
+  cupsPer100g?: number;
+};
+
 export type Verified100Row = {
   category?: string;
   brand?: string;
@@ -6,6 +13,12 @@ export type Verified100Row = {
   fat100?: number;
   carbs100?: number;
   calories100?: number;
+  /** Ministry of Health food code (data.gov.il). */
+  ministryCode?: number;
+  unitWeightG?: number;
+  packWeightG?: number;
+  unitsPerPack?: number;
+  measures?: VerifiedPortionMeasures;
 };
 
 function normalizeHeader(s: string): string {

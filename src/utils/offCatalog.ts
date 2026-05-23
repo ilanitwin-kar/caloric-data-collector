@@ -12,6 +12,7 @@ import {
   VERIFIED_AUTO_APPLY_MIN_SCORE,
   type Verified100Row,
 } from "./verifiedTsv";
+import { enrichProductFromVerified } from "./verifiedMeasures";
 
 export function catalogEntryBlocksOffImport(existing: CatalogProduct | undefined): boolean {
   if (!existing) return false;
@@ -151,7 +152,7 @@ export function buildCatalogProductFromOff(input: OffCatalogBuildInput): OffCata
     verifiedHit?.item.category?.trim() ||
     (off.categoriesText?.split(",")[0]?.trim() ?? undefined);
 
-  const product: CatalogProduct = {
+  let product: CatalogProduct = {
     id: gtin,
     gtin,
     name: verifiedHit?.item.name.trim() || name,
@@ -195,6 +196,10 @@ export function buildCatalogProductFromOff(input: OffCatalogBuildInput): OffCata
           : undefined,
     },
   };
+
+  if (verifiedHit) {
+    product = enrichProductFromVerified(product, verifiedHit.item);
+  }
 
   return {
     product,
