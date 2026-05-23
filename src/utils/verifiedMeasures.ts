@@ -26,6 +26,7 @@ function computePerUnit(
 
 function unitWeightFromVerified(v: Verified100Row): number | undefined {
   if (v.unitWeightG != null && v.unitWeightG > 0) return v.unitWeightG;
+  if (v.servingWeightG != null && v.servingWeightG > 0) return v.servingWeightG;
   const u = v.measures?.unitsPer100g;
   if (u != null && u > 0) return 100 / u;
   return undefined;

@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { MinistryRecipesPanel } from "../components/MinistryRecipesPanel";
 import { useNavigate } from "react-router-dom";
 import {
   OffVerifiedComparePanel,
@@ -397,6 +398,7 @@ function CollapsibleReviewSection({
 }
 
 export function PendingOffReview() {
+  const navigate = useNavigate();
   const { user } = useAuth();
   const { offPendingReviews, offPendingReady, catalog } = useCatalog();
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -569,6 +571,16 @@ export function PendingOffReview() {
           )}
         </div>
       )}
+
+      {user && offPendingReady ? (
+        <MinistryRecipesPanel
+          onOpenEdit={(sug) => {
+            if (sug.ministryCode != null) {
+              navigate(`/?mohRecipe=${sug.ministryCode}`);
+            }
+          }}
+        />
+      ) : null}
     </div>
   );
 }

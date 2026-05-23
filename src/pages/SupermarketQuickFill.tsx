@@ -101,7 +101,7 @@ export function SupermarketQuickFill() {
   const { tripId } = useParams<{ tripId: string }>();
   const { user } = useAuth();
   const { catalog, supermarketTrips, supermarketTripsReady, addSupermarketDraft } = useCatalog();
-  const { findMatches, items: verifiedItems } = useVerified100();
+  const { findScoredMatches, items: verifiedItems } = useVerified100();
 
   const locState = (location.state as { tripName?: string; tripCategory?: string } | null) ?? null;
 
@@ -241,9 +241,12 @@ export function SupermarketQuickFill() {
       return;
     }
     const qName = n;
-    const matches = findMatches({ name: qName, brand: brand.trim() || undefined }, { limit: 12 });
+    const scored = findScoredMatches(
+      { name: qName, brand: brand.trim() || undefined },
+      { limit: 12, source: "tsv" },
+    );
     setVerifiedSuggestions(
-      matches.map((m) => ({
+      scored.map(({ item: m, score }) => ({
         name: m.name,
         brand: m.brand,
         category: m.category,
@@ -255,11 +258,12 @@ export function SupermarketQuickFill() {
         packWeightG: m.packWeightG,
         unitsPerPack: m.unitsPerPack,
         measures: m.measures,
+        matchScore: score,
         ...verifiedRowToPickPortions(m),
       })),
     );
     setVerifiedOffset(0);
-  }, [name, brand, findMatches, verifiedPickedSig, isAlreadyInCatalog, per100Basis]);
+  }, [name, brand, findScoredMatches, verifiedPickedSig, isAlreadyInCatalog, per100Basis]);
 
   const visibleVerifiedSuggestions = useMemo(
     () => verifiedSuggestions.slice(verifiedOffset, verifiedOffset + 4),
