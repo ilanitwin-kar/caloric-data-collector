@@ -7,8 +7,63 @@ import {
 import { useAuth } from "../context/AuthContext";
 import { useCatalog } from "../context/CatalogContext";
 import type { OffPendingReview } from "../utils/offCatalog";
+import {
+  catalogProductPortionHint,
+  catalogProductPortionLevel,
+} from "../utils/verifiedMeasures";
 
 const PAGE_SIZE = 25;
+
+type PortionFilter = "all" | "has" | "missing" | "packageOnly";
+
+function matchesPortionFilter(item: OffPendingReview, filter: PortionFilter): boolean {
+  if (filter === "all") return true;
+  const level = catalogProductPortionLevel(item);
+  if (filter === "has") return level === "full";
+  if (filter === "packageOnly") return level === "packageOnly";
+  return level !== "full";
+}
+
+function PortionStatusBadge({ item }: { item: OffPendingReview }) {
+  const level = catalogProductPortionLevel(item);
+  const hint = catalogProductPortionHint(item);
+  const needsEdit =
+    level !== "full" && Boolean(item.offReviewMeta.verifiedLink);
+
+  if (level === "full") {
+    return (
+      <span
+        className="shrink-0 rounded-md border border-emerald-400/35 bg-emerald-500/10 px-1.5 py-0.5 text-[9px] font-semibold text-emerald-100"
+        title={hint ?? undefined}
+      >
+        מידות ✓{hint ? ` · ${hint}` : ""}
+      </span>
+    );
+  }
+  if (level === "packageOnly") {
+    return (
+      <span
+        className="shrink-0 rounded-md border border-amber-400/35 bg-amber-500/10 px-1.5 py-0.5 text-[9px] font-semibold text-amber-100"
+        title={hint ?? undefined}
+      >
+        אריזה OFF{hint ? ` · ${hint}` : ""}
+      </span>
+    );
+  }
+  return (
+    <span
+      className={
+        "shrink-0 rounded-md border px-1.5 py-0.5 text-[9px] font-semibold " +
+        (needsEdit ?
+          "border-rose-400/35 bg-rose-500/10 text-rose-100"
+        : "border-white/15 bg-white/[0.04] text-ink-muted")
+      }
+      title={needsEdit ? "יש התאמה מאומתת — ערכי לפני אישור כדי למלא מידות" : undefined}
+    >
+      {needsEdit ? "חסרות מידות" : "ללא מידות"}
+    </span>
+  );
+}
 
 function matchesSearch(item: OffPendingReview, query: string): boolean {
   const q = query.trim().toLowerCase();
@@ -32,6 +87,11 @@ function matchesSearch(item: OffPendingReview, query: string): boolean {
 
 function sortWithMatch(items: OffPendingReview[]): OffPendingReview[] {
   return [...items].sort((a, b) => {
+    const levelA = catalogProductPortionLevel(a);
+    const levelB = catalogProductPortionLevel(b);
+    const missingA = levelA !== "full" ? 1 : 0;
+    const missingB = levelB !== "full" ? 1 : 0;
+    if (missingB !== missingA) return missingB - missingA;
     const sa = a.offReviewMeta.verifiedLink?.matchScore ?? 0;
     const sb = b.offReviewMeta.verifiedLink?.matchScore ?? 0;
     if (sb !== sa) return sb - sa;
@@ -73,6 +133,8 @@ function OffReviewRow({
   const offName = item.offReviewMeta.offName || item.name;
   const offBrand = item.offReviewMeta.offBrand || item.brand;
   const nutrition = offReviewNutritionSources(item);
+  const portionLevel = catalogProductPortionLevel(item);
+  const needsPortionEdit = portionLevel !== "full" && Boolean(link);
 
   return (
     <div
@@ -110,15 +172,28 @@ function OffReviewRow({
             </p>
           )}
         </button>
-        {inCatalog ? (
-          <span className="shrink-0 rounded-md border border-amber-400/30 bg-amber-500/10 px-1.5 py-0.5 text-[9px] font-semibold text-amber-100">
-            במאגר
-          </span>
-        ) : null}
+        <div className="flex shrink-0 flex-wrap items-center justify-end gap-1">
+          <PortionStatusBadge item={item} />
+          {inCatalog ? (
+            <span className="rounded-md border border-amber-400/30 bg-amber-500/10 px-1.5 py-0.5 text-[9px] font-semibold text-amber-100">
+              במאגר
+            </span>
+          ) : null}
+        </div>
       </div>
 
       {expanded ? (
         <div className="border-t border-white/10 px-3 pb-3 pt-2 space-y-3">
+          {needsPortionEdit ? (
+            <p className="rounded-lg border border-rose-400/25 bg-rose-500/[0.07] px-2.5 py-2 text-[11px] leading-relaxed text-rose-100/95">
+              יש התאמה למאגר המאומת אבל חסרות מידות (יחידה/כף/כוס). לחצי «ערוך ובדוק», בחרי הצעה
+              מהמאגר — ואז «הוסף למאגר».
+            </p>
+          ) : portionLevel === "packageOnly" ? (
+            <p className="rounded-lg border border-amber-400/25 bg-amber-500/[0.07] px-2.5 py-2 text-[11px] leading-relaxed text-amber-100/95">
+              יש משקל אריזה מ־OFF בלבד. ליחידה/כף/כוס — «ערוך ובדוק» ובחרי הצעה מהמאגר המאומת.
+            </p>
+          ) : null}
           <OffVerifiedComparePanel
             gtin={item.gtin ?? item.id}
             link={link}
@@ -135,7 +210,11 @@ function OffReviewRow({
               onClick={() => navigate(`/?offReview=${encodeURIComponent(item.id)}`)}
               className="min-h-[40px] flex-1 rounded-xl border border-white/20 px-3 py-2 text-xs font-semibold text-white hover:border-white/35"
             >
-              {withMatch ? "ערוך ובדוק" : "ערוך — חפש במאגר"}
+              {needsPortionEdit ?
+                "ערוך למידות (מאגר)"
+              : withMatch ?
+                "ערוך ובדוק"
+              : "ערוך — חפש במאגר"}
             </button>
             <button
               type="button"
@@ -206,6 +285,29 @@ function OffReviewRow({
   );
 }
 
+function countPortionLevels(items: OffPendingReview[]) {
+  let full = 0;
+  let packageOnly = 0;
+  let none = 0;
+  for (const item of items) {
+    const level = catalogProductPortionLevel(item);
+    if (level === "full") full += 1;
+    else if (level === "packageOnly") packageOnly += 1;
+    else none += 1;
+  }
+  return { full, packageOnly, none };
+}
+
+function portionSummaryText(stats: ReturnType<typeof countPortionLevels>): string {
+  const parts: string[] = [];
+  if (stats.full > 0) parts.push(`${stats.full.toLocaleString("he-IL")} עם מידות`);
+  if (stats.packageOnly > 0) {
+    parts.push(`${stats.packageOnly.toLocaleString("he-IL")} אריזה OFF בלבד`);
+  }
+  if (stats.none > 0) parts.push(`${stats.none.toLocaleString("he-IL")} ללא מידות`);
+  return parts.join(" · ");
+}
+
 function CollapsibleReviewSection({
   title,
   subtitle,
@@ -233,6 +335,8 @@ function CollapsibleReviewSection({
 
   if (items.length === 0) return null;
 
+  const portionStats = countPortionLevels(items);
+
   return (
     <details
       className={
@@ -254,6 +358,7 @@ function CollapsibleReviewSection({
               {title} ({items.length.toLocaleString("he-IL")})
             </h2>
             <p className="mt-0.5 text-[11px] leading-relaxed text-ink-muted">{subtitle}</p>
+            <p className="mt-1 text-[10px] text-ink-dim">{portionSummaryText(portionStats)}</p>
           </div>
           <span className="shrink-0 text-[10px] text-ink-dim group-open:rotate-180 transition pt-1">
             ▼
@@ -296,6 +401,7 @@ export function PendingOffReview() {
   const { offPendingReviews, offPendingReady, catalog } = useCatalog();
   const [busyId, setBusyId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
+  const [portionFilter, setPortionFilter] = useState<PortionFilter>("all");
 
   const catalogIds = useMemo(
     () => new Set(catalog.map((p) => p.gtin ?? p.id)),
@@ -305,11 +411,23 @@ export function PendingOffReview() {
   const totals = useMemo(() => {
     let withMatch = 0;
     let withoutMatch = 0;
+    let full = 0;
+    let packageOnly = 0;
+    let none = 0;
+    let matchMissingPortions = 0;
     for (const item of offPendingReviews) {
-      if (item.offReviewMeta.verifiedLink) withMatch += 1;
-      else withoutMatch += 1;
+      if (item.offReviewMeta.verifiedLink) {
+        withMatch += 1;
+        if (catalogProductPortionLevel(item) !== "full") matchMissingPortions += 1;
+      } else {
+        withoutMatch += 1;
+      }
+      const level = catalogProductPortionLevel(item);
+      if (level === "full") full += 1;
+      else if (level === "packageOnly") packageOnly += 1;
+      else none += 1;
     }
-    return { withMatch, withoutMatch };
+    return { withMatch, withoutMatch, full, packageOnly, none, matchMissingPortions };
   }, [offPendingReviews]);
 
   const { withVerifiedMatch, withoutVerifiedMatch, totalFiltered } = useMemo(() => {
@@ -317,6 +435,7 @@ export function PendingOffReview() {
     const withoutVerifiedMatch: OffPendingReview[] = [];
     for (const item of offPendingReviews) {
       if (!matchesSearch(item, search)) continue;
+      if (!matchesPortionFilter(item, portionFilter)) continue;
       if (item.offReviewMeta.verifiedLink) withVerifiedMatch.push(item);
       else withoutVerifiedMatch.push(item);
     }
@@ -325,7 +444,7 @@ export function PendingOffReview() {
       withoutVerifiedMatch: sortWithoutMatch(withoutVerifiedMatch),
       totalFiltered: withVerifiedMatch.length + withoutVerifiedMatch.length,
     };
-  }, [offPendingReviews, search]);
+  }, [offPendingReviews, search, portionFilter]);
 
   const totalPending = offPendingReviews.length;
 
@@ -336,7 +455,8 @@ export function PendingOffReview() {
           בדיקת OFF
         </p>
         <p className="text-[13px] leading-relaxed text-ink-muted sm:text-sm">
-          שתי קבוצות מקופלות — פתחי רק את מה שעובדים עליו. שורה אחת למוצר; «פרטים» לשוואה מלאה.
+          שתי קבוצות מקופלות — תגית מידות בכל שורה. פריטים עם התאמה מאומתת אבל בלי מידות מופיעים
+          ראשונים; «ערוך למידות» לפני «הוסף למאגר».
         </p>
       </header>
 
@@ -364,6 +484,50 @@ export function PendingOffReview() {
                 {totals.withoutMatch.toLocaleString("he-IL")} OFF בלבד
               </p>
             ) : null}
+            {!search.trim() ? (
+              <p className="mt-1">
+                <span className="text-emerald-200/90">
+                  {totals.full.toLocaleString("he-IL")} עם מידות
+                </span>
+                {" · "}
+                <span className="text-amber-200/90">
+                  {totals.packageOnly.toLocaleString("he-IL")} אריזה OFF בלבד
+                </span>
+                {" · "}
+                <span className="text-ink-dim">{totals.none.toLocaleString("he-IL")} ללא מידות</span>
+              </p>
+            ) : null}
+            {!search.trim() && totals.matchMissingPortions > 0 ? (
+              <p className="mt-1 text-rose-200/90">
+                {totals.matchMissingPortions.toLocaleString("he-IL")} עם התאמה מאומתת אך חסרות מידות —
+                עדיפות ל«ערוך למידות»
+              </p>
+            ) : null}
+          </div>
+
+          <div className="flex flex-wrap gap-2" role="group" aria-label="סינון לפי מידות">
+            {(
+              [
+                ["all", "הכל"],
+                ["has", "עם מידות"],
+                ["missing", "חסרות מידות"],
+                ["packageOnly", "אריזה OFF בלבד"],
+              ] as const
+            ).map(([id, label]) => (
+              <button
+                key={id}
+                type="button"
+                onClick={() => setPortionFilter(id)}
+                className={
+                  "rounded-lg border px-2.5 py-1.5 text-[11px] font-semibold transition " +
+                  (portionFilter === id ?
+                    "border-white/30 bg-white/[0.1] text-white"
+                  : "border-white/10 bg-transparent text-ink-muted hover:border-white/20 hover:text-white")
+                }
+              >
+                {label}
+              </button>
+            ))}
           </div>
 
           <label className="flex flex-col gap-1">
@@ -382,7 +546,7 @@ export function PendingOffReview() {
           ) : (
             <div className="space-y-3">
               <CollapsibleReviewSection
-                key={`with-${search}`}
+                key={`with-${search}-${portionFilter}`}
                 title="התאמה למאגר המאומת"
                 subtitle="השווי OFF מול מאומת לפני אישור. ממוין לפי ציון התאמה."
                 items={withVerifiedMatch}
@@ -392,7 +556,7 @@ export function PendingOffReview() {
                 onBusy={setBusyId}
               />
               <CollapsibleReviewSection
-                key={`without-${search}`}
+                key={`without-${search}-${portionFilter}`}
                 title="ללא התאמה למאגר — OFF בלבד"
                 subtitle="ערכי — שנה שם/מותג לחיפוש במאגר; הברקוד נשאר מ־OFF."
                 items={withoutVerifiedMatch}

@@ -143,3 +143,41 @@ export function verifiedRowToPickPortions(v: Verified100Row): VerifiedPickPortio
           : "g100",
   };
 }
+
+/** Staged / catalog product: unit, spoon, or cup measures (not only package weight). */
+export type CatalogPortionLevel = "full" | "packageOnly" | "none";
+
+type CatalogPortionFields = Pick<CatalogProduct, "package" | "measures">;
+
+export function catalogProductHasPortions(p: CatalogPortionFields): boolean {
+  if (p.package?.unitWeightG != null && p.package.unitWeightG > 0) return true;
+  const m = p.measures;
+  if (!m) return false;
+  return (
+    (m.unitsPer100g ?? 0) > 0 ||
+    (m.tbspPer100g ?? 0) > 0 ||
+    (m.tspPer100g ?? 0) > 0 ||
+    (m.cupsPer100g ?? 0) > 0
+  );
+}
+
+export function catalogProductPortionLevel(p: CatalogPortionFields): CatalogPortionLevel {
+  if (catalogProductHasPortions(p)) return "full";
+  const tw = p.package?.totalWeightG;
+  if (tw != null && tw > 0) return "packageOnly";
+  return "none";
+}
+
+export function catalogProductPortionHint(p: CatalogPortionFields): string | null {
+  const parts: string[] = [];
+  const uw = p.package?.unitWeightG;
+  if (uw != null && uw > 0) parts.push(`יחידה ~${Math.round(uw)}g`);
+  const m = p.measures;
+  if (m?.tbspPer100g && m.tbspPer100g > 0) parts.push("כף");
+  if (m?.tspPer100g && m.tspPer100g > 0) parts.push("כפית");
+  if (m?.cupsPer100g && m.cupsPer100g > 0) parts.push("כוס");
+  if (parts.length > 0) return parts.join(" · ");
+  const tw = p.package?.totalWeightG;
+  if (tw != null && tw > 0) return `אריזה ~${Math.round(tw)}g (OFF)`;
+  return null;
+}
