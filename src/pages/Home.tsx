@@ -14,6 +14,7 @@ import { useVerified100 } from "../context/Verified100Context";
 import { useBodyWeightKg } from "../hooks/useBodyWeightKg";
 import { useOffBarcodeLookup } from "../hooks/useOffBarcodeLookup";
 import { fmt1, parseNum } from "../utils/number";
+import { verifiedRowToPickPortions } from "../utils/verifiedMeasures";
 import { normalizeBarcode } from "../utils/openFoodFacts";
 import type { OffPendingReview, OffVerifiedLinkMeta } from "../utils/offCatalog";
 import { scoreVerifiedMatch, stableId } from "../utils/verifiedTsv";
@@ -199,6 +200,11 @@ export function Home() {
   const [unitWeightG, setUnitWeightG] = useState("");
   const lastPackEditRef = useRef<"units" | "unitWeight" | null>(null);
 
+  const [unitsPer100g, setUnitsPer100g] = useState("");
+  const [tbspPer100g, setTbspPer100g] = useState("");
+  const [tspPer100g, setTspPer100g] = useState("");
+  const [cupsPer100g, setCupsPer100g] = useState("");
+
   const { offLoading, verifiedLink } = useOffBarcodeLookup({
     barcodeDigits,
     enabled: !isInternal,
@@ -216,15 +222,16 @@ export function Home() {
       setTotalWeightG,
       setUnitsPerPack,
       setUnitWeightG,
+      setUnitsPer100g,
+      setTbspPer100g,
+      setTspPer100g,
+      setCupsPer100g,
+      setCommonMeasures,
+      setDefaultMeasure,
       setVerifiedPicked,
       setVerifiedPickedSig,
     },
   });
-
-  const [unitsPer100g, setUnitsPer100g] = useState("");
-  const [tbspPer100g, setTbspPer100g] = useState("");
-  const [tspPer100g, setTspPer100g] = useState("");
-  const [cupsPer100g, setCupsPer100g] = useState("");
 
   const [error, setError] = useState<string | null>(null);
 
@@ -268,6 +275,11 @@ export function Home() {
         protein100: m.protein100,
         carbs100: m.carbs100,
         fat100: m.fat100,
+        unitWeightG: m.unitWeightG,
+        packWeightG: m.packWeightG,
+        unitsPerPack: m.unitsPerPack,
+        measures: m.measures,
+        ...verifiedRowToPickPortions(m),
       })),
     );
     setVerifiedOffset(0);
@@ -537,7 +549,7 @@ export function Home() {
     const keywords = parseKeywords(keywordsRaw);
     const usage = usageTags.length ? usageTags : (isInternal ? (["ingredient"] as UsageTag[]) : (["ready"] as UsageTag[]));
 
-    const totalW = pkg.totalW;
+    const totalW = pkg.totalW ?? pkg.unitW;
     if (!totalW) {
       setError(
         per100Basis === "ml"
@@ -880,6 +892,26 @@ export function Home() {
                 if (sug.protein100 != null) setProt100(String(sug.protein100));
                 if (sug.carbs100 != null) setCarb100(String(sug.carbs100));
                 if (sug.fat100 != null) setFat100(String(sug.fat100));
+                const portions = verifiedRowToPickPortions(sug);
+                if (portions.unitWeightG != null) setUnitWeightG(fmt1(portions.unitWeightG));
+                if (portions.packWeightG != null) setTotalWeightG(fmt1(portions.packWeightG));
+                if (portions.unitsPerPack != null) setUnitsPerPack(String(portions.unitsPerPack));
+                if (portions.measures?.unitsPer100g != null) {
+                  setUnitsPer100g(String(portions.measures.unitsPer100g));
+                }
+                if (portions.measures?.tbspPer100g != null) {
+                  setTbspPer100g(String(portions.measures.tbspPer100g));
+                }
+                if (portions.measures?.tspPer100g != null) {
+                  setTspPer100g(String(portions.measures.tspPer100g));
+                }
+                if (portions.measures?.cupsPer100g != null) {
+                  setCupsPer100g(String(portions.measures.cupsPer100g));
+                }
+                if (portions.commonMeasures?.length) {
+                  setCommonMeasures(portions.commonMeasures.slice(0, 4) as MeasureKey[]);
+                }
+                if (portions.defaultMeasure) setDefaultMeasure(portions.defaultMeasure as MeasureKey);
                 setVerifiedSuggestions([]);
                 setVerifiedOffset(0);
                 if (offReviewItem) {

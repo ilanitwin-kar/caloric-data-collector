@@ -6,7 +6,28 @@ export type VerifiedSuggestionPick = {
   protein100?: number;
   carbs100?: number;
   fat100?: number;
+  unitWeightG?: number;
+  packWeightG?: number;
+  unitsPerPack?: number;
+  measures?: {
+    unitsPer100g?: number;
+    tbspPer100g?: number;
+    tspPer100g?: number;
+    cupsPer100g?: number;
+  };
+  commonMeasures?: ("unit" | "tbsp" | "tsp" | "cup" | "g100")[];
+  defaultMeasure?: "unit" | "tbsp" | "tsp" | "cup" | "g100";
 };
+
+function verifiedPortionHint(sug: VerifiedSuggestionPick): string | null {
+  const parts: string[] = [];
+  if (sug.unitWeightG != null && sug.unitWeightG > 0) {
+    parts.push(`יחידה ~${Math.round(sug.unitWeightG)}g`);
+  }
+  if (sug.measures?.tbspPer100g && sug.measures.tbspPer100g > 0) parts.push("כף");
+  if (sug.measures?.cupsPer100g && sug.measures.cupsPer100g > 0) parts.push("כוס");
+  return parts.length > 0 ? parts.join(" · ") : null;
+}
 
 type VerifiedSuggestionsCollapsibleProps = {
   suggestions: VerifiedSuggestionPick[];
@@ -73,9 +94,13 @@ export function VerifiedSuggestionsCollapsible({
 
         {!verifiedPicked && visibleSuggestions.length > 0 ? (
           <>
-            <p className="text-[11px] text-emerald-100/90">למילוי שם, מותג ותזונה ל־100g — בחרי הצעה:</p>
+            <p className="text-[11px] text-emerald-100/90">
+              למילוי שם, תזונה ל־100g ומידות (יחידה/כף/כוס) — בחרי הצעה:
+            </p>
             <div className="space-y-2">
-              {visibleSuggestions.map((sug, idx) => (
+              {visibleSuggestions.map((sug, idx) => {
+                const portionHint = verifiedPortionHint(sug);
+                return (
                 <div
                   key={`${sug.name}|${sug.brand ?? ""}|${verifiedOffset + idx}`}
                   className="flex flex-wrap items-center gap-2"
@@ -92,9 +117,11 @@ export function VerifiedSuggestionsCollapsible({
                     {sug.brand ? ` · ${sug.brand}` : ""}
                     {sug.category ? ` · ${sug.category}` : ""}
                     {sug.calories100 != null ? ` · ${sug.calories100} קק״ל` : ""}
+                    {portionHint ? ` · ${portionHint}` : ""}
                   </span>
                 </div>
-              ))}
+                );
+              })}
             </div>
             <div className="flex flex-wrap gap-2">
               {verifiedOffset + 4 < suggestions.length ? (

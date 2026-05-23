@@ -45,8 +45,10 @@ export function Settings() {
     purgeOffImportedFromCatalog,
     clearOffImportCheckpoint,
   } = useCatalog();
-  const { items, loading, importTsv } = useVerified100();
+  const { items, loading, importTsv, syncFromMinistry } = useVerified100();
   const [importing, setImporting] = useState(false);
+  const [mohSyncing, setMohSyncing] = useState(false);
+  const mohAbortRef = useRef<AbortController | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const [bodyKgInput, setBodyKgInput] = useState("");
   const [bodySavedAt, setBodySavedAt] = useState<number | null>(null);
@@ -275,7 +277,8 @@ export function Settings() {
         <h2 className="text-sm font-semibold text-white">מאגר מאומת (100g)</h2>
         <p className="mt-1 text-xs text-ink-muted">
           קובץ TSV/CSV (קטגוריה, מותג, שם, חלבון, שומן, פחמימה, קלוריות). משמש להצעות ולעדיפות
-          תזונה בייבוא OFF.
+          תזונה בייבוא OFF. סנכרון משרד הבריאות מוסיף ~4,600 מצרכים עם מידות (יחידה, כף, כוס) — לא
+          מעדכן מוצרים קיימים בקטלוג.
         </p>
         <div className="mt-3 flex flex-wrap items-center gap-2">
           {loading ? (
@@ -296,6 +299,32 @@ export function Settings() {
           >
             {importing ? "מייבא…" : "ייבוא קובץ מאגר"}
           </button>
+          <button
+            type="button"
+            disabled={mohSyncing || importing || !user}
+            onClick={() => {
+              mohAbortRef.current?.abort();
+              const ctrl = new AbortController();
+              mohAbortRef.current = ctrl;
+              setMohSyncing(true);
+              void syncFromMinistry({ signal: ctrl.signal }).finally(() => {
+                if (mohAbortRef.current === ctrl) mohAbortRef.current = null;
+                setMohSyncing(false);
+              });
+            }}
+            className="rounded-xl border border-emerald-400/35 bg-emerald-500/10 px-3 py-2 text-xs font-semibold text-emerald-100 transition disabled:opacity-50 hover:bg-emerald-500/20"
+          >
+            {mohSyncing ? "מסנכרן משרד הבריאות…" : "סנכרן משרד הבריאות"}
+          </button>
+          {mohSyncing ? (
+            <button
+              type="button"
+              className="rounded-xl border border-white/15 bg-transparent px-3 py-2 text-xs font-semibold text-ink-muted hover:border-white/25 hover:text-white"
+              onClick={() => mohAbortRef.current?.abort()}
+            >
+              ביטול
+            </button>
+          ) : null}
           <input
             ref={fileRef}
             type="file"

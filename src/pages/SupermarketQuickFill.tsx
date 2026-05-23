@@ -13,6 +13,7 @@ import { useVerified100 } from "../context/Verified100Context";
 import { useOffBarcodeLookup } from "../hooks/useOffBarcodeLookup";
 import { fmt1, parseNum } from "../utils/number";
 import { normalizeBarcode } from "../utils/openFoodFacts";
+import { verifiedRowToPickPortions } from "../utils/verifiedMeasures";
 
 type MeasureKey = "unit" | "tbsp" | "tsp" | "cup" | "g100";
 type UsageTag = "ready" | "ingredient" | "raw" | "cooked" | "dry";
@@ -250,6 +251,11 @@ export function SupermarketQuickFill() {
         protein100: m.protein100,
         carbs100: m.carbs100,
         fat100: m.fat100,
+        unitWeightG: m.unitWeightG,
+        packWeightG: m.packWeightG,
+        unitsPerPack: m.unitsPerPack,
+        measures: m.measures,
+        ...verifiedRowToPickPortions(m),
       })),
     );
     setVerifiedOffset(0);
@@ -366,7 +372,7 @@ export function SupermarketQuickFill() {
       setError("ברקוד לא תקין (חייב לפחות 8 ספרות).");
       return;
     }
-    const totalW = pkg.totalW;
+    const totalW = pkg.totalW ?? pkg.unitW;
     if (!totalW) {
       setError(per100Basis === "ml" ? "נא להזין נפח כולל של האריזה." : "נא להזין משקל כולל של האריזה.");
       return;
@@ -567,6 +573,14 @@ export function SupermarketQuickFill() {
                   if (sug.protein100 != null) setProt100(String(sug.protein100));
                   if (sug.carbs100 != null) setCarb100(String(sug.carbs100));
                   if (sug.fat100 != null) setFat100(String(sug.fat100));
+                  const portions = verifiedRowToPickPortions(sug);
+                  if (portions.unitWeightG != null) setUnitWeightG(fmt1(portions.unitWeightG));
+                  if (portions.packWeightG != null) setTotalWeightG(fmt1(portions.packWeightG));
+                  if (portions.unitsPerPack != null) setUnitsPerPack(String(portions.unitsPerPack));
+                  if (portions.commonMeasures?.length) {
+                    setCommonMeasures(portions.commonMeasures.slice(0, 4) as MeasureKey[]);
+                  }
+                  if (portions.defaultMeasure) setDefaultMeasure(portions.defaultMeasure as MeasureKey);
                   setVerifiedSuggestions([]);
                   setVerifiedOffset(0);
                 }}
