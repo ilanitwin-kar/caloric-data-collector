@@ -24,6 +24,11 @@ import type { OffPendingReview, OffVerifiedLinkMeta } from "../utils/offCatalog"
 import { scoreVerifiedMatch, stableId } from "../utils/verifiedTsv";
 import type { CatalogNutritionPer100g } from "../context/CatalogContext";
 import { WALKING_MET, walkingStepsToBurnKcal } from "../utils/walkingBurn";
+import {
+  MOH_RECIPE_CATEGORY,
+  mohRecipeCatalogId as buildMohRecipeCatalogId,
+  parseMohRecipeCatalogId,
+} from "../utils/recipeCatalogId";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useToast } from "../context/ToastContext";
 
@@ -90,6 +95,36 @@ function newInternalId(): string {
   return `internal:${uuid}`;
 }
 
+function MohRecipeIdBox({
+  catalogId,
+  ministryCode,
+  onClear,
+}: {
+  catalogId: string;
+  ministryCode: number | null;
+  onClear: () => void;
+}) {
+  return (
+    <div className="rounded-xl border border-amber-400/30 bg-amber-500/10 px-3 py-2.5 space-y-1">
+      <p className="text-xs font-semibold text-amber-100">מתכון משרד הבריאות</p>
+      <p className="font-mono text-xs text-white" dir="ltr">
+        {catalogId}
+      </p>
+      {ministryCode != null ? (
+        <p className="text-[11px] text-amber-100/90">קוד MoH: {ministryCode}</p>
+      ) : null}
+      <p className="text-[10px] text-ink-dim">קטגוריה: {MOH_RECIPE_CATEGORY}</p>
+      <button
+        type="button"
+        className="mt-1 rounded-lg border border-white/15 px-2 py-1 text-[10px] font-semibold text-ink-muted hover:text-white"
+        onClick={onClear}
+      >
+        בטל מצב מתכון
+      </button>
+    </div>
+  );
+}
+
 export function Home() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -119,6 +154,7 @@ export function Home() {
   const [pendingDraftId, setPendingDraftId] = useState<string | null>(null);
   const [isInternal, setIsInternal] = useState(false);
   const [internalId, setInternalId] = useState(() => newInternalId());
+  const [mohRecipeCatalogId, setMohRecipeCatalogId] = useState<string | null>(null);
 
   const [barcodeRaw, setBarcodeRaw] = useState("");
   const barcodeDigits = useMemo(() => normalizeBarcode(barcodeRaw), [barcodeRaw]);
@@ -205,13 +241,15 @@ export function Home() {
         setVerifiedPicked(false);
         setVerifiedPickedSig(null);
       }
-      if (!offReviewItem) {
-        setIsInternal(true);
-        setUsageTags((prev) => {
-          const next = new Set(prev);
-          next.add("cooked");
-          return [...next] as UsageTag[];
-        });
+      setCategory(MOH_RECIPE_CATEGORY);
+      setUsageTags((prev) => {
+        const next = new Set(prev);
+        next.add("cooked");
+        return [...next] as UsageTag[];
+      });
+      if (!offReviewItem && sug.ministryCode != null) {
+        setMohRecipeCatalogId(buildMohRecipeCatalogId(sug.ministryCode));
+        setIsInternal(false);
       }
       showToast(withNutrition ? "מתכון MoH — שם, מידות ותזונה" : "מתכון MoH — שם ומידות", "success");
     },
@@ -283,10 +321,11 @@ export function Home() {
   );
 
   const isAlreadyInCatalog = useMemo(() => {
+    if (mohRecipeCatalogId) return catalog.some((p) => p.id === mohRecipeCatalogId);
     if (isInternal) return catalog.some((p) => p.id === internalId);
     if (!barcodeDigits) return false;
     return catalog.some((p) => p.id === barcodeDigits || p.gtin === barcodeDigits);
-  }, [barcodeDigits, catalog, internalId, isInternal]);
+  }, [barcodeDigits, catalog, internalId, isInternal, mohRecipeCatalogId]);
 
   const existingByBarcode = useMemo(() => {
     if (isInternal) return null;
@@ -352,8 +391,8 @@ export function Home() {
 
   const { offLoading, verifiedLink } = useOffBarcodeLookup({
     barcodeDigits,
-    enabled: !isInternal,
-    skipLookup: isInternal || isAlreadyInCatalog || Boolean(offReviewItem),
+    enabled: !isInternal && !mohRecipeCatalogId,
+    skipLookup: isInternal || Boolean(mohRecipeCatalogId) || isAlreadyInCatalog || Boolean(offReviewItem),
     verifiedItems,
     setters: {
       setName,
@@ -763,7 +802,7 @@ export function Home() {
     const unitWeightG =
       unitW ?? (inferredUnitsPerPack > 0 ? totalW / inferredUnitsPerPack : undefined);
 
-    if (!isInternal) {
+    if (!isInternal && !mohRecipeCatalogId) {
       const bc = barcodeDigits;
       if (!bc || bc.length < 8) {
         setError("ברקוד לא תקין (חייב לפחות 8 ספרות).");
@@ -832,8 +871,14 @@ export function Home() {
       return;
     }
 
+    const saveId = mohRecipeCatalogId ?? internalId;
+    const ministryCodeForSave = mohRecipeCatalogId
+      ? (parseMohRecipeCatalogId(mohRecipeCatalogId) ?? undefined)
+      : undefined;
+
     await upsertInternal({
-      id: internalId,
+      id: saveId,
+      ministryCode: ministryCodeForSave,
       name: n,
       shortName: shortName.trim() || undefined,
       brand: brand.trim() || undefined,
@@ -847,7 +892,7 @@ export function Home() {
       totalWeightG: totalW,
       unitsPerPack: inferredUnitsPerPack,
       measures,
-      sourceType: "manual",
+      sourceType: mohRecipeCatalogId ? "verified100" : "manual",
     });
     if (pendingDraftId) {
       await deleteSupermarketDraft(pendingDraftId);
@@ -925,10 +970,14 @@ export function Home() {
               type="checkbox"
               className="h-4 w-4 rounded border-white/30 bg-black/40"
               checked={isInternal}
+              disabled={Boolean(mohRecipeCatalogId)}
               onChange={(e) => {
                 const next = e.target.checked;
                 setIsInternal(next);
-                if (next) setInternalId(newInternalId());
+                if (next) {
+                  setInternalId(newInternalId());
+                  setMohRecipeCatalogId(null);
+                }
                 setUsageTags(next ? ["ingredient"] : ["ready"]);
                 setDefaultMeasure(next ? "g100" : "unit");
                 setCommonMeasures(next ? ["g100", "unit"] : ["unit", "g100"]);
@@ -937,7 +986,13 @@ export function Home() {
             פריט ללא ברקוד (ירקות/בישול ביתי)
           </label>
 
-          {!isInternal ? (
+          {mohRecipeCatalogId ? (
+            <MohRecipeIdBox
+              catalogId={mohRecipeCatalogId}
+              ministryCode={parseMohRecipeCatalogId(mohRecipeCatalogId)}
+              onClear={() => setMohRecipeCatalogId(null)}
+            />
+          ) : !isInternal ? (
             <div className="space-y-2">
               <Field
                 label="ברקוד"
