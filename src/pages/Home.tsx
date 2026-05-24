@@ -33,6 +33,11 @@ import {
 } from "../utils/recipeCatalogId";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useToast } from "../context/ToastContext";
+import { VoiceDictationWizard } from "../components/VoiceDictationWizard";
+import {
+  nutritionVoiceSteps,
+  PRODUCT_IDENTITY_VOICE_STEPS,
+} from "../constants/voiceWizardSteps";
 
 type UsageTag = "ready" | "ingredient" | "raw" | "cooked" | "dry";
 type MeasureKey = "unit" | "tbsp" | "tsp" | "cup" | "g100";
@@ -443,6 +448,68 @@ export function Home() {
   const [error, setError] = useState<string | null>(null);
 
   const [scannerOpen, setScannerOpen] = useState(false);
+  const [identityVoiceOpen, setIdentityVoiceOpen] = useState(false);
+  const [nutritionVoiceOpen, setNutritionVoiceOpen] = useState(false);
+
+  const nutritionVoiceStepList = useMemo(
+    () =>
+      isMohRecipeEditMode
+        ? nutritionVoiceSteps(per100Basis).slice(0, 4)
+        : nutritionVoiceSteps(per100Basis),
+    [isMohRecipeEditMode, per100Basis],
+  );
+
+  const applyIdentityVoice = useCallback((stepId: string, value: string) => {
+    switch (stepId) {
+      case "name":
+        setName(value);
+        break;
+      case "shortName":
+        setShortName(value);
+        break;
+      case "brand":
+        setBrand(value);
+        break;
+      case "category":
+        setCategory(value);
+        break;
+      case "keywords":
+        setKeywordsRaw(value);
+        break;
+      default:
+        break;
+    }
+  }, []);
+
+  const applyNutritionVoice = useCallback((stepId: string, value: string) => {
+    switch (stepId) {
+      case "kcal100":
+        setKcal100(value);
+        break;
+      case "prot100":
+        setProt100(value);
+        break;
+      case "carb100":
+        setCarb100(value);
+        break;
+      case "fat100":
+        setFat100(value);
+        break;
+      case "totalWeightG":
+        setTotalWeightG(value);
+        break;
+      case "unitsPerPack":
+        lastPackEditRef.current = "units";
+        setUnitsPerPack(value);
+        break;
+      case "unitWeightG":
+        lastPackEditRef.current = "unitWeight";
+        setUnitWeightG(value);
+        break;
+      default:
+        break;
+    }
+  }, []);
   useEffect(() => {
     if (!scannerOpen) return;
     const prev = document.body.style.overflow;
@@ -1080,9 +1147,19 @@ export function Home() {
                 >
                   סרוק ברקוד
                 </button>
-                <div className="flex min-w-[9rem] items-center justify-center rounded-xl border border-white/10 bg-black/30 px-3 text-sm text-ink-muted">
-                  {offLoading ? "טוען OFF…" : barcodeDigits ? `מנורמל: ${barcodeDigits}` : "—"}
-                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setNutritionVoiceOpen(false);
+                    setIdentityVoiceOpen(true);
+                  }}
+                  className="min-h-[44px] flex-1 rounded-xl border border-emerald-400/35 bg-emerald-500/15 text-sm font-semibold text-emerald-50 transition hover:bg-emerald-500/25 active:scale-[0.99]"
+                >
+                  🎤 פרטי מוצר
+                </button>
+              </div>
+              <div className="flex min-h-[44px] items-center justify-center rounded-xl border border-white/10 bg-black/30 px-3 text-sm text-ink-muted">
+                {offLoading ? "טוען OFF…" : barcodeDigits ? `מנורמל: ${barcodeDigits}` : "—"}
               </div>
               {verifiedLink && !offReviewItem ? (
                 <details className="rounded-2xl border border-violet-400/25 bg-violet-500/[0.07]">
@@ -1128,11 +1205,21 @@ export function Home() {
               ) : null}
             </div>
           ) : (
-            <div className="rounded-xl border border-white/10 bg-black/30 px-3 py-2">
+            <div className="rounded-xl border border-white/10 bg-black/30 px-3 py-2 space-y-2">
               <p className="text-sm text-ink-muted">מזהה פנימי</p>
-              <p className="mt-1 font-mono text-sm text-white" dir="ltr">
+              <p className="font-mono text-sm text-white" dir="ltr">
                 {internalId}
               </p>
+              <button
+                type="button"
+                onClick={() => {
+                  setNutritionVoiceOpen(false);
+                  setIdentityVoiceOpen(true);
+                }}
+                className="min-h-[44px] w-full rounded-xl border border-emerald-400/35 bg-emerald-500/15 text-sm font-semibold text-emerald-50 transition hover:bg-emerald-500/25"
+              >
+                🎤 פרטי מוצר
+              </button>
             </div>
           )}
 
@@ -1261,9 +1348,21 @@ export function Home() {
 
         <section className="rounded-2xl border border-white/10 bg-white/[0.03] p-4 space-y-3">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <p className="text-sm font-semibold text-white">
-              {per100Basis === "ml" ? "ל־100 מ״ל" : "ל־100 גרם"}
-            </p>
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="text-sm font-semibold text-white">
+                {per100Basis === "ml" ? "ל־100 מ״ל" : "ל־100 גרם"}
+              </p>
+              <button
+                type="button"
+                onClick={() => {
+                  setIdentityVoiceOpen(false);
+                  setNutritionVoiceOpen(true);
+                }}
+                className="min-h-[40px] rounded-xl border border-emerald-400/35 bg-emerald-500/15 px-3 text-sm font-semibold text-emerald-50 transition hover:bg-emerald-500/25"
+              >
+                🎤 {isMohRecipeEditMode ? "תזונה" : "תזונה ואריזה"}
+              </button>
+            </div>
             <div className="flex items-center gap-2 text-sm" dir="rtl">
               <span className={per100Basis === "g" ? "text-white" : "text-ink-muted"}>100g</span>
               <button
@@ -1537,6 +1636,28 @@ export function Home() {
             document.body,
           )
         : null}
+
+      <VoiceDictationWizard
+        open={identityVoiceOpen}
+        title="מילוי קולי — פרטי מוצר"
+        steps={PRODUCT_IDENTITY_VOICE_STEPS}
+        onClose={() => setIdentityVoiceOpen(false)}
+        onApply={applyIdentityVoice}
+        onFinish={() => showToast("פרטי מוצר מולאו בקול", "success")}
+      />
+      <VoiceDictationWizard
+        open={nutritionVoiceOpen}
+        title={isMohRecipeEditMode ? "מילוי קולי — תזונה" : "מילוי קולי — תזונה ואריזה"}
+        steps={nutritionVoiceStepList}
+        onClose={() => setNutritionVoiceOpen(false)}
+        onApply={applyNutritionVoice}
+        onFinish={() =>
+          showToast(
+            isMohRecipeEditMode ? "תזונה מולאה בקול" : "תזונה ואריזה מולאו בקול",
+            "success",
+          )
+        }
+      />
     </>
   );
 }
