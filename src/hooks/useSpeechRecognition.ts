@@ -24,6 +24,7 @@ function getSpeechRecognitionCtor(): (new () => SpeechRecognitionLike) | null {
 type Options = {
   lang?: string;
   enabled?: boolean;
+  /** Called once per newly finalized speech segment (not re-fired for old segments). */
   onFinalPhrase?: (phrase: string) => void;
   onTranscript?: (full: string, interim: string) => void;
 };
@@ -77,19 +78,27 @@ export function useSpeechRecognition({
     rec.interimResults = true;
 
     rec.onresult = (event: SpeechRecognitionEvent) => {
+      const finalParts: string[] = [];
       let interim = "";
-      const finals: string[] = [];
+
       for (let i = 0; i < event.results.length; i += 1) {
         const piece = event.results[i][0]?.transcript ?? "";
         if (event.results[i].isFinal) {
-          finals.push(piece);
-          onFinalRef.current?.(piece);
+          if (piece.trim()) finalParts.push(piece.trim());
         } else {
           interim += piece;
         }
       }
-      const full = [...finals, interim].join(" ").replace(/\s+/g, " ").trim();
-      onTranscriptRef.current?.(full, interim.trim());
+
+      // Only emit segments that became final in *this* event (Web Speech API quirk).
+      for (let i = event.resultIndex; i < event.results.length; i += 1) {
+        if (!event.results[i].isFinal) continue;
+        const piece = (event.results[i][0]?.transcript ?? "").trim();
+        if (piece) onFinalRef.current?.(piece);
+      }
+
+      const full = [...finalParts, interim.trim()].filter(Boolean).join(" ").replace(/\s+/g, " ").trim();
+      onTranscriptRef.current?.(full, interim.replace(/\s+/g, " ").trim());
     };
 
     rec.onerror = (ev: SpeechRecognitionErrorEvent) => {
@@ -123,14 +132,17 @@ export function useSpeechRecognition({
     }
   }, [enabled, lang]);
 
-  useEffect(() => () => {
-    wantListenRef.current = false;
-    try {
-      recRef.current?.abort();
-    } catch {
-      /* ignore */
-    }
-  }, []);
+  useEffect(
+    () => () => {
+      wantListenRef.current = false;
+      try {
+        recRef.current?.abort();
+      } catch {
+        /* ignore */
+      }
+    },
+    [],
+  );
 
   return { supported, listening, error, start, stop };
-}
+};

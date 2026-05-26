@@ -33,13 +33,13 @@ export function VoiceDictationWizard({
 }: VoiceDictationWizardProps) {
   const [stepIndex, setStepIndex] = useState(0);
   const [transcript, setTranscript] = useState("");
-  const stepTranscriptRef = useRef("");
+  const transcriptRef = useRef("");
 
   const step = steps[stepIndex];
   const isLast = stepIndex >= steps.length - 1;
 
   const resetStep = useCallback(() => {
-    stepTranscriptRef.current = "";
+    transcriptRef.current = "";
     setTranscript("");
   }, []);
 
@@ -74,17 +74,8 @@ export function VoiceDictationWizard({
         return;
       }
 
-      const piece = cleanVoiceUtterance(trimmed);
-      if (piece) {
-        stepTranscriptRef.current = [stepTranscriptRef.current, piece]
-          .filter(Boolean)
-          .join(" ")
-          .trim();
-        setTranscript(stepTranscriptRef.current);
-      }
-
       if (voiceSaysAdvance(trimmed)) {
-        confirmStep(stepTranscriptRef.current, false);
+        confirmStep(transcriptRef.current, false);
       }
     },
     [confirmStep, step?.skippable],
@@ -94,7 +85,8 @@ export function VoiceDictationWizard({
     enabled: open,
     onFinalPhrase: handleFinalPhrase,
     onTranscript: (full) => {
-      if (full) setTranscript(full);
+      transcriptRef.current = full;
+      setTranscript(full);
     },
   });
 
@@ -200,7 +192,7 @@ export function VoiceDictationWizard({
           ) : null}
           <button
             type="button"
-            onClick={() => confirmStep(transcript || stepTranscriptRef.current, false)}
+            onClick={() => confirmStep(transcriptRef.current, false)}
             className="min-h-[48px] flex-1 rounded-xl bg-emerald-500 px-4 text-sm font-semibold text-black hover:bg-emerald-400"
           >
             ✓ הבא

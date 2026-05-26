@@ -12,6 +12,7 @@ import { CatalogGaps } from "./pages/CatalogGaps";
 import { Settings } from "./pages/Settings";
 import { SupermarketNewTrip } from "./pages/SupermarketNewTrip";
 import { SupermarketQuickFill } from "./pages/SupermarketQuickFill";
+import { BarcodeMatch } from "./pages/BarcodeMatch";
 
 function Shell() {
   const { user, loading, authError, signIn, signOut } = useAuth();
@@ -79,7 +80,7 @@ export default function App() {
                   <Route path="catalog" element={<Catalog />} />
                   <Route path="settings" element={<Settings />} />
                   <Route path="catalog-gaps" element={<CatalogGaps />} />
-                  <Route path="catalog-gaps" element={<CatalogGaps />} />
+                  <Route path="barcode-match" element={<BarcodeMatch />} />
                   <Route path="*" element={<Navigate to="/" replace />} />
                 </Route>
               </Routes>

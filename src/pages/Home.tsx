@@ -1045,6 +1045,13 @@ export function Home() {
             >
               בדיקת OFF
             </button>
+            <button
+              type="button"
+              onClick={() => navigate("/barcode-match")}
+              className="min-h-[48px] touch-manipulation flex-1 rounded-2xl border border-violet-400/25 bg-violet-500/10 px-3 py-2 text-center text-sm font-semibold leading-snug text-violet-50 transition hover:border-violet-400/40 active:scale-[0.99] sm:px-4"
+            >
+              שיוך ברקודים
+            </button>
           </div>
         </header>
 
