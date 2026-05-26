@@ -116,7 +116,7 @@ const MIN_MATCH_SCORE = 35;
 export function BarcodeMatch() {
   const navigate = useNavigate();
   const { catalog, upsertByBarcode } = useCatalog();
-  const { items: verifiedItems } = useVerified100();
+  const { items: verifiedItems, loading: verifiedLoading } = useVerified100();
   const { showToast } = useToast();
 
   const [chainProducts, setChainProducts] = useState<ChainProduct[]>([]);
@@ -347,8 +347,13 @@ export function BarcodeMatch() {
     return () => window.removeEventListener("keydown", handler);
   }, [activeSection, current, selectedCandidate, handleConfirm, handleSkip, currentCandidates.length]);
 
-  if (loadingChain || computing) {
-    return <p className="text-sm text-ink-muted">{loadingChain ? "טוען נתוני רשת…" : "מחשב התאמות…"}</p>;
+  if (loadingChain || verifiedLoading || computing) {
+    const msg = loadingChain
+      ? "טוען נתוני רשת…"
+      : verifiedLoading
+        ? "טוען מאגר מאומת מהענן…"
+        : `מחשב התאמות… (${tsvVerifiedItems.length} מוצרים × ${chainProducts.length} ברשת)`;
+    return <p className="text-sm text-ink-muted">{msg}</p>;
   }
   if (loadError) {
     return (
@@ -377,7 +382,8 @@ export function BarcodeMatch() {
           </button>
         </div>
         <div className="flex flex-wrap gap-3 text-sm text-ink-muted">
-          <span>מאומת (קובץ): {tsvVerifiedItems.length}</span>
+          <span>מאומת: {tsvVerifiedItems.length}</span>
+          <span>רשת: {chainProducts.length}</span>
           <span>יש התאמה: {displayMatched.length}</span>
           <span>ללא התאמה: {displayUnmatched.length}</span>
           <span className="text-emerald-400">שויכו: {confirmedCount}</span>
