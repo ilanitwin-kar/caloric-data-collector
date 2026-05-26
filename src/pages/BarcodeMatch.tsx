@@ -164,9 +164,9 @@ export function BarcodeMatch() {
     return s;
   }, [catalog]);
 
-  // Verified items: only TSV (not ministry)
+  // All verified items eligible for barcode matching
   const tsvVerifiedItems = useMemo(
-    () => verifiedItems.filter((it) => !it.id.startsWith("moh:") && !it.id.startsWith("v_moh")),
+    () => verifiedItems.filter((it) => it.name && it.calories100 != null),
     [verifiedItems],
   );
 
