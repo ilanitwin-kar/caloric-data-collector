@@ -110,10 +110,13 @@ export function Verified100Provider({ children }: { children: ReactNode }) {
     }
     setLoading(true);
     setStuckHint(null);
-    const r = ref(db, `users/${user.uid}/verified100/items`);
+    const path = `users/${user.uid}/verified100/items`;
+    console.info("[Verified100] listening:", path, "uid:", user.uid);
+    const r = ref(db, path);
     let gotData = false;
     const stuckTimer = window.setTimeout(() => {
       if (!gotData) {
+        console.warn("[Verified100] stuck – no data after 12s");
         setStuckHint(
           "הטעינה מהענן נמשכת יותר מדי זמן. בדקי חיבור לאינטרנט, רענני את העמוד, או נקי קאש של האפליקציה (PWA).",
         );
@@ -126,6 +129,7 @@ export function Verified100Provider({ children }: { children: ReactNode }) {
         window.clearTimeout(stuckTimer);
         const v = snap.val() as Record<string, Verified100Item> | null;
         const list = v ? Object.values(v) : [];
+        console.info("[Verified100] got data:", list.length, "items");
         setItems(list);
         setError(null);
         setLoading(false);
@@ -134,6 +138,7 @@ export function Verified100Provider({ children }: { children: ReactNode }) {
       (err) => {
         gotData = true;
         window.clearTimeout(stuckTimer);
+        console.error("[Verified100] error:", err.message);
         setError(err.message);
         setLoading(false);
         setStuckHint(null);
