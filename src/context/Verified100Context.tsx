@@ -150,6 +150,56 @@ export function Verified100Provider({ children }: { children: ReactNode }) {
     };
   }, [user, cloudSyncPaused]);
 
+  // Auto-import from bundled CSV when Firebase is empty
+  const [autoImportDone, setAutoImportDone] = useState(false);
+  useEffect(() => {
+    if (loading || !user || autoImportDone || items.length > 0) return;
+    setAutoImportDone(true);
+    console.info("[Verified100] Firebase empty – auto-importing from /my_food_db.csv");
+    (async () => {
+      try {
+        const res = await fetch("/my_food_db.csv", { cache: "no-store" });
+        if (!res.ok) {
+          console.warn("[Verified100] auto-import fetch failed:", res.status);
+          return;
+        }
+        const buf = await res.arrayBuffer();
+        const text = new TextDecoder("windows-1255").decode(buf);
+        const rows = parseVerifiedTsv(text);
+        if (rows.length === 0) return;
+        const now = new Date().toISOString();
+        const chunkSize = 200;
+        const basePath = `users/${user.uid}/verified100/items`;
+        const baseRef = ref(db, basePath);
+        for (let i = 0; i < rows.length; i += chunkSize) {
+          const chunk = rows.slice(i, i + chunkSize);
+          const updates: Record<string, unknown> = {};
+          for (const row of chunk) {
+            const id = stableId(row.brand, row.name);
+            const item: Verified100Item = {
+              id,
+              name: row.name,
+              createdAt: now,
+              updatedAt: now,
+              ...(row.category ? { category: row.category } : {}),
+              ...(row.brand ? { brand: row.brand } : {}),
+              ...(typeof row.protein100 === "number" && Number.isFinite(row.protein100) ? { protein100: row.protein100 } : {}),
+              ...(typeof row.fat100 === "number" && Number.isFinite(row.fat100) ? { fat100: row.fat100 } : {}),
+              ...(typeof row.carbs100 === "number" && Number.isFinite(row.carbs100) ? { carbs100: row.carbs100 } : {}),
+              ...(typeof row.calories100 === "number" && Number.isFinite(row.calories100) ? { calories100: row.calories100 } : {}),
+            };
+            updates[id] = JSON.parse(JSON.stringify(item));
+          }
+          await update(baseRef, updates);
+        }
+        showToast(`יובאו ${rows.length.toLocaleString("he-IL")} מוצרים מאומתים (אוטומטי)`, "success");
+        console.info("[Verified100] auto-import done:", rows.length, "items");
+      } catch (e) {
+        console.error("[Verified100] auto-import error:", e);
+      }
+    })();
+  }, [loading, user, items.length, autoImportDone, showToast]);
+
   const importTsv = useCallback(
     async (file: File) => {
       if (!user) {
