@@ -14,6 +14,12 @@ import { useOffBarcodeLookup } from "../hooks/useOffBarcodeLookup";
 import { fmt1, parseNum } from "../utils/number";
 import { normalizeBarcode } from "../utils/openFoodFacts";
 import { verifiedRowToPickPortions } from "../utils/verifiedMeasures";
+import { useToast } from "../context/ToastContext";
+import { VoiceDictationWizard } from "../components/VoiceDictationWizard";
+import {
+  nutritionVoiceSteps,
+  PRODUCT_IDENTITY_VOICE_STEPS,
+} from "../constants/voiceWizardSteps";
 
 type MeasureKey = "unit" | "tbsp" | "tsp" | "cup" | "g100";
 type UsageTag = "ready" | "ingredient" | "raw" | "cooked" | "dry";
@@ -102,6 +108,7 @@ export function SupermarketQuickFill() {
   const { user } = useAuth();
   const { catalog, supermarketTrips, supermarketTripsReady, addSupermarketDraft } = useCatalog();
   const { findScoredMatches, items: verifiedItems } = useVerified100();
+  const { showToast } = useToast();
 
   const locState = (location.state as { tripName?: string; tripCategory?: string } | null) ?? null;
 
@@ -185,6 +192,65 @@ export function SupermarketQuickFill() {
 
   const [error, setError] = useState<string | null>(null);
   const [scannerOpen, setScannerOpen] = useState(false);
+  const [identityVoiceOpen, setIdentityVoiceOpen] = useState(false);
+  const [nutritionVoiceOpen, setNutritionVoiceOpen] = useState(false);
+
+  const nutritionVoiceStepList = useMemo(
+    () => nutritionVoiceSteps(per100Basis),
+    [per100Basis],
+  );
+
+  const applyIdentityVoice = useCallback((stepId: string, value: string) => {
+    switch (stepId) {
+      case "name":
+        setName(value);
+        break;
+      case "shortName":
+        setShortName(value);
+        break;
+      case "brand":
+        setBrand(value);
+        break;
+      case "category":
+        setCategory(value);
+        break;
+      case "keywords":
+        setKeywordsRaw(value);
+        break;
+      default:
+        break;
+    }
+  }, []);
+
+  const applyNutritionVoice = useCallback((stepId: string, value: string) => {
+    switch (stepId) {
+      case "kcal100":
+        setKcal100(value);
+        break;
+      case "prot100":
+        setProt100(value);
+        break;
+      case "carb100":
+        setCarb100(value);
+        break;
+      case "fat100":
+        setFat100(value);
+        break;
+      case "totalWeightG":
+        setTotalWeightG(value);
+        break;
+      case "unitsPerPack":
+        lastPackEditRef.current = "units";
+        setUnitsPerPack(value);
+        break;
+      case "unitWeightG":
+        lastPackEditRef.current = "unitWeight";
+        setUnitWeightG(value);
+        break;
+      default:
+        break;
+    }
+  }, []);
 
   useEffect(() => {
     if (!scannerOpen) return;
@@ -489,15 +555,26 @@ export function SupermarketQuickFill() {
             <section className="rounded-2xl border border-white/10 bg-white/[0.03] p-4 space-y-4">
               <div className="space-y-2">
                 <Field label="ברקוד" value={barcodeRaw} onChange={setBarcodeRaw} inputMode="numeric" placeholder="סרקי או הדביקי" />
-                <div className="flex flex-col gap-2 sm:flex-row">
+                <div className="flex gap-2">
                   <button
                     type="button"
                     onClick={() => setScannerOpen(true)}
-                    className="min-h-[44px] touch-manipulation w-full flex-1 rounded-xl bg-white text-sm font-semibold text-black transition hover:bg-neutral-200 active:scale-[0.99] sm:w-auto"
+                    className="min-h-[44px] touch-manipulation flex-1 rounded-xl bg-white text-sm font-semibold text-black transition hover:bg-neutral-200 active:scale-[0.99]"
                   >
                     סרוק ברקוד
                   </button>
-                  <div className="flex min-h-[44px] min-w-0 items-center justify-center rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-ink-muted sm:min-w-[9rem]">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setNutritionVoiceOpen(false);
+                      setIdentityVoiceOpen(true);
+                    }}
+                    className="min-h-[44px] touch-manipulation flex-1 rounded-xl border border-emerald-400/35 bg-emerald-500/15 text-sm font-semibold text-emerald-50 transition hover:bg-emerald-500/25 active:scale-[0.99]"
+                  >
+                    🎤 פרטי מוצר
+                  </button>
+                </div>
+                <div className="flex min-h-[44px] items-center justify-center rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-ink-muted">
                     <span className="truncate" dir="ltr" title={barcodeDigits || undefined}>
                       {offLoading
                         ? "טוען OFF…"
@@ -505,7 +582,6 @@ export function SupermarketQuickFill() {
                           ? `מנורמל: ${barcodeDigits}`
                           : "—"}
                     </span>
-                  </div>
                 </div>
               </div>
 
@@ -605,6 +681,16 @@ export function SupermarketQuickFill() {
             <section className="rounded-2xl border border-white/10 bg-white/[0.03] p-4 space-y-3">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <p className="text-sm font-semibold text-white">{per100Basis === "ml" ? "ל־100 מ״ל" : "ל־100 גרם"}</p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIdentityVoiceOpen(false);
+                    setNutritionVoiceOpen(true);
+                  }}
+                  className="min-h-[40px] rounded-xl border border-emerald-400/35 bg-emerald-500/15 px-3 text-sm font-semibold text-emerald-50 transition hover:bg-emerald-500/25"
+                >
+                  🎤 תזונה ואריזה
+                </button>
                 <div className="flex items-center gap-2 text-sm" dir="rtl">
                   <span className={per100Basis === "g" ? "text-white" : "text-ink-muted"}>100g</span>
                   <button
@@ -684,6 +770,23 @@ export function SupermarketQuickFill() {
           </>
         )}
       </div>
+
+      <VoiceDictationWizard
+        open={identityVoiceOpen}
+        title="מילוי קולי — פרטי מוצר"
+        steps={PRODUCT_IDENTITY_VOICE_STEPS}
+        onClose={() => setIdentityVoiceOpen(false)}
+        onApply={applyIdentityVoice}
+        onFinish={() => showToast("פרטי מוצר מולאו בקול", "success")}
+      />
+      <VoiceDictationWizard
+        open={nutritionVoiceOpen}
+        title="מילוי קולי — תזונה ואריזה"
+        steps={nutritionVoiceStepList}
+        onClose={() => setNutritionVoiceOpen(false)}
+        onApply={applyNutritionVoice}
+        onFinish={() => showToast("תזונה ואריזה מולאו בקול", "success")}
+      />
 
       {scannerOpen
         ? createPortal(
