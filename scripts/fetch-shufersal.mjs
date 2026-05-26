@@ -1,213 +1,187 @@
 /**
- * Fetch one PriceFull GZ file from Shufersal's price transparency portal,
- * parse its XML, and emit a deduplicated JSON of products:
- *   { barcode, name, brand, quantity, unitOfMeasure }
+ * Fetch Shufersal PriceFull data and output public/shufersal-products.json
  *
- * Usage:  node scripts/fetch-shufersal.mjs [--out path/to/output.json]
+ * Usage: node scripts/fetch-shufersal.mjs
  *
- * Steps:
- *  1. Scrape the PriceFull file-list page sorted by size DESC (biggest = most products).
- *  2. Extract the first Azure Blob download link (includes SAS token).
- *  3. Download the GZ, decompress, parse XML.
- *  4. Deduplicate by barcode (keep first occurrence).
- *  5. Write JSON array to disk.
+ * Downloads PriceFull XML files from prices.shufersal.co.il,
+ * parses them, deduplicates by barcode, and writes a JSON file.
  */
 
-import { gunzipSync } from "node:zlib";
-import { writeFileSync } from "node:fs";
-import { XMLParser } from "fast-xml-parser";
+import { createWriteStream } from "fs";
+import { writeFile, mkdir } from "fs/promises";
+import { gunzipSync } from "zlib";
+import { fileURLToPath } from "url";
+import { dirname, join } from "path";
 
-const DEFAULT_OUT = "scripts/shufersal-products.json";
-const LIST_URL =
-  "https://prices.shufersal.co.il/FileObject/UpdateCategory?catID=2&storeId=0&sort=Size&sortdir=DESC&page=1";
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+const ROOT = join(__dirname, "..");
+const OUTPUT = join(ROOT, "public", "shufersal-products.json");
 
-function parseArgs() {
-  const args = process.argv.slice(2);
-  let out = DEFAULT_OUT;
-  for (let i = 0; i < args.length; i++) {
-    if (args[i] === "--out" && args[i + 1]) out = args[++i];
-  }
-  return { out };
-}
+const BASE = "http://prices.shufersal.co.il";
+const LIST_URL = `${BASE}/FileObject/UpdateCategory?catID=2&storeId=&sort=Date&sortdir=DESC&page=1`;
 
-async function fetchFileListPage() {
-  console.log("⏳ Fetching PriceFull file list from Shufersal…");
-  const res = await fetch(LIST_URL, {
-    headers: {
-      "User-Agent":
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120 Safari/537.36",
-      Accept: "text/html",
-    },
-  });
-  if (!res.ok) throw new Error(`File list HTTP ${res.status}`);
+const HEADERS = {
+  "User-Agent":
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+  Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+  "Accept-Language": "he-IL,he;q=0.9,en;q=0.5",
+};
+
+// How many PriceFull files to download and merge (more = more products but slower)
+const FILES_TO_DOWNLOAD = 5;
+
+async function fetchPage(url) {
+  console.log(`  Fetching page: ${url}`);
+  const res = await fetch(url, { headers: HEADERS });
+  if (!res.ok) throw new Error(`HTTP ${res.status} fetching ${url}`);
   return res.text();
 }
 
-function extractDownloadUrls(html) {
-  // Links on Shufersal page: href contains blob.core.windows.net OR relative /FileObject/Download path
-  const blobRe = /href="(https:\/\/pricesprodpublic\.blob\.core\.windows\.net\/[^"]+)"/gi;
-  const urls = [];
+function extractDownloadLinks(html) {
+  // Links are Azure blob URLs with SAS tokens, HTML-encoded with &amp;
+  const re = /href="(https?:\/\/pricesprodpublic\.blob\.core\.windows\.net[^"]+)"/gi;
+  const links = [];
   let m;
-  while ((m = blobRe.exec(html)) !== null) {
-    urls.push(decodeHtmlEntities(m[1]));
+  while ((m = re.exec(html)) !== null) {
+    links.push(m[1].replace(/&amp;/g, "&"));
   }
-  if (urls.length) return urls;
-
-  // Fallback: look for download links via /FileObject/Download?... pattern
-  const dlRe = /href="(\/FileObject\/Download[^"]*)"/gi;
-  while ((m = dlRe.exec(html)) !== null) {
-    urls.push("https://prices.shufersal.co.il" + decodeHtmlEntities(m[1]));
-  }
-  return urls;
+  return links;
 }
 
-function decodeHtmlEntities(s) {
-  return s.replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"');
-}
-
-async function downloadGz(url) {
-  console.log("⏳ Downloading GZ file…");
-  const res = await fetch(url, {
-    headers: {
-      "User-Agent":
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120 Safari/537.36",
-      Referer: "http://prices.shufersal.co.il/",
-      Accept: "*/*",
-    },
-  });
-  if (!res.ok) throw new Error(`Download HTTP ${res.status}`);
+async function downloadAndDecompress(url) {
+  console.log(`  Downloading: ${url.slice(0, 100)}...`);
+  const res = await fetch(url, { headers: HEADERS });
+  if (!res.ok) throw new Error(`HTTP ${res.status} downloading file`);
   const buf = Buffer.from(await res.arrayBuffer());
-  console.log(`   Downloaded ${(buf.length / 1024).toFixed(1)} KB`);
-  return buf;
+  console.log(`  Decompressing ${(buf.length / 1024).toFixed(0)} KB...`);
+  return gunzipSync(buf).toString("utf-8");
 }
 
-function parseXml(xmlText) {
-  const parser = new XMLParser({
-    ignoreAttributes: true,
-    isArray: (name) => name === "Item" || name === "Product",
-  });
-  const doc = parser.parse(xmlText);
+function parseXmlProducts(xml) {
+  const products = [];
+  // Match each <Item>...</Item> block
+  const itemRe = /<Item>([\s\S]*?)<\/Item>/gi;
+  let match;
+  while ((match = itemRe.exec(xml)) !== null) {
+    const block = match[1];
+    const get = (tag) => {
+      const m = block.match(new RegExp(`<${tag}>([^<]*)</${tag}>`, "i"));
+      return m ? m[1].trim() : "";
+    };
 
-  // Structure varies: Root > Items > Item  OR  Root > Products > Product
-  let items =
-    doc?.Root?.Items?.Item ??
-    doc?.Root?.Products?.Product ??
-    doc?.root?.Items?.Item ??
-    doc?.root?.Products?.Product ??
-    doc?.Prices?.Items?.Item ??
-    doc?.Prices?.Products?.Product ??
-    [];
+    const barcode = get("ItemCode");
+    const name = get("ItemName");
+    if (!barcode || !name) continue;
 
-  // Flatten if nested under a different wrapper
-  if (!Array.isArray(items)) items = [items];
+    const brand = get("ManufacturerName");
+    const unitQty = get("UnitQty");
+    const quantity = get("Quantity");
+    const unitMeasure = get("UnitOfMeasure");
 
-  return items;
-}
+    const product = { barcode, name };
+    if (brand) product.brand = brand;
 
-function normalizeProducts(rawItems) {
-  const seen = new Map();
+    // Parse weight/volume from Quantity + UnitOfMeasure
+    const qty = parseFloat(quantity) || parseFloat(unitQty) || 0;
+    if (qty > 0) {
+      const measure = unitMeasure.toLowerCase();
+      if (
+        measure.includes("גרם") ||
+        measure === "gr" ||
+        measure === "g" ||
+        measure === "gram"
+      ) {
+        product.weightG = qty;
+      } else if (
+        measure.includes("מ\"ל") ||
+        measure.includes("מיליליטר") ||
+        measure === "ml" ||
+        measure === "milliliter"
+      ) {
+        product.volumeMl = qty;
+      } else if (
+        measure.includes("ליטר") ||
+        measure === "l" ||
+        measure === "liter"
+      ) {
+        product.volumeMl = qty * 1000;
+      } else if (
+        measure.includes("ק\"ג") ||
+        measure.includes("קילו") ||
+        measure === "kg"
+      ) {
+        product.weightG = qty * 1000;
+      }
+    }
 
-  for (const item of rawItems) {
-    // Field names vary: ItemCode / Itemcode / itemcode etc.
-    const code = String(
-      item.ItemCode ?? item.Itemcode ?? item.itemcode ?? item.ITEMCODE ?? "",
-    ).trim();
-    if (!code || code.length < 7) continue;
-    // Skip internal codes (start with chain prefix, non-EAN)
-    if (code.startsWith("7290027600007")) continue;
+    // Pack quantity
+    const qtyInPack = parseInt(get("QtyInPackage") || get("UnitQty"), 10);
+    if (qtyInPack > 1) product.qtyInPack = qtyInPack;
 
-    if (seen.has(code)) continue;
-
-    const name = String(
-      item.ItemName ?? item.Itemname ?? item.itemname ?? "",
-    ).trim();
-    const brand = String(
-      item.ManufactureName ??
-        item.ManufacturerName ??
-        item.Manufacturername ??
-        "",
-    ).trim();
-    const qty = String(
-      item.Quantity ?? item.quantity ?? "",
-    ).trim();
-    const unitQty = String(
-      item.UnitQty ?? item.unitqty ?? "",
-    ).trim();
-    const unit = String(
-      item.UnitOfMeasure ?? item.Unitofmeasure ?? "",
-    ).trim();
-    const qtyInPack = String(
-      item.QtyInPackage ?? item.QtyInpackage ?? "",
-    ).trim();
-
-    if (!name) continue;
-
-    // Parse weight from quantity field (e.g. "210.00" with unitQty "גרם")
-    const numQty = parseFloat(qty);
-    const weightG =
-      Number.isFinite(numQty) && numQty > 0 && /גרם|gram/i.test(unitQty)
-        ? numQty
-        : undefined;
-    const volumeMl =
-      Number.isFinite(numQty) && numQty > 0 && /ליטר|מיליליטר|מ"ל|ml|liter/i.test(unitQty)
-        ? (/ליטר/i.test(unitQty) && numQty <= 20 ? numQty * 1000 : numQty)
-        : undefined;
-
-    seen.set(code, {
-      barcode: code,
-      name,
-      brand: brand || undefined,
-      weightG,
-      volumeMl,
-      qtyInPack: qtyInPack && qtyInPack !== "0" ? Number(qtyInPack) || undefined : undefined,
-    });
+    products.push(product);
   }
-
-  return [...seen.values()];
+  return products;
 }
 
 async function main() {
-  const { out } = parseArgs();
+  console.log("=== Shufersal Products Fetcher ===\n");
 
-  const html = await fetchFileListPage();
-  const urls = extractDownloadUrls(html);
-  if (urls.length === 0) {
-    console.error("❌ No download links found on the page. The site may have changed.");
-    console.error("   Writing debug HTML to scripts/_debug_page.html");
-    writeFileSync("scripts/_debug_page.html", html, "utf-8");
+  // Step 1: Get the file list page (sorted by size descending to get largest stores)
+  console.log("Step 1: Fetching file list...");
+  const html = await fetchPage(LIST_URL);
+
+  const links = extractDownloadLinks(html);
+  if (links.length === 0) {
+    console.error(
+      "ERROR: Could not find any download links on the page.\n" +
+        "The page structure may have changed, or the server is down.\n" +
+        "Try visiting http://prices.shufersal.co.il/ manually.",
+    );
     process.exit(1);
   }
-  console.log(`   Found ${urls.length} download links.`);
+  console.log(`  Found ${links.length} download links\n`);
 
-  // Download multiple files to maximize product coverage (dedupe at the end).
-  const MAX_FILES = Math.min(5, urls.length);
-  let allRawItems = [];
+  // Step 2: Download and parse
+  console.log(
+    `Step 2: Downloading top ${FILES_TO_DOWNLOAD} files (largest stores)...`,
+  );
+  const allProducts = new Map(); // barcode -> product
 
-  for (let i = 0; i < MAX_FILES; i++) {
-    const url = urls[i];
-    console.log(`\n[${i + 1}/${MAX_FILES}] ${url.slice(url.lastIndexOf("/") + 1, url.indexOf("?"))}`);
+  for (let i = 0; i < Math.min(FILES_TO_DOWNLOAD, links.length); i++) {
     try {
-      const gzBuf = await downloadGz(url);
-      console.log("   Decompressing…");
-      const xml = gunzipSync(gzBuf).toString("utf-8");
-      console.log(`   XML size: ${(xml.length / 1024).toFixed(0)} KB`);
-      const rawItems = parseXml(xml);
-      console.log(`   Items in file: ${rawItems.length}`);
-      allRawItems = allRawItems.concat(rawItems);
+      const xml = await downloadAndDecompress(links[i]);
+      const products = parseXmlProducts(xml);
+      console.log(`  Parsed ${products.length} products from file ${i + 1}`);
+      for (const p of products) {
+        if (!allProducts.has(p.barcode)) {
+          allProducts.set(p.barcode, p);
+        }
+      }
     } catch (err) {
-      console.warn(`   ⚠️ Skipped: ${err.message}`);
+      console.warn(`  Warning: failed to process file ${i + 1}: ${err.message}`);
     }
   }
 
-  console.log(`\n⏳ Total raw items from ${MAX_FILES} files: ${allRawItems.length}`);
-  const products = normalizeProducts(allRawItems);
-  console.log(`✅ Unique products (barcode ≥ 7 digits): ${products.length}`);
+  console.log(`\n  Total unique products: ${allProducts.size}\n`);
 
-  writeFileSync(out, JSON.stringify(products, null, 2), "utf-8");
-  console.log(`💾 Saved to ${out}`);
+  if (allProducts.size === 0) {
+    console.error("ERROR: No products parsed. Something went wrong.");
+    process.exit(1);
+  }
+
+  // Step 3: Write output
+  console.log("Step 3: Writing output...");
+  await mkdir(join(ROOT, "public"), { recursive: true });
+  const output = JSON.stringify([...allProducts.values()], null, 0);
+  await writeFile(OUTPUT, output, "utf-8");
+  console.log(`  Written to: ${OUTPUT}`);
+  console.log(`  File size: ${(Buffer.byteLength(output) / 1024).toFixed(0)} KB`);
+  console.log(`  Products: ${allProducts.size}`);
+  console.log("\nDone!");
 }
 
 main().catch((err) => {
-  console.error("❌ Error:", err.message);
+  console.error("Fatal error:", err);
   process.exit(1);
 });

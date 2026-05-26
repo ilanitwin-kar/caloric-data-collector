@@ -134,19 +134,27 @@ export function BarcodeMatch() {
   // Load chain products
   useEffect(() => {
     setLoadingChain(true);
-    fetch(`${import.meta.env.BASE_URL}shufersal-products.json`)
+    const ctrl = new AbortController();
+    const timeout = setTimeout(() => ctrl.abort(), 15000);
+    fetch(`${import.meta.env.BASE_URL}shufersal-products.json`, { signal: ctrl.signal })
       .then((r) => {
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        const ct = r.headers.get("content-type") ?? "";
+        if (!ct.includes("json")) throw new Error("Response is not JSON — file may be missing");
         return r.json() as Promise<ChainProduct[]>;
       })
       .then((data) => {
+        if (!Array.isArray(data) || data.length === 0) throw new Error("Empty or invalid data");
         setChainProducts(data);
         setLoadingChain(false);
       })
       .catch((err) => {
-        setLoadError(err.message);
+        const msg = err.name === "AbortError" ? "Timeout — הקובץ לא נמצא או השרת לא מגיב" : err.message;
+        setLoadError(msg);
         setLoadingChain(false);
-      });
+      })
+      .finally(() => clearTimeout(timeout));
+    return () => { ctrl.abort(); clearTimeout(timeout); };
   }, []);
 
   // Barcodes already in catalog
