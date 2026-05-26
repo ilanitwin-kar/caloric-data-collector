@@ -173,43 +173,71 @@ export function BarcodeMatch() {
     [verifiedItems],
   );
 
-  // For each verified item, find chain candidates
-  const { matched, unmatched } = useMemo(() => {
+  // For each verified item, find chain candidates (chunked to avoid blocking UI)
+  const [matched, setMatched] = useState<Array<{ item: Verified100Item; candidates: ChainCandidate[] }>>([]);
+  const [unmatched, setUnmatched] = useState<Verified100Item[]>([]);
+  const [computing, setComputing] = useState(false);
+
+  useEffect(() => {
     if (!chainProducts.length || !tsvVerifiedItems.length) {
-      return { matched: [] as Array<{ item: Verified100Item; candidates: ChainCandidate[] }>, unmatched: [] as Verified100Item[] };
+      setMatched([]);
+      setUnmatched([]);
+      return;
     }
 
+    setComputing(true);
+    let cancelled = false;
+
+    const CHUNK = 10;
     const matchedList: Array<{ item: Verified100Item; candidates: ChainCandidate[] }> = [];
     const unmatchedList: Verified100Item[] = [];
+    let i = 0;
 
-    for (const vItem of tsvVerifiedItems) {
-      const alreadyInCatalog = catalog.some(
-        (cp) =>
-          cp.sources?.some((s) => s.type === "verified100") &&
-          normalizeText(cp.name) === normalizeText(vItem.name) &&
-          normalizeText(cp.brand ?? "") === normalizeText(vItem.brand ?? ""),
-      );
-      if (alreadyInCatalog) continue;
+    function processChunk() {
+      if (cancelled) return;
+      const end = Math.min(i + CHUNK, tsvVerifiedItems.length);
 
-      const candidates: ChainCandidate[] = [];
-      for (const cp of chainProducts) {
-        if (catalogBarcodes.has(cp.barcode)) continue;
-        const score = scoreChainMatch(cp, vItem);
-        if (score >= MIN_MATCH_SCORE) {
-          candidates.push({ ...cp, score });
+      for (; i < end; i++) {
+        const vItem = tsvVerifiedItems[i];
+        const alreadyInCatalog = catalog.some(
+          (cp) =>
+            cp.sources?.some((s) => s.type === "verified100") &&
+            normalizeText(cp.name) === normalizeText(vItem.name) &&
+            normalizeText(cp.brand ?? "") === normalizeText(vItem.brand ?? ""),
+        );
+        if (alreadyInCatalog) continue;
+
+        const candidates: ChainCandidate[] = [];
+        for (const cp of chainProducts) {
+          if (catalogBarcodes.has(cp.barcode)) continue;
+          const score = scoreChainMatch(cp, vItem);
+          if (score >= MIN_MATCH_SCORE) {
+            candidates.push({ ...cp, score });
+          }
+        }
+        candidates.sort((a, b) => b.score - a.score);
+        const top = candidates.slice(0, 8);
+
+        if (top.length > 0) {
+          matchedList.push({ item: vItem, candidates: top });
+        } else {
+          unmatchedList.push(vItem);
         }
       }
-      candidates.sort((a, b) => b.score - a.score);
-      const top = candidates.slice(0, 8);
 
-      if (top.length > 0) {
-        matchedList.push({ item: vItem, candidates: top });
+      if (i < tsvVerifiedItems.length) {
+        setTimeout(processChunk, 0);
       } else {
-        unmatchedList.push(vItem);
+        if (!cancelled) {
+          setMatched(matchedList);
+          setUnmatched(unmatchedList);
+          setComputing(false);
+        }
       }
     }
 
-    return { matched: matchedList, unmatched: unmatchedList };
+    setTimeout(processChunk, 30);
+    return () => { cancelled = true; };
   }, [chainProducts, tsvVerifiedItems, catalog, catalogBarcodes]);
 
   // Skipped items move to unmatched conceptually
@@ -322,8 +350,8 @@ export function BarcodeMatch() {
     return () => window.removeEventListener("keydown", handler);
   }, [activeSection, current, selectedCandidate, handleConfirm, handleSkip, currentCandidates.length]);
 
-  if (loadingChain) {
-    return <p className="text-sm text-ink-muted">טוען נתוני רשת…</p>;
+  if (loadingChain || computing) {
+    return <p className="text-sm text-ink-muted">{loadingChain ? "טוען נתוני רשת…" : "מחשב התאמות…"}</p>;
   }
   if (loadError) {
     return (
