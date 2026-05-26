@@ -11,7 +11,6 @@ import {
   getRedirectResult,
   onAuthStateChanged,
   signInWithRedirect,
-  signInWithPopup,
   signOut,
   type User,
 } from "firebase/auth";
@@ -51,12 +50,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [authError, setAuthError] = useState<string | null>(null);
-  const isAndroid = /Android/i.test(navigator.userAgent);
-  const isIos = /iPhone|iPad|iPod/i.test(navigator.userAgent);
-  const isStandalone =
-    window.matchMedia?.("(display-mode: standalone)")?.matches === true ||
-    // iOS Safari PWA
-    ("standalone" in navigator && Boolean((navigator as unknown as { standalone?: boolean }).standalone));
 
   useEffect(() => {
     let cancelled = false;
@@ -91,31 +84,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       signIn: async () => {
         const provider = new GoogleAuthProvider();
         setAuthError(null);
-        // iOS (especially PWA) is often more reliable with redirect auth.
-        // Android PWAs frequently bounce through external apps (e.g. Gmail) and lose session on redirect.
-        if (isIos) {
-          await signInWithRedirect(auth, provider).catch((e) => {
-            setAuthError(getAuthErrorMessage(e));
-            throw e;
-          });
-          return;
-        }
-        try {
-          await signInWithPopup(auth, provider);
-        } catch (e) {
-          // Common when popups are blocked or immediately closed by the browser.
-          console.warn("signInWithPopup failed; falling back to redirect:", e);
-          await signInWithRedirect(auth, provider).catch((redirectError) => {
-            setAuthError(getAuthErrorMessage(redirectError));
-            throw redirectError;
-          });
-        }
+        await signInWithRedirect(auth, provider).catch((e) => {
+          setAuthError(getAuthErrorMessage(e));
+          throw e;
+        });
       },
       signOut: async () => {
         await signOut(auth);
       },
     }),
-    [user, loading, authError, isIos, isStandalone, isAndroid],
+    [user, loading, authError],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

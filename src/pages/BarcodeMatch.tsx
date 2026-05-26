@@ -131,30 +131,27 @@ export function BarcodeMatch() {
   const [searchText, setSearchText] = useState("");
   const searchRef = useRef<HTMLInputElement>(null);
 
-  // Load chain products
+  // Load chain products (cache: no-store bypasses service worker cache)
   useEffect(() => {
+    let cancelled = false;
     setLoadingChain(true);
-    const ctrl = new AbortController();
-    const timeout = setTimeout(() => ctrl.abort(), 15000);
-    fetch(`${import.meta.env.BASE_URL}shufersal-products.json`, { signal: ctrl.signal })
+    fetch(`${import.meta.env.BASE_URL}shufersal-products.json`, { cache: "no-store" })
       .then((r) => {
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
-        const ct = r.headers.get("content-type") ?? "";
-        if (!ct.includes("json")) throw new Error("Response is not JSON — file may be missing");
         return r.json() as Promise<ChainProduct[]>;
       })
       .then((data) => {
-        if (!Array.isArray(data) || data.length === 0) throw new Error("Empty or invalid data");
+        if (cancelled) return;
+        if (!Array.isArray(data) || data.length === 0) throw new Error("קובץ ריק או לא תקין");
         setChainProducts(data);
         setLoadingChain(false);
       })
       .catch((err) => {
-        const msg = err.name === "AbortError" ? "Timeout — הקובץ לא נמצא או השרת לא מגיב" : err.message;
-        setLoadError(msg);
+        if (cancelled) return;
+        setLoadError(err.message);
         setLoadingChain(false);
-      })
-      .finally(() => clearTimeout(timeout));
-    return () => { ctrl.abort(); clearTimeout(timeout); };
+      });
+    return () => { cancelled = true; };
   }, []);
 
   // Barcodes already in catalog
