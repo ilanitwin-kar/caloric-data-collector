@@ -347,12 +347,10 @@ export function BarcodeMatch() {
     return () => window.removeEventListener("keydown", handler);
   }, [activeSection, current, selectedCandidate, handleConfirm, handleSkip, currentCandidates.length]);
 
-  if (loadingChain || verifiedLoading || computing) {
+  if (loadingChain || computing) {
     const msg = loadingChain
       ? "טוען נתוני רשת…"
-      : verifiedLoading
-        ? "טוען מאגר מאומת מהענן…"
-        : `מחשב התאמות… (${tsvVerifiedItems.length} מוצרים × ${chainProducts.length} ברשת)`;
+      : `מחשב התאמות… (${tsvVerifiedItems.length} מוצרים × ${chainProducts.length} ברשת)`;
     return <p className="text-sm text-ink-muted">{msg}</p>;
   }
   if (loadError) {
@@ -382,7 +380,7 @@ export function BarcodeMatch() {
           </button>
         </div>
         <div className="flex flex-wrap gap-3 text-sm text-ink-muted">
-          <span>מאומת: {tsvVerifiedItems.length}</span>
+          <span>מאומת: {verifiedLoading ? "טוען…" : tsvVerifiedItems.length}</span>
           <span>רשת: {chainProducts.length}</span>
           <span>יש התאמה: {displayMatched.length}</span>
           <span>ללא התאמה: {displayUnmatched.length}</span>
