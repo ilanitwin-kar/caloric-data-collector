@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useCatalog } from "../context/CatalogContext";
 import { useVerified100 } from "../context/Verified100Context";
@@ -17,6 +17,51 @@ type ChainProduct = {
 
 type ChainCandidate = ChainProduct & { score: number };
 
+// --- Dice coefficient (bigram similarity) for fuzzy matching ---
+function bigrams(s: string): Set<string> {
+  const bg = new Set<string>();
+  for (let i = 0; i < s.length - 1; i++) bg.add(s.slice(i, i + 2));
+  return bg;
+}
+
+function diceCoefficient(a: string, b: string): number {
+  if (a === b) return 1;
+  if (a.length < 2 || b.length < 2) return 0;
+  const aB = bigrams(a);
+  const bB = bigrams(b);
+  let overlap = 0;
+  for (const bg of aB) if (bB.has(bg)) overlap++;
+  return (2 * overlap) / (aB.size + bB.size);
+}
+
+function fuzzyTokenMatch(token: string, text: string): boolean {
+  if (text.includes(token)) return true;
+  const words = text.split(" ");
+  for (const w of words) {
+    if (w.length < 2) continue;
+    if (diceCoefficient(token, w) >= 0.6) return true;
+  }
+  return false;
+}
+
+// --- Extract weight/volume from product name ---
+const WEIGHT_RE = /(\d+(?:[.,]\d+)?)\s*(?:גרם|גר|ג'|ג)/i;
+const VOLUME_RE = /(\d+(?:[.,]\d+)?)\s*(?:מ"ל|מיליליטר|מל|ליטר|לי)/i;
+
+function extractWeightFromName(name: string): number | undefined {
+  const m = name.match(WEIGHT_RE);
+  return m ? parseFloat(m[1].replace(",", ".")) : undefined;
+}
+
+function extractVolumeFromName(name: string): number | undefined {
+  const m = name.match(VOLUME_RE);
+  if (!m) return undefined;
+  const val = parseFloat(m[1].replace(",", "."));
+  if (/ליטר/i.test(name) && val <= 20) return val * 1000;
+  return val;
+}
+
+// --- Scoring ---
 function scoreChainMatch(chain: ChainProduct, verified: Verified100Item): number {
   const vName = normalizeText(verified.name);
   const vBrand = normalizeText(verified.brand ?? "");
@@ -26,18 +71,41 @@ function scoreChainMatch(chain: ChainProduct, verified: Verified100Item): number
   if (!vName || !cName) return 0;
   let score = 0;
 
+  // Fuzzy token matching
   const tokens = vName.split(" ").filter((t) => t.length >= 2);
   let hits = 0;
   for (const t of tokens) {
-    if (cName.includes(t)) hits++;
+    if (fuzzyTokenMatch(t, cName)) hits++;
   }
   score += Math.min(6, hits) * 10;
 
+  // Full-name Dice similarity bonus
+  const fullDice = diceCoefficient(vName, cName);
+  if (fullDice >= 0.7) score += 20;
+  else if (fullDice >= 0.5) score += 10;
+
+  // Substring containment
   if (cName.includes(vName) || vName.includes(cName)) score += 25;
 
+  // Brand matching (also fuzzy)
   if (vBrand && cBrand) {
     if (cBrand === vBrand) score += 20;
     else if (cBrand.includes(vBrand) || vBrand.includes(cBrand)) score += 12;
+    else if (diceCoefficient(vBrand, cBrand) >= 0.6) score += 10;
+  }
+
+  // Soft weight/volume bonus/penalty
+  const vWeight = verified.packWeightG ?? extractWeightFromName(verified.name);
+  const cWeight = chain.weightG ?? extractWeightFromName(chain.name);
+  const vVolume = extractVolumeFromName(verified.name);
+  const cVolume = chain.volumeMl ?? extractVolumeFromName(chain.name);
+
+  if (vWeight && cWeight) {
+    if (Math.abs(vWeight - cWeight) < 5) score += 12;
+    else if (Math.abs(vWeight - cWeight) > 100) score -= 8;
+  } else if (vVolume && cVolume) {
+    if (Math.abs(vVolume - cVolume) < 20) score += 12;
+    else if (Math.abs(vVolume - cVolume) > 200) score -= 8;
   }
 
   return score;
@@ -60,6 +128,8 @@ export function BarcodeMatch() {
   const [candidateIdx, setCandidateIdx] = useState(0);
   const [confirmedCount, setConfirmedCount] = useState(0);
   const [skippedIds, setSkippedIds] = useState<Set<string>>(new Set());
+  const [searchText, setSearchText] = useState("");
+  const searchRef = useRef<HTMLInputElement>(null);
 
   // Load chain products
   useEffect(() => {
@@ -89,7 +159,7 @@ export function BarcodeMatch() {
     return s;
   }, [catalog]);
 
-  // Verified items: only TSV (not ministry), not already in catalog by name match
+  // Verified items: only TSV (not ministry)
   const tsvVerifiedItems = useMemo(
     () => verifiedItems.filter((it) => !it.id.startsWith("moh:") && !it.id.startsWith("v_moh")),
     [verifiedItems],
@@ -105,7 +175,6 @@ export function BarcodeMatch() {
     const unmatchedList: Verified100Item[] = [];
 
     for (const vItem of tsvVerifiedItems) {
-      // Skip if already has a barcode in catalog (matched by stable ID overlap)
       const alreadyInCatalog = catalog.some(
         (cp) =>
           cp.sources?.some((s) => s.type === "verified100") &&
@@ -135,18 +204,43 @@ export function BarcodeMatch() {
     return { matched: matchedList, unmatched: unmatchedList };
   }, [chainProducts, tsvVerifiedItems, catalog, catalogBarcodes]);
 
-  // Active queue (without skipped)
-  const queue = useMemo(
-    () => (activeSection === "matched" ? matched.filter((m) => !skippedIds.has(m.item.id)) : []),
-    [matched, skippedIds, activeSection],
+  // Skipped items move to unmatched conceptually
+  const displayMatched = useMemo(
+    () => matched.filter((m) => !skippedIds.has(m.item.id)),
+    [matched, skippedIds],
+  );
+  const displayUnmatched = useMemo(
+    () => [
+      ...unmatched,
+      ...matched.filter((m) => skippedIds.has(m.item.id)).map((m) => m.item),
+    ],
+    [unmatched, matched, skippedIds],
   );
 
+  // Active queue
+  const queue = activeSection === "matched" ? displayMatched : [];
   const current = queue[currentIdx] ?? null;
   const currentCandidates = current?.candidates ?? [];
   const selectedCandidate = currentCandidates[candidateIdx] ?? null;
 
+  // Manual search within chain products for current verified item
+  const searchResults = useMemo(() => {
+    if (!searchText.trim() || !current) return [];
+    const q = normalizeText(searchText);
+    return chainProducts
+      .filter((cp) => {
+        if (catalogBarcodes.has(cp.barcode)) return false;
+        const n = normalizeText(cp.name);
+        const b = normalizeText(cp.brand ?? "");
+        return n.includes(q) || b.includes(q) || cp.barcode.includes(searchText.trim());
+      })
+      .slice(0, 10)
+      .map((cp) => ({ ...cp, score: scoreChainMatch(cp, current.item) }));
+  }, [searchText, current, chainProducts, catalogBarcodes]);
+
   useEffect(() => {
     setCandidateIdx(0);
+    setSearchText("");
   }, [currentIdx, activeSection]);
 
   const handleSkip = useCallback(() => {
@@ -176,6 +270,49 @@ export function BarcodeMatch() {
     setCurrentIdx(0);
     showToast(`${v.name} → ${selectedCandidate.barcode}`, "success");
   }, [current, selectedCandidate, upsertByBarcode, showToast]);
+
+  const handlePickSearch = useCallback(
+    (cp: ChainProduct & { score: number }) => {
+      if (!current) return;
+      const existing = currentCandidates.findIndex((c) => c.barcode === cp.barcode);
+      if (existing >= 0) {
+        setCandidateIdx(existing);
+      } else {
+        currentCandidates.unshift(cp);
+        setCandidateIdx(0);
+      }
+      setSearchText("");
+    },
+    [current, currentCandidates],
+  );
+
+  // Keyboard shortcuts
+  useEffect(() => {
+    if (activeSection !== "matched" || !current) return;
+    const handler = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement)?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA") return;
+
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        if (selectedCandidate) void handleConfirm();
+      } else if (e.key === "Escape") {
+        e.preventDefault();
+        handleSkip();
+      } else if (e.key === "ArrowLeft") {
+        e.preventDefault();
+        setCandidateIdx((i) => Math.min(currentCandidates.length - 1, i + 1));
+      } else if (e.key === "ArrowRight") {
+        e.preventDefault();
+        setCandidateIdx((i) => Math.max(0, i - 1));
+      } else if (e.key === "/") {
+        e.preventDefault();
+        searchRef.current?.focus();
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [activeSection, current, selectedCandidate, handleConfirm, handleSkip, currentCandidates.length]);
 
   if (loadingChain) {
     return <p className="text-sm text-ink-muted">טוען נתוני רשת…</p>;
@@ -208,10 +345,13 @@ export function BarcodeMatch() {
         </div>
         <div className="flex flex-wrap gap-3 text-sm text-ink-muted">
           <span>מאומת (קובץ): {tsvVerifiedItems.length}</span>
-          <span>יש התאמה: {matched.length}</span>
-          <span>אין התאמה: {unmatched.length}</span>
+          <span>יש התאמה: {displayMatched.length}</span>
+          <span>ללא התאמה: {displayUnmatched.length}</span>
           <span className="text-emerald-400">שויכו: {confirmedCount}</span>
         </div>
+        <p className="text-sm text-ink-dim">
+          קיצורים: Enter=אשר · Esc=דלג · ←→=candidates · /=חיפוש
+        </p>
       </header>
 
       {/* Section tabs */}
@@ -225,7 +365,7 @@ export function BarcodeMatch() {
               : "border-white/15 bg-white/[0.04] text-ink-muted hover:text-white"
           }`}
         >
-          יש התאמה ({matched.length - skippedIds.size > 0 ? matched.length - [...skippedIds].filter((id) => matched.some((m) => m.item.id === id)).length : matched.length})
+          יש התאמה ({displayMatched.length})
         </button>
         <button
           type="button"
@@ -236,7 +376,7 @@ export function BarcodeMatch() {
               : "border-white/15 bg-white/[0.04] text-ink-muted hover:text-white"
           }`}
         >
-          ללא התאמה ({unmatched.length})
+          ללא התאמה ({displayUnmatched.length})
         </button>
       </div>
 
@@ -246,8 +386,8 @@ export function BarcodeMatch() {
           {!current ? (
             <div className="rounded-2xl border border-emerald-400/30 bg-emerald-500/10 px-4 py-6 text-center">
               <p className="text-sm font-semibold text-emerald-50">
-                {queue.length === 0 && matched.length > 0
-                  ? "סיימת את כל ההתאמות! עברי ללשונית «ללא התאמה» לראות מה נשאר."
+                {displayMatched.length === 0 && matched.length > 0
+                  ? "סיימת! עברי ללשונית «ללא התאמה» לראות מה נשאר."
                   : matched.length === 0
                     ? "לא נמצאו התאמות בין המאגר המאומת לרשת."
                     : "אין עוד מוצרים."}
@@ -310,6 +450,35 @@ export function BarcodeMatch() {
                 )}
               </section>
 
+              {/* Manual search */}
+              <div className="space-y-2">
+                <input
+                  ref={searchRef}
+                  type="text"
+                  value={searchText}
+                  onChange={(e) => setSearchText(e.target.value)}
+                  placeholder="חיפוש ידני ברשת (שם / ברקוד)… לחצי /"
+                  className="w-full rounded-xl border border-white/15 bg-white/[0.04] px-3 py-2.5 text-sm text-white placeholder:text-ink-muted focus:border-white/30 focus:outline-none"
+                />
+                {searchResults.length > 0 && (
+                  <div className="max-h-[30vh] overflow-y-auto space-y-1 rounded-xl border border-white/10 bg-black/50 p-2">
+                    {searchResults.map((cp) => (
+                      <button
+                        key={cp.barcode}
+                        type="button"
+                        onClick={() => handlePickSearch(cp)}
+                        className="w-full rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-right text-sm text-white hover:bg-white/[0.08]"
+                      >
+                        <span className="text-ink-muted" dir="ltr">{cp.barcode}</span>{" "}
+                        {cp.name}
+                        {cp.brand ? ` · ${cp.brand}` : ""}
+                        {cp.weightG ? ` · ${cp.weightG}g` : ""}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
               {/* Actions */}
               <div className="flex gap-3">
                 <button
@@ -317,14 +486,15 @@ export function BarcodeMatch() {
                   onClick={handleSkip}
                   className="min-h-[48px] flex-1 touch-manipulation rounded-2xl border border-white/15 bg-white/[0.06] text-sm font-semibold text-white transition hover:bg-white/[0.1] active:scale-[0.99]"
                 >
-                  דלג
+                  דלג (Esc)
                 </button>
                 <button
                   type="button"
                   onClick={() => void handleConfirm()}
-                  className="min-h-[48px] flex-1 touch-manipulation rounded-2xl bg-emerald-600 text-sm font-semibold text-white transition hover:bg-emerald-500 active:scale-[0.99]"
+                  disabled={!selectedCandidate}
+                  className="min-h-[48px] flex-1 touch-manipulation rounded-2xl bg-emerald-600 text-sm font-semibold text-white transition hover:bg-emerald-500 active:scale-[0.99] disabled:opacity-40"
                 >
-                  אשר ושמור למאגר
+                  אשר (Enter)
                 </button>
               </div>
             </div>
@@ -335,18 +505,18 @@ export function BarcodeMatch() {
       {/* Unmatched section */}
       {activeSection === "unmatched" && (
         <div className="space-y-3">
-          {unmatched.length === 0 ? (
+          {displayUnmatched.length === 0 ? (
             <div className="rounded-2xl border border-amber-400/30 bg-amber-500/10 px-4 py-6 text-center">
               <p className="text-sm text-amber-100">כל המוצרים מהמאגר נמצאו ברשת!</p>
             </div>
           ) : (
             <>
               <p className="text-sm text-ink-muted">
-                {unmatched.length} מוצרים מהמאגר המאומת שלא נמצא להם ברקוד בשופרסל.
-                כשתטעני רשת נוספת (רמי לוי, אושר עד...) — ניתן יהיה לחפש אותם שם.
+                {displayUnmatched.length} מוצרים מהמאגר המאומת ללא ברקוד.
+                כשתטעני רשת נוספת — ניתן יהיה לחפש אותם שם.
               </p>
               <div className="max-h-[50vh] overflow-y-auto space-y-2 rounded-2xl border border-white/10 bg-white/[0.02] p-3">
-                {unmatched.map((v) => (
+                {displayUnmatched.map((v) => (
                   <div key={v.id} className="rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2">
                     <p className="text-sm text-white">{v.name}</p>
                     {v.brand && <p className="text-sm text-ink-muted">{v.brand}</p>}
