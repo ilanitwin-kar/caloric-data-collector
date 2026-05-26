@@ -24,7 +24,6 @@ function getSpeechRecognitionCtor(): (new () => SpeechRecognitionLike) | null {
 type Options = {
   lang?: string;
   enabled?: boolean;
-  /** Called once per newly finalized speech segment (not re-fired for old segments). */
   onFinalPhrase?: (phrase: string) => void;
   onTranscript?: (full: string, interim: string) => void;
 };
@@ -40,6 +39,7 @@ export function useSpeechRecognition({
   const [error, setError] = useState<string | null>(null);
   const recRef = useRef<SpeechRecognitionLike | null>(null);
   const wantListenRef = useRef(false);
+  const sessionIdRef = useRef(0);
   const onFinalRef = useRef(onFinalPhrase);
   const onTranscriptRef = useRef(onTranscript);
   onFinalRef.current = onFinalPhrase;
@@ -51,8 +51,10 @@ export function useSpeechRecognition({
 
   const stop = useCallback(() => {
     wantListenRef.current = false;
+    sessionIdRef.current += 1;
     setListening(false);
-    recRef.current?.stop();
+    try { recRef.current?.abort(); } catch { /* ignore */ }
+    recRef.current = null;
   }, []);
 
   const start = useCallback(() => {
@@ -62,15 +64,15 @@ export function useSpeechRecognition({
       return;
     }
     setError(null);
-    wantListenRef.current = true;
 
-    if (recRef.current) {
-      try {
-        recRef.current.abort();
-      } catch {
-        /* ignore */
-      }
-    }
+    // Kill previous instance completely
+    wantListenRef.current = false;
+    sessionIdRef.current += 1;
+    try { recRef.current?.abort(); } catch { /* ignore */ }
+    recRef.current = null;
+
+    // Small delay to let old instance finish dying before starting new one
+    const mySession = sessionIdRef.current;
 
     const rec = new Ctor();
     rec.lang = lang;
@@ -78,6 +80,8 @@ export function useSpeechRecognition({
     rec.interimResults = true;
 
     rec.onresult = (event: SpeechRecognitionEvent) => {
+      if (sessionIdRef.current !== mySession) return;
+
       const finalParts: string[] = [];
       let interim = "";
 
@@ -90,7 +94,7 @@ export function useSpeechRecognition({
         }
       }
 
-      // Only emit segments that became final in *this* event (Web Speech API quirk).
+      // Only emit segments that became final in *this* event
       for (let i = event.resultIndex; i < event.results.length; i += 1) {
         if (!event.results[i].isFinal) continue;
         const piece = (event.results[i][0]?.transcript ?? "").trim();
@@ -102,6 +106,7 @@ export function useSpeechRecognition({
     };
 
     rec.onerror = (ev: SpeechRecognitionErrorEvent) => {
+      if (sessionIdRef.current !== mySession) return;
       if (ev.error === "aborted" || ev.error === "no-speech") return;
       setError(
         ev.error === "not-allowed"
@@ -111,6 +116,7 @@ export function useSpeechRecognition({
     };
 
     rec.onend = () => {
+      if (sessionIdRef.current !== mySession) return;
       setListening(false);
       if (wantListenRef.current) {
         try {
@@ -123,6 +129,7 @@ export function useSpeechRecognition({
     };
 
     recRef.current = rec;
+    wantListenRef.current = true;
     try {
       rec.start();
       setListening(true);
@@ -135,14 +142,11 @@ export function useSpeechRecognition({
   useEffect(
     () => () => {
       wantListenRef.current = false;
-      try {
-        recRef.current?.abort();
-      } catch {
-        /* ignore */
-      }
+      sessionIdRef.current += 1;
+      try { recRef.current?.abort(); } catch { /* ignore */ }
     },
     [],
   );
 
   return { supported, listening, error, start, stop };
-};
+}

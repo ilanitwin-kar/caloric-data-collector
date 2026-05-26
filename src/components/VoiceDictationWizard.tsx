@@ -33,6 +33,7 @@ export function VoiceDictationWizard({
 }: VoiceDictationWizardProps) {
   const [stepIndex, setStepIndex] = useState(0);
   const [transcript, setTranscript] = useState("");
+  const [manualEdit, setManualEdit] = useState(false);
   const transcriptRef = useRef("");
 
   const step = steps[stepIndex];
@@ -41,6 +42,7 @@ export function VoiceDictationWizard({
   const resetStep = useCallback(() => {
     transcriptRef.current = "";
     setTranscript("");
+    setManualEdit(false);
   }, []);
 
   const confirmStep = useCallback(
@@ -66,6 +68,7 @@ export function VoiceDictationWizard({
 
   const handleFinalPhrase = useCallback(
     (phrase: string) => {
+      if (manualEdit) return;
       const trimmed = phrase.trim();
       if (!trimmed) return;
 
@@ -78,18 +81,20 @@ export function VoiceDictationWizard({
         confirmStep(transcriptRef.current, false);
       }
     },
-    [confirmStep, step?.skippable],
+    [confirmStep, step?.skippable, manualEdit],
   );
 
   const { supported, listening, error, start, stop } = useSpeechRecognition({
     enabled: open,
     onFinalPhrase: handleFinalPhrase,
     onTranscript: (full) => {
+      if (manualEdit) return;
       transcriptRef.current = full;
       setTranscript(full);
     },
   });
 
+  // Single effect for open/step changes
   useEffect(() => {
     if (!open) {
       stop();
@@ -98,22 +103,29 @@ export function VoiceDictationWizard({
       return;
     }
     resetStep();
-    const t = window.setTimeout(() => start(), 200);
+    const t = window.setTimeout(() => start(), 250);
     return () => {
       window.clearTimeout(t);
       stop();
     };
-  }, [open, start, stop, resetStep]);
-
-  useEffect(() => {
-    if (!open) return;
-    resetStep();
-    start();
-  }, [open, stepIndex, resetStep, start]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, stepIndex]);
 
   const handleClose = () => {
     stop();
     onClose();
+  };
+
+  const handleManualChange = (value: string) => {
+    setManualEdit(true);
+    setTranscript(value);
+    transcriptRef.current = value;
+  };
+
+  const handleClear = () => {
+    setManualEdit(true);
+    setTranscript("");
+    transcriptRef.current = "";
   };
 
   if (!open || !step) return null;
@@ -155,12 +167,25 @@ export function VoiceDictationWizard({
           </p>
         ) : null}
 
-        <div className="min-h-[56px] rounded-xl border border-white/15 bg-black/40 px-3 py-2.5">
-          <p className="text-base leading-relaxed text-white">
-            {transcript || (
-              <span className="text-ink-dim">מקשיב… אמרי «{step.label}», ואז «הבא» או ✓</span>
-            )}
-          </p>
+        {/* Editable transcript field */}
+        <div className="relative">
+          <input
+            type="text"
+            value={transcript}
+            onChange={(e) => handleManualChange(e.target.value)}
+            placeholder={`מקשיב… אמרי «${step.label}», ואז «הבא» או ✓`}
+            className="w-full min-h-[48px] rounded-xl border border-white/15 bg-black/40 px-3 py-2.5 text-base leading-relaxed text-white placeholder:text-ink-dim focus:border-emerald-400/50 focus:outline-none"
+            dir="rtl"
+          />
+          {transcript && (
+            <button
+              type="button"
+              onClick={handleClear}
+              className="absolute left-2 top-1/2 -translate-y-1/2 rounded-md border border-white/10 bg-white/[0.06] px-2 py-1 text-xs text-ink-muted hover:text-white"
+            >
+              נקה
+            </button>
+          )}
         </div>
 
         <p className="text-sm text-ink-dim">
@@ -172,6 +197,7 @@ export function VoiceDictationWizard({
           {" · "}
           אמרי «הבא» או לחצי ✓
           {step.skippable ? " · «דלג» לדילוג" : null}
+          {manualEdit ? " · עריכה ידנית" : null}
         </p>
 
         {error ? (
