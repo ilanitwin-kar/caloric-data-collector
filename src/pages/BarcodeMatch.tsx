@@ -104,25 +104,38 @@ export function BarcodeMatch() {
   }, [current]);
 
   const handleConfirm = useCallback(async () => {
-    if (!current || !selectedCandidate) return;
-    const v = selectedCandidate.item;
-    await upsertByBarcode({
-      barcode: current.barcode,
-      name: v.name,
-      brand: v.brand,
-      per100: {
-        calories: v.calories100,
-        proteinG: v.protein100,
-        carbsG: v.carbs100,
-        fatG: v.fat100,
-      },
-      totalWeightG: current.weightG ?? v.packWeightG,
-      unitsPerPack: current.qtyInPack ?? v.unitsPerPack,
-      sourceType: "verified100",
-    });
+    if (!current) return;
+    if (selectedCandidate) {
+      const v = selectedCandidate.item;
+      await upsertByBarcode({
+        barcode: current.barcode,
+        name: v.name,
+        brand: v.brand,
+        per100: {
+          calories: v.calories100,
+          proteinG: v.protein100,
+          carbsG: v.carbs100,
+          fatG: v.fat100,
+        },
+        totalWeightG: current.weightG ?? v.packWeightG,
+        unitsPerPack: current.qtyInPack ?? v.unitsPerPack,
+        sourceType: "verified100",
+      });
+      showToast(`${v.name} → ${current.barcode}`, "success");
+    } else {
+      await upsertByBarcode({
+        barcode: current.barcode,
+        name: current.name,
+        brand: current.brand,
+        per100: {},
+        totalWeightG: current.weightG,
+        unitsPerPack: current.qtyInPack,
+        sourceType: "manual",
+      });
+      showToast(`${current.name} נשמר ללא תזונה`, "success");
+    }
     setConfirmedCount((c) => c + 1);
     setCurrentIdx(0);
-    showToast(`${v.name} → ${current.barcode}`, "success");
   }, [current, selectedCandidate, upsertByBarcode, showToast]);
 
   // Stats
@@ -271,11 +284,10 @@ export function BarcodeMatch() {
             </button>
             <button
               type="button"
-              disabled={!selectedCandidate}
               onClick={() => void handleConfirm()}
-              className="min-h-[48px] flex-1 touch-manipulation rounded-2xl bg-emerald-600 text-sm font-semibold text-white transition hover:bg-emerald-500 active:scale-[0.99] disabled:opacity-40"
+              className="min-h-[48px] flex-1 touch-manipulation rounded-2xl bg-emerald-600 text-sm font-semibold text-white transition hover:bg-emerald-500 active:scale-[0.99]"
             >
-              אשר ושמור למאגר
+              {selectedCandidate ? "אשר ושמור למאגר" : "שמור למאגר (ללא תזונה)"}
             </button>
           </div>
         </div>
