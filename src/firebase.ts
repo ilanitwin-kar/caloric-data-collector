@@ -3,7 +3,7 @@ import { getAuth } from "firebase/auth";
 import { getDatabase } from "firebase/database";
 import { getStorage } from "firebase/storage";
 
-const DATABASE_URL = "https://caloric-database-default-rtdb.europe-west1.firebasedatabase.app";
+const DATABASE_URL = "https://caloric-database-default-rtdb.europe-west1.firebasedatabase.app/";
 
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
