@@ -61,8 +61,31 @@ function cleanForRtdb<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;
 }
 
+function decodeCp862(bytes: Uint8Array): string {
+  let out = "";
+  for (const b of bytes) {
+    if (b >= 0x80 && b <= 0x9a) {
+      out += String.fromCharCode(0x05d0 + (b - 0x80));
+    } else {
+      out += String.fromCharCode(b);
+    }
+  }
+  return out;
+}
+
+function looksHebrew(text: string): boolean {
+  return /[\u05d0-\u05ea]/.test(text.slice(0, 200));
+}
+
 async function readFileTextWithFallback(file: File): Promise<string> {
   const bytes = new Uint8Array(await file.arrayBuffer());
+
+  // Try CP862 first (DOS Hebrew) — bytes 0x80-0x9A map to א-ת
+  if (bytes.some((b) => b >= 0x80 && b <= 0x9a)) {
+    const cp862 = decodeCp862(bytes);
+    if (looksHebrew(cp862)) return cp862;
+  }
+
   const decoders = ["utf-8", "windows-1255", "utf-16le"] as const;
   for (const enc of decoders) {
     try {
@@ -164,7 +187,14 @@ export function Verified100Provider({ children }: { children: ReactNode }) {
           return;
         }
         const buf = await res.arrayBuffer();
-        const text = new TextDecoder("windows-1255").decode(buf);
+        const bytes = new Uint8Array(buf);
+        let text: string;
+        if (bytes.some((b) => b >= 0x80 && b <= 0x9a)) {
+          const cp862 = decodeCp862(bytes);
+          text = looksHebrew(cp862) ? cp862 : new TextDecoder("windows-1255").decode(bytes);
+        } else {
+          text = new TextDecoder("windows-1255").decode(bytes);
+        }
         const rows = parseVerifiedTsv(text);
         if (rows.length === 0) return;
         const now = new Date().toISOString();
