@@ -187,14 +187,26 @@ export function BarcodeMatch() {
     return s;
   }, [catalog]);
 
-  // Only the user's own verified DB (exclude Ministry of Health `moh:` entries)
-  const tsvVerifiedItems = useMemo(
-    () =>
-      verifiedItems.filter(
-        (it) => it.name && it.calories100 != null && !it.id.startsWith("moh:"),
-      ),
-    [verifiedItems],
-  );
+  // Only the user's own verified DB (exclude Ministry of Health `moh:` entries),
+  // de-duplicated by name. Firebase can contain the same product twice (e.g. an
+  // older import keyed with a brand plus the brandless auto-import); collapse
+  // them, preferring the more complete entry (one that has a brand).
+  const tsvVerifiedItems = useMemo(() => {
+    const eligible = verifiedItems.filter(
+      (it) => it.name && it.calories100 != null && !it.id.startsWith("moh:"),
+    );
+    const byName = new Map<string, Verified100Item>();
+    for (const it of eligible) {
+      const key = normalizeText(it.name);
+      const existing = byName.get(key);
+      if (!existing) {
+        byName.set(key, it);
+      } else if (!existing.brand && it.brand) {
+        byName.set(key, it);
+      }
+    }
+    return Array.from(byName.values());
+  }, [verifiedItems]);
 
   // Inverted word index over chain products: token -> chain product indices.
   // Lets us score only chain products that share a word with the verified item
