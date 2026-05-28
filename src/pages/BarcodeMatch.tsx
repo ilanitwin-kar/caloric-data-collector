@@ -414,6 +414,31 @@ export function BarcodeMatch() {
     setSearchText("");
   }, [currentIdx, activeSection]);
 
+  const handleCopyBarcode = useCallback(
+    async (barcode: string) => {
+      try {
+        await navigator.clipboard.writeText(barcode);
+        showToast(`הברקוד הועתק: ${barcode}`, "success");
+      } catch {
+        // Fallback for browsers/contexts without clipboard API.
+        const ta = document.createElement("textarea");
+        ta.value = barcode;
+        ta.style.position = "fixed";
+        ta.style.opacity = "0";
+        document.body.appendChild(ta);
+        ta.select();
+        try {
+          document.execCommand("copy");
+          showToast(`הברקוד הועתק: ${barcode}`, "success");
+        } catch {
+          showToast("ההעתקה נכשלה", "error");
+        }
+        document.body.removeChild(ta);
+      }
+    },
+    [showToast],
+  );
+
   const handleSkip = useCallback(() => {
     if (!current) return;
     setSkippedIds((prev) => new Set(prev).add(current.item.id));
@@ -636,7 +661,17 @@ export function BarcodeMatch() {
                 </div>
                 {selectedCandidate && (
                   <div className="space-y-1 text-sm text-sky-100/90">
-                    <p><span className="text-ink-muted">ברקוד:</span> <span dir="ltr">{selectedCandidate.barcode}</span></p>
+                    <p className="flex items-center gap-2">
+                      <span className="text-ink-muted">ברקוד:</span>
+                      <span dir="ltr">{selectedCandidate.barcode}</span>
+                      <button
+                        type="button"
+                        onClick={() => void handleCopyBarcode(selectedCandidate.barcode)}
+                        className="rounded-lg border border-white/20 bg-white/[0.06] px-2 py-0.5 text-xs font-semibold text-white transition hover:border-white/30"
+                      >
+                        העתק
+                      </button>
+                    </p>
                     <p><span className="text-ink-muted">שם:</span> {selectedCandidate.name}</p>
                     {selectedCandidate.brand && <p><span className="text-ink-muted">מותג:</span> {selectedCandidate.brand}</p>}
                     {selectedCandidate.weightG && <p><span className="text-ink-muted">משקל:</span> {selectedCandidate.weightG}g</p>}
