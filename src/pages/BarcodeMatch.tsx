@@ -255,89 +255,103 @@ export function BarcodeMatch() {
       return;
     }
 
-    // Data changed (new signature) → previous confirmations no longer apply.
-    sessionConfirmedItemIds.clear();
-    sessionConfirmedBarcodes.clear();
-    setConfirmedItemIds(new Set());
-    setConfirmedBarcodes(new Set());
-
-    setComputing(true);
-    setProgress({ scanned: 0, matched: 0 });
     let cancelled = false;
 
-    const catalogBarcodes = catalogBarcodesRef.current;
-    // Precompute which verified items are already in the catalog (by name+brand).
-    const verifiedInCatalog = new Set<string>();
-    for (const cp of catalogRef.current) {
-      if (cp.sources?.some((s) => s.type === "verified100")) {
-        verifiedInCatalog.add(
-          `${normalizeText(cp.name)}|${normalizeText(cp.brand ?? "")}`,
-        );
-      }
-    }
+    // Debounce: while Firebase streams the verified data in bursts, the
+    // signature changes repeatedly. Wait for it to settle before the heavy
+    // scan, so the progress bar doesn't restart from 0 over and over.
+    const startTimer = window.setTimeout(runCompute, 500);
 
-    const CHUNK = 25;
-    const matchedList: Array<{ item: Verified100Item; candidates: ChainCandidate[] }> = [];
-    const unmatchedList: Verified100Item[] = [];
-    let i = 0;
-
-    function processChunk() {
+    function runCompute() {
       if (cancelled) return;
-      const end = Math.min(i + CHUNK, tsvVerifiedItems.length);
 
-      for (; i < end; i++) {
-        const vItem = tsvVerifiedItems[i];
-        const key = `${normalizeText(vItem.name)}|${normalizeText(vItem.brand ?? "")}`;
-        if (verifiedInCatalog.has(key)) continue;
+      // Data changed (new signature) → previous confirmations no longer apply.
+      sessionConfirmedItemIds.clear();
+      sessionConfirmedBarcodes.clear();
+      setConfirmedItemIds(new Set());
+      setConfirmedBarcodes(new Set());
 
-        // Narrow to chain products sharing at least one word with this item.
-        const vTokens = normalizeText(vItem.name)
-          .split(" ")
-          .filter((t) => t.length >= 2);
-        const candidateIdxs = new Set<number>();
-        for (const t of vTokens) {
-          const arr = chainIndex.get(t);
-          if (arr) for (const ci of arr) candidateIdxs.add(ci);
+      setComputing(true);
+      setProgress({ scanned: 0, matched: 0 });
+
+      const catalogBarcodes = catalogBarcodesRef.current;
+      // Precompute which verified items are already in the catalog (by name+brand).
+      const verifiedInCatalog = new Set<string>();
+      for (const cp of catalogRef.current) {
+        if (cp.sources?.some((s) => s.type === "verified100")) {
+          verifiedInCatalog.add(
+            `${normalizeText(cp.name)}|${normalizeText(cp.brand ?? "")}`,
+          );
         }
+      }
 
-        const candidates: ChainCandidate[] = [];
-        for (const ci of candidateIdxs) {
-          const cp = chainProducts[ci];
-          if (catalogBarcodes.has(cp.barcode)) continue;
-          const score = scoreChainMatch(cp, vItem);
-          if (score >= MIN_MATCH_SCORE) {
-            candidates.push({ ...cp, score });
+      const CHUNK = 25;
+      const matchedList: Array<{ item: Verified100Item; candidates: ChainCandidate[] }> = [];
+      const unmatchedList: Verified100Item[] = [];
+      let i = 0;
+
+      function processChunk() {
+        if (cancelled) return;
+        const end = Math.min(i + CHUNK, tsvVerifiedItems.length);
+
+        for (; i < end; i++) {
+          const vItem = tsvVerifiedItems[i];
+          const key = `${normalizeText(vItem.name)}|${normalizeText(vItem.brand ?? "")}`;
+          if (verifiedInCatalog.has(key)) continue;
+
+          // Narrow to chain products sharing at least one word with this item.
+          const vTokens = normalizeText(vItem.name)
+            .split(" ")
+            .filter((t) => t.length >= 2);
+          const candidateIdxs = new Set<number>();
+          for (const t of vTokens) {
+            const arr = chainIndex.get(t);
+            if (arr) for (const ci of arr) candidateIdxs.add(ci);
+          }
+
+          const candidates: ChainCandidate[] = [];
+          for (const ci of candidateIdxs) {
+            const cp = chainProducts[ci];
+            if (catalogBarcodes.has(cp.barcode)) continue;
+            const score = scoreChainMatch(cp, vItem);
+            if (score >= MIN_MATCH_SCORE) {
+              candidates.push({ ...cp, score });
+            }
+          }
+          candidates.sort((a, b) => b.score - a.score);
+          const top = candidates.slice(0, 8);
+
+          if (top.length > 0) {
+            matchedList.push({ item: vItem, candidates: top });
+          } else {
+            unmatchedList.push(vItem);
           }
         }
-        candidates.sort((a, b) => b.score - a.score);
-        const top = candidates.slice(0, 8);
 
-        if (top.length > 0) {
-          matchedList.push({ item: vItem, candidates: top });
+        if (!cancelled) setProgress({ scanned: i, matched: matchedList.length });
+
+        if (i < tsvVerifiedItems.length) {
+          setTimeout(processChunk, 0);
         } else {
-          unmatchedList.push(vItem);
+          if (!cancelled) {
+            cachedResults = {
+              signature,
+              data: { matched: matchedList, unmatched: unmatchedList },
+            };
+            setMatched(matchedList);
+            setUnmatched(unmatchedList);
+            setComputing(false);
+          }
         }
       }
 
-      if (!cancelled) setProgress({ scanned: i, matched: matchedList.length });
-
-      if (i < tsvVerifiedItems.length) {
-        setTimeout(processChunk, 0);
-      } else {
-        if (!cancelled) {
-          cachedResults = {
-            signature,
-            data: { matched: matchedList, unmatched: unmatchedList },
-          };
-          setMatched(matchedList);
-          setUnmatched(unmatchedList);
-          setComputing(false);
-        }
-      }
+      setTimeout(processChunk, 30);
     }
 
-    setTimeout(processChunk, 30);
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+      window.clearTimeout(startTimer);
+    };
   }, [chainProducts, tsvVerifiedItems, chainIndex, signature]);
 
   // Confirmed items disappear; confirmed barcodes are removed from candidate lists
