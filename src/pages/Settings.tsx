@@ -45,8 +45,9 @@ export function Settings() {
     purgeOffImportedFromCatalog,
     clearOffImportCheckpoint,
   } = useCatalog();
-  const { items, loading, importTsv, syncFromMinistry } = useVerified100();
+  const { items, loading, importTsv, removeDuplicates, syncFromMinistry } = useVerified100();
   const [importing, setImporting] = useState(false);
+  const [cleaning, setCleaning] = useState(false);
   const [mohSyncing, setMohSyncing] = useState(false);
   const mohAbortRef = useRef<AbortController | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -298,6 +299,17 @@ export function Settings() {
             className="rounded-xl border border-white/20 bg-white/[0.06] px-3 py-2 text-sm font-semibold text-white transition disabled:opacity-50 hover:border-white/30"
           >
             {importing ? "מייבא…" : "ייבוא קובץ מאגר"}
+          </button>
+          <button
+            type="button"
+            disabled={cleaning || importing || loading || !user}
+            onClick={() => {
+              setCleaning(true);
+              void removeDuplicates().finally(() => setCleaning(false));
+            }}
+            className="rounded-xl border border-amber-400/35 bg-amber-500/10 px-3 py-2 text-sm font-semibold text-amber-100 transition disabled:opacity-50 hover:bg-amber-500/20"
+          >
+            {cleaning ? "מנקה כפילויות…" : "נקה כפילויות"}
           </button>
           <button
             type="button"

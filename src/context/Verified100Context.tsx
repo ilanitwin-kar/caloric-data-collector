@@ -12,6 +12,7 @@ import { db } from "../firebase";
 import { useAuth } from "./AuthContext";
 import { useToast } from "./ToastContext";
 import {
+  normalizeText,
   parseVerifiedTsv,
   scoreVerifiedMatch,
   stableId,
@@ -38,6 +39,7 @@ type Verified100ContextValue = {
   pauseCloudSync: () => void;
   resumeCloudSync: () => void;
   importTsv: (file: File) => Promise<void>;
+  removeDuplicates: () => Promise<{ removed: number }>;
   syncFromMinistry: (opts?: { signal?: AbortSignal }) => Promise<{ written: number; enriched: number }>;
   findBestMatch: (q: { name: string; brand?: string }) => Verified100Item | null;
   findMatches: (q: { name: string; brand?: string }, opts?: { limit?: number }) => Verified100Item[];
@@ -302,6 +304,71 @@ export function Verified100Provider({ children }: { children: ReactNode }) {
     [user, showToast],
   );
 
+  const removeDuplicates = useCallback(async () => {
+    if (!user) {
+      showToast("יש להתחבר כדי לנקות כפילויות", "error");
+      return { removed: 0 };
+    }
+    try {
+      // Score an item by how "complete" it is, so we keep the richest copy.
+      const completeness = (it: Verified100Item) => {
+        let score = 0;
+        if (it.brand) score += 4;
+        if (typeof it.calories100 === "number") score += 1;
+        if (typeof it.protein100 === "number") score += 1;
+        if (typeof it.fat100 === "number") score += 1;
+        if (typeof it.carbs100 === "number") score += 1;
+        if (it.category) score += 1;
+        return score;
+      };
+
+      // Group only the user's own (non-ministry) items by normalized name.
+      const groups = new Map<string, Verified100Item[]>();
+      for (const it of items) {
+        if (!it.name || it.id.startsWith("moh:")) continue;
+        const key = normalizeText(it.name);
+        const arr = groups.get(key);
+        if (arr) arr.push(it);
+        else groups.set(key, [it]);
+      }
+
+      const idsToRemove: string[] = [];
+      for (const arr of groups.values()) {
+        if (arr.length < 2) continue;
+        // Keep the most complete; on a tie keep the most recently updated.
+        const sorted = [...arr].sort((a, b) => {
+          const diff = completeness(b) - completeness(a);
+          if (diff !== 0) return diff;
+          return (b.updatedAt ?? "").localeCompare(a.updatedAt ?? "");
+        });
+        for (const dup of sorted.slice(1)) idsToRemove.push(dup.id);
+      }
+
+      if (idsToRemove.length === 0) {
+        showToast("לא נמצאו כפילויות", "success");
+        return { removed: 0 };
+      }
+
+      const basePath = `users/${user.uid}/verified100/items`;
+      const baseRef = ref(db, basePath);
+      const chunkSize = 200;
+      for (let i = 0; i < idsToRemove.length; i += chunkSize) {
+        const chunk = idsToRemove.slice(i, i + chunkSize);
+        const updates: Record<string, null> = {};
+        for (const id of chunk) updates[id] = null;
+        await update(baseRef, updates);
+      }
+
+      showToast(`נוקו ${idsToRemove.length.toLocaleString("he-IL")} כפילויות`, "success");
+      return { removed: idsToRemove.length };
+    } catch (e) {
+      const message =
+        e instanceof Error && e.message ? e.message : "שגיאה לא ידועה";
+      showToast(`ניקוי כפילויות נכשל: ${message}`, "error");
+      return { removed: 0 };
+    }
+  }, [user, items, showToast]);
+
   const syncFromMinistry = useCallback(
     async (opts?: { signal?: AbortSignal }) => {
       if (!user) {
@@ -488,6 +555,7 @@ export function Verified100Provider({ children }: { children: ReactNode }) {
       pauseCloudSync,
       resumeCloudSync,
       importTsv,
+      removeDuplicates,
       syncFromMinistry,
       findBestMatch,
       findMatches,
@@ -502,6 +570,7 @@ export function Verified100Provider({ children }: { children: ReactNode }) {
       pauseCloudSync,
       resumeCloudSync,
       importTsv,
+      removeDuplicates,
       syncFromMinistry,
       findBestMatch,
       findMatches,
