@@ -113,14 +113,29 @@ function scoreChainMatch(chain: ChainProduct, verified: Verified100Item): number
 
 const MIN_MATCH_SCORE = 35;
 
+// Module-level caches: survive component unmount (navigating between screens)
+// so we don't re-fetch the chain file or recompute matches every visit.
+let cachedChainProducts: ChainProduct[] | null = null;
+type MatchResults = {
+  matched: Array<{ item: Verified100Item; candidates: ChainCandidate[] }>;
+  unmatched: Verified100Item[];
+};
+let cachedResults: { signature: string; data: MatchResults } | null = null;
+// Confirmed pairs in this session: verified item ids and the chain barcodes used.
+// Persist across navigations so confirmed items/barcodes stay hidden.
+const sessionConfirmedItemIds = new Set<string>();
+const sessionConfirmedBarcodes = new Set<string>();
+
 export function BarcodeMatch() {
   const navigate = useNavigate();
   const { catalog, upsertByBarcode } = useCatalog();
   const { items: verifiedItems, loading: verifiedLoading } = useVerified100();
   const { showToast } = useToast();
 
-  const [chainProducts, setChainProducts] = useState<ChainProduct[]>([]);
-  const [loadingChain, setLoadingChain] = useState(true);
+  const [chainProducts, setChainProducts] = useState<ChainProduct[]>(
+    () => cachedChainProducts ?? [],
+  );
+  const [loadingChain, setLoadingChain] = useState(() => cachedChainProducts === null);
   const [loadError, setLoadError] = useState<string | null>(null);
 
   const [activeSection, setActiveSection] = useState<"matched" | "unmatched">("matched");
@@ -128,11 +143,18 @@ export function BarcodeMatch() {
   const [candidateIdx, setCandidateIdx] = useState(0);
   const [confirmedCount, setConfirmedCount] = useState(0);
   const [skippedIds, setSkippedIds] = useState<Set<string>>(new Set());
+  const [confirmedItemIds, setConfirmedItemIds] = useState<Set<string>>(
+    () => new Set(sessionConfirmedItemIds),
+  );
+  const [confirmedBarcodes, setConfirmedBarcodes] = useState<Set<string>>(
+    () => new Set(sessionConfirmedBarcodes),
+  );
   const [searchText, setSearchText] = useState("");
   const searchRef = useRef<HTMLInputElement>(null);
 
-  // Load chain products (cache: no-store bypasses service worker cache)
+  // Load chain products once and cache across navigations (cache: no-store bypasses SW cache)
   useEffect(() => {
+    if (cachedChainProducts !== null) return;
     let cancelled = false;
     setLoadingChain(true);
     fetch(`${import.meta.env.BASE_URL}shufersal-products.json`, { cache: "no-store" })
@@ -143,6 +165,7 @@ export function BarcodeMatch() {
       .then((data) => {
         if (cancelled) return;
         if (!Array.isArray(data) || data.length === 0) throw new Error("קובץ ריק או לא תקין");
+        cachedChainProducts = data;
         setChainProducts(data);
         setLoadingChain(false);
       })
@@ -204,9 +227,16 @@ export function BarcodeMatch() {
     catalogBarcodesRef.current = catalogBarcodes;
   }, [catalogBarcodes]);
 
+  // Signature of the input data; if unchanged, reuse cached results (no recompute).
+  const signature = `${tsvVerifiedItems.length}x${chainProducts.length}`;
+
   // For each verified item, find chain candidates (chunked to avoid blocking UI)
-  const [matched, setMatched] = useState<Array<{ item: Verified100Item; candidates: ChainCandidate[] }>>([]);
-  const [unmatched, setUnmatched] = useState<Verified100Item[]>([]);
+  const [matched, setMatched] = useState<Array<{ item: Verified100Item; candidates: ChainCandidate[] }>>(
+    () => (cachedResults?.signature === signature ? cachedResults.data.matched : []),
+  );
+  const [unmatched, setUnmatched] = useState<Verified100Item[]>(
+    () => (cachedResults?.signature === signature ? cachedResults.data.unmatched : []),
+  );
   const [computing, setComputing] = useState(false);
   const [progress, setProgress] = useState({ scanned: 0, matched: 0 });
 
@@ -216,6 +246,20 @@ export function BarcodeMatch() {
       setUnmatched([]);
       return;
     }
+
+    // Reuse cached results when the data hasn't changed (e.g. returning to this screen).
+    if (cachedResults?.signature === signature) {
+      setMatched(cachedResults.data.matched);
+      setUnmatched(cachedResults.data.unmatched);
+      setComputing(false);
+      return;
+    }
+
+    // Data changed (new signature) → previous confirmations no longer apply.
+    sessionConfirmedItemIds.clear();
+    sessionConfirmedBarcodes.clear();
+    setConfirmedItemIds(new Set());
+    setConfirmedBarcodes(new Set());
 
     setComputing(true);
     setProgress({ scanned: 0, matched: 0 });
@@ -281,6 +325,10 @@ export function BarcodeMatch() {
         setTimeout(processChunk, 0);
       } else {
         if (!cancelled) {
+          cachedResults = {
+            signature,
+            data: { matched: matchedList, unmatched: unmatchedList },
+          };
           setMatched(matchedList);
           setUnmatched(unmatchedList);
           setComputing(false);
@@ -290,19 +338,28 @@ export function BarcodeMatch() {
 
     setTimeout(processChunk, 30);
     return () => { cancelled = true; };
-  }, [chainProducts, tsvVerifiedItems, chainIndex]);
+  }, [chainProducts, tsvVerifiedItems, chainIndex, signature]);
 
-  // Skipped items move to unmatched conceptually
+  // Confirmed items disappear; confirmed barcodes are removed from candidate lists
+  // (the verified item and its matched chain barcode are now paired and done).
   const displayMatched = useMemo(
-    () => matched.filter((m) => !skippedIds.has(m.item.id)),
-    [matched, skippedIds],
+    () =>
+      matched
+        .filter((m) => !skippedIds.has(m.item.id) && !confirmedItemIds.has(m.item.id))
+        .map((m) => ({
+          item: m.item,
+          candidates: m.candidates.filter((c) => !confirmedBarcodes.has(c.barcode)),
+        }))
+        .filter((m) => m.candidates.length > 0),
+    [matched, skippedIds, confirmedItemIds, confirmedBarcodes],
   );
   const displayUnmatched = useMemo(
-    () => [
-      ...unmatched,
-      ...matched.filter((m) => skippedIds.has(m.item.id)).map((m) => m.item),
-    ],
-    [unmatched, matched, skippedIds],
+    () =>
+      [
+        ...unmatched,
+        ...matched.filter((m) => skippedIds.has(m.item.id)).map((m) => m.item),
+      ].filter((it) => !confirmedItemIds.has(it.id)),
+    [unmatched, matched, skippedIds, confirmedItemIds],
   );
 
   // Active queue
@@ -317,14 +374,14 @@ export function BarcodeMatch() {
     const q = normalizeText(searchText);
     return chainProducts
       .filter((cp) => {
-        if (catalogBarcodes.has(cp.barcode)) return false;
+        if (catalogBarcodes.has(cp.barcode) || confirmedBarcodes.has(cp.barcode)) return false;
         const n = normalizeText(cp.name);
         const b = normalizeText(cp.brand ?? "");
         return n.includes(q) || b.includes(q) || cp.barcode.includes(searchText.trim());
       })
       .slice(0, 10)
       .map((cp) => ({ ...cp, score: scoreChainMatch(cp, current.item) }));
-  }, [searchText, current, chainProducts, catalogBarcodes]);
+  }, [searchText, current, chainProducts, catalogBarcodes, confirmedBarcodes]);
 
   useEffect(() => {
     setCandidateIdx(0);
@@ -354,6 +411,10 @@ export function BarcodeMatch() {
       unitsPerPack: selectedCandidate.qtyInPack ?? v.unitsPerPack,
       sourceType: "verified100",
     });
+    sessionConfirmedItemIds.add(v.id);
+    sessionConfirmedBarcodes.add(selectedCandidate.barcode);
+    setConfirmedItemIds(new Set(sessionConfirmedItemIds));
+    setConfirmedBarcodes(new Set(sessionConfirmedBarcodes));
     setConfirmedCount((c) => c + 1);
     setCurrentIdx(0);
     showToast(`${v.name} → ${selectedCandidate.barcode}`, "success");
