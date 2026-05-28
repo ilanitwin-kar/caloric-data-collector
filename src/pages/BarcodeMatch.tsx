@@ -164,11 +164,45 @@ export function BarcodeMatch() {
     return s;
   }, [catalog]);
 
-  // All verified items eligible for barcode matching
+  // Only the user's own verified DB (exclude Ministry of Health `moh:` entries)
   const tsvVerifiedItems = useMemo(
-    () => verifiedItems.filter((it) => it.name && it.calories100 != null),
+    () =>
+      verifiedItems.filter(
+        (it) => it.name && it.calories100 != null && !it.id.startsWith("moh:"),
+      ),
     [verifiedItems],
   );
+
+  // Inverted word index over chain products: token -> chain product indices.
+  // Lets us score only chain products that share a word with the verified item
+  // instead of scanning all ~8000 chain products for every verified item.
+  const chainIndex = useMemo(() => {
+    const idx = new Map<string, number[]>();
+    chainProducts.forEach((cp, ci) => {
+      const tokens = new Set(
+        normalizeText(cp.name)
+          .split(" ")
+          .filter((t) => t.length >= 2),
+      );
+      for (const t of tokens) {
+        const arr = idx.get(t);
+        if (arr) arr.push(ci);
+        else idx.set(t, [ci]);
+      }
+    });
+    return idx;
+  }, [chainProducts]);
+
+  // Keep catalog reads out of the heavy effect's deps so confirming a match
+  // (which mutates the catalog via Firebase) doesn't restart the whole compute.
+  const catalogRef = useRef(catalog);
+  const catalogBarcodesRef = useRef(catalogBarcodes);
+  useEffect(() => {
+    catalogRef.current = catalog;
+  }, [catalog]);
+  useEffect(() => {
+    catalogBarcodesRef.current = catalogBarcodes;
+  }, [catalogBarcodes]);
 
   // For each verified item, find chain candidates (chunked to avoid blocking UI)
   const [matched, setMatched] = useState<Array<{ item: Verified100Item; candidates: ChainCandidate[] }>>([]);
@@ -185,7 +219,18 @@ export function BarcodeMatch() {
     setComputing(true);
     let cancelled = false;
 
-    const CHUNK = 10;
+    const catalogBarcodes = catalogBarcodesRef.current;
+    // Precompute which verified items are already in the catalog (by name+brand).
+    const verifiedInCatalog = new Set<string>();
+    for (const cp of catalogRef.current) {
+      if (cp.sources?.some((s) => s.type === "verified100")) {
+        verifiedInCatalog.add(
+          `${normalizeText(cp.name)}|${normalizeText(cp.brand ?? "")}`,
+        );
+      }
+    }
+
+    const CHUNK = 60;
     const matchedList: Array<{ item: Verified100Item; candidates: ChainCandidate[] }> = [];
     const unmatchedList: Verified100Item[] = [];
     let i = 0;
@@ -196,16 +241,22 @@ export function BarcodeMatch() {
 
       for (; i < end; i++) {
         const vItem = tsvVerifiedItems[i];
-        const alreadyInCatalog = catalog.some(
-          (cp) =>
-            cp.sources?.some((s) => s.type === "verified100") &&
-            normalizeText(cp.name) === normalizeText(vItem.name) &&
-            normalizeText(cp.brand ?? "") === normalizeText(vItem.brand ?? ""),
-        );
-        if (alreadyInCatalog) continue;
+        const key = `${normalizeText(vItem.name)}|${normalizeText(vItem.brand ?? "")}`;
+        if (verifiedInCatalog.has(key)) continue;
+
+        // Narrow to chain products sharing at least one word with this item.
+        const vTokens = normalizeText(vItem.name)
+          .split(" ")
+          .filter((t) => t.length >= 2);
+        const candidateIdxs = new Set<number>();
+        for (const t of vTokens) {
+          const arr = chainIndex.get(t);
+          if (arr) for (const ci of arr) candidateIdxs.add(ci);
+        }
 
         const candidates: ChainCandidate[] = [];
-        for (const cp of chainProducts) {
+        for (const ci of candidateIdxs) {
+          const cp = chainProducts[ci];
           if (catalogBarcodes.has(cp.barcode)) continue;
           const score = scoreChainMatch(cp, vItem);
           if (score >= MIN_MATCH_SCORE) {
@@ -235,7 +286,7 @@ export function BarcodeMatch() {
 
     setTimeout(processChunk, 30);
     return () => { cancelled = true; };
-  }, [chainProducts, tsvVerifiedItems, catalog, catalogBarcodes]);
+  }, [chainProducts, tsvVerifiedItems, chainIndex]);
 
   // Skipped items move to unmatched conceptually
   const displayMatched = useMemo(
