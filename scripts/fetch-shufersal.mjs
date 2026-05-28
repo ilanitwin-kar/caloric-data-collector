@@ -74,7 +74,7 @@ function parseXmlProducts(xml) {
     const name = get("ItemName");
     if (!barcode || !name) continue;
 
-    const brand = get("ManufacturerName");
+    const brand = get("ManufactureName");
     const unitQty = get("UnitQty");
     const quantity = get("Quantity");
     const unitMeasure = get("UnitOfMeasure");
