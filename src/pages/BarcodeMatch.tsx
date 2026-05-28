@@ -208,6 +208,7 @@ export function BarcodeMatch() {
   const [matched, setMatched] = useState<Array<{ item: Verified100Item; candidates: ChainCandidate[] }>>([]);
   const [unmatched, setUnmatched] = useState<Verified100Item[]>([]);
   const [computing, setComputing] = useState(false);
+  const [progress, setProgress] = useState({ scanned: 0, matched: 0 });
 
   useEffect(() => {
     if (!chainProducts.length || !tsvVerifiedItems.length) {
@@ -217,6 +218,7 @@ export function BarcodeMatch() {
     }
 
     setComputing(true);
+    setProgress({ scanned: 0, matched: 0 });
     let cancelled = false;
 
     const catalogBarcodes = catalogBarcodesRef.current;
@@ -230,7 +232,7 @@ export function BarcodeMatch() {
       }
     }
 
-    const CHUNK = 60;
+    const CHUNK = 25;
     const matchedList: Array<{ item: Verified100Item; candidates: ChainCandidate[] }> = [];
     const unmatchedList: Verified100Item[] = [];
     let i = 0;
@@ -272,6 +274,8 @@ export function BarcodeMatch() {
           unmatchedList.push(vItem);
         }
       }
+
+      if (!cancelled) setProgress({ scanned: i, matched: matchedList.length });
 
       if (i < tsvVerifiedItems.length) {
         setTimeout(processChunk, 0);
@@ -398,11 +402,28 @@ export function BarcodeMatch() {
     return () => window.removeEventListener("keydown", handler);
   }, [activeSection, current, selectedCandidate, handleConfirm, handleSkip, currentCandidates.length]);
 
-  if (loadingChain || computing) {
-    const msg = loadingChain
-      ? "טוען נתוני רשת…"
-      : `מחשב התאמות… (${tsvVerifiedItems.length} מוצרים × ${chainProducts.length} ברשת)`;
-    return <p className="text-sm text-ink-muted">{msg}</p>;
+  if (loadingChain) {
+    return <p className="text-sm text-ink-muted">טוען נתוני רשת…</p>;
+  }
+  if (computing) {
+    const total = tsvVerifiedItems.length || 1;
+    const pct = Math.round((progress.scanned / total) * 100);
+    return (
+      <div className="space-y-3 py-4">
+        <p className="text-sm font-semibold text-white">מחשב התאמות…</p>
+        <div className="h-3 w-full overflow-hidden rounded-full bg-white/10">
+          <div
+            className="h-full rounded-full bg-emerald-400 transition-all duration-150"
+            style={{ width: `${pct}%` }}
+          />
+        </div>
+        <p className="text-sm text-ink-muted">
+          נסרקו {progress.scanned.toLocaleString("he-IL")} מתוך{" "}
+          {tsvVerifiedItems.length.toLocaleString("he-IL")} ({pct}%) · נמצאו{" "}
+          {progress.matched.toLocaleString("he-IL")} התאמות · {chainProducts.length.toLocaleString("he-IL")} ברשת
+        </p>
+      </div>
+    );
   }
   if (loadError) {
     return (
