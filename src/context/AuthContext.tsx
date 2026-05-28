@@ -10,6 +10,7 @@ import {
   GoogleAuthProvider,
   getRedirectResult,
   onAuthStateChanged,
+  signInWithPopup,
   signInWithRedirect,
   signOut,
   type User,
@@ -83,11 +84,33 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       authError,
       signIn: async () => {
         const provider = new GoogleAuthProvider();
+        provider.setCustomParameters({ prompt: "select_account" });
         setAuthError(null);
-        await signInWithRedirect(auth, provider).catch((e) => {
+        // Popup keeps the same browsing context, avoiding the third-party
+        // storage blocking that breaks signInWithRedirect when the app is
+        // hosted on a different domain than the Firebase authDomain (common
+        // cause of "logged out / can't sign in" on mobile). Fall back to
+        // redirect only if the popup can't be opened.
+        try {
+          await signInWithPopup(auth, provider);
+        } catch (e) {
+          const code =
+            typeof e === "object" && e && "code" in e ? String(e.code) : "";
+          const popupFailed =
+            code.includes("auth/popup-blocked") ||
+            code.includes("auth/popup-closed-by-user") ||
+            code.includes("auth/cancelled-popup-request") ||
+            code.includes("auth/operation-not-supported-in-this-environment");
+          if (popupFailed) {
+            await signInWithRedirect(auth, provider).catch((re) => {
+              setAuthError(getAuthErrorMessage(re));
+              throw re;
+            });
+            return;
+          }
           setAuthError(getAuthErrorMessage(e));
           throw e;
-        });
+        }
       },
       signOut: async () => {
         await signOut(auth);
