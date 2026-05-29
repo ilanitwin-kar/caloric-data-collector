@@ -5,6 +5,7 @@ import { useVerified100 } from "../context/Verified100Context";
 import { useToast } from "../context/ToastContext";
 import type { Verified100Item } from "../context/Verified100Context";
 import { normalizeText } from "../utils/verifiedTsv";
+import { fetchOpenFoodFactsProduct } from "../utils/openFoodFacts";
 
 type ChainProduct = {
   barcode: string;
@@ -125,6 +126,16 @@ let cachedResults: { signature: string; data: MatchResults } | null = null;
 // Persist across navigations so confirmed items/barcodes stay hidden.
 const sessionConfirmedItemIds = new Set<string>();
 const sessionConfirmedBarcodes = new Set<string>();
+// Skipped verified item ids in this session. Module-level so they survive
+// navigating between screens (otherwise skipped items reappear in the queue).
+const sessionSkippedIds = new Set<string>();
+// Cache OFF product image lookups by barcode (null = looked up, none found).
+const offImageCache = new Map<string, string | null>();
+
+// Shufersal online search URL for a given barcode (opens in a new tab).
+function shufersalSearchUrl(barcode: string): string {
+  return `https://www.shufersal.co.il/online/he/search?text=${encodeURIComponent(barcode)}`;
+}
 
 export function BarcodeMatch() {
   const navigate = useNavigate();
@@ -138,11 +149,15 @@ export function BarcodeMatch() {
   const [loadingChain, setLoadingChain] = useState(() => cachedChainProducts === null);
   const [loadError, setLoadError] = useState<string | null>(null);
 
-  const [activeSection, setActiveSection] = useState<"matched" | "unmatched">("matched");
+  const [activeSection, setActiveSection] = useState<"matched" | "unmatched" | "skipped">(
+    "matched",
+  );
   const [currentIdx, setCurrentIdx] = useState(0);
   const [candidateIdx, setCandidateIdx] = useState(0);
   const [confirmedCount, setConfirmedCount] = useState(0);
-  const [skippedIds, setSkippedIds] = useState<Set<string>>(new Set());
+  const [skippedIds, setSkippedIds] = useState<Set<string>>(
+    () => new Set(sessionSkippedIds),
+  );
   const [confirmedItemIds, setConfirmedItemIds] = useState<Set<string>>(
     () => new Set(sessionConfirmedItemIds),
   );
@@ -151,6 +166,9 @@ export function BarcodeMatch() {
   );
   const [searchText, setSearchText] = useState("");
   const searchRef = useRef<HTMLInputElement>(null);
+  const [previewBarcode, setPreviewBarcode] = useState<string | null>(null);
+  const [previewImage, setPreviewImage] = useState<string | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
 
   // Load chain products once and cache across navigations (cache: no-store bypasses SW cache)
   useEffect(() => {
@@ -381,12 +399,27 @@ export function BarcodeMatch() {
   );
   const displayUnmatched = useMemo(
     () =>
-      [
-        ...unmatched,
-        ...matched.filter((m) => skippedIds.has(m.item.id)).map((m) => m.item),
-      ].filter((it) => !confirmedItemIds.has(it.id)),
-    [unmatched, matched, skippedIds, confirmedItemIds],
+      unmatched.filter(
+        (it) => !confirmedItemIds.has(it.id) && !skippedIds.has(it.id),
+      ),
+    [unmatched, confirmedItemIds, skippedIds],
   );
+  // Skipped items get their own list (from both matched and unmatched sources)
+  // so they don't keep reappearing in the active review queue.
+  const displaySkipped = useMemo(() => {
+    const byId = new Map<string, Verified100Item>();
+    for (const m of matched) {
+      if (skippedIds.has(m.item.id) && !confirmedItemIds.has(m.item.id)) {
+        byId.set(m.item.id, m.item);
+      }
+    }
+    for (const it of unmatched) {
+      if (skippedIds.has(it.id) && !confirmedItemIds.has(it.id)) {
+        byId.set(it.id, it);
+      }
+    }
+    return Array.from(byId.values());
+  }, [matched, unmatched, skippedIds, confirmedItemIds]);
 
   // Active queue
   const queue = activeSection === "matched" ? displayMatched : [];
@@ -413,6 +446,39 @@ export function BarcodeMatch() {
     setCandidateIdx(0);
     setSearchText("");
   }, [currentIdx, activeSection]);
+
+  // Fetch a product image (Open Food Facts) for the selected candidate barcode,
+  // so the matched product can be verified visually without leaving the app.
+  const selectedBarcode = selectedCandidate?.barcode ?? null;
+  useEffect(() => {
+    if (!selectedBarcode) {
+      setPreviewBarcode(null);
+      setPreviewImage(null);
+      setPreviewLoading(false);
+      return;
+    }
+    setPreviewBarcode(selectedBarcode);
+    if (offImageCache.has(selectedBarcode)) {
+      setPreviewImage(offImageCache.get(selectedBarcode) ?? null);
+      setPreviewLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setPreviewImage(null);
+    setPreviewLoading(true);
+    void (async () => {
+      const res = await fetchOpenFoodFactsProduct(selectedBarcode);
+      const url =
+        res.ok && res.found ? res.data.imageFrontUrl ?? null : null;
+      offImageCache.set(selectedBarcode, url);
+      if (cancelled) return;
+      setPreviewImage(url);
+      setPreviewLoading(false);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedBarcode]);
 
   const handleCopyBarcode = useCallback(
     async (barcode: string) => {
@@ -441,9 +507,15 @@ export function BarcodeMatch() {
 
   const handleSkip = useCallback(() => {
     if (!current) return;
-    setSkippedIds((prev) => new Set(prev).add(current.item.id));
+    sessionSkippedIds.add(current.item.id);
+    setSkippedIds(new Set(sessionSkippedIds));
     setCurrentIdx(0);
   }, [current]);
+
+  const handleUnskip = useCallback((id: string) => {
+    sessionSkippedIds.delete(id);
+    setSkippedIds(new Set(sessionSkippedIds));
+  }, []);
 
   const handleConfirm = useCallback(async () => {
     if (!current || !selectedCandidate) return;
@@ -599,6 +671,17 @@ export function BarcodeMatch() {
         >
           ללא התאמה ({displayUnmatched.length})
         </button>
+        <button
+          type="button"
+          onClick={() => { setActiveSection("skipped"); setCurrentIdx(0); }}
+          className={`min-h-[44px] flex-1 rounded-xl border px-3 py-2 text-sm font-semibold transition ${
+            activeSection === "skipped"
+              ? "border-white/40 bg-white/15 text-white"
+              : "border-white/15 bg-white/[0.04] text-ink-muted hover:text-white"
+          }`}
+        >
+          דולגו ({displaySkipped.length})
+        </button>
       </div>
 
       {/* Matched section */}
@@ -661,7 +744,7 @@ export function BarcodeMatch() {
                 </div>
                 {selectedCandidate && (
                   <div className="space-y-1 text-sm text-sky-100/90">
-                    <p className="flex items-center gap-2">
+                    <p className="flex flex-wrap items-center gap-2">
                       <span className="text-ink-muted">ברקוד:</span>
                       <span dir="ltr">{selectedCandidate.barcode}</span>
                       <button
@@ -671,12 +754,37 @@ export function BarcodeMatch() {
                       >
                         העתק
                       </button>
+                      <a
+                        href={shufersalSearchUrl(selectedCandidate.barcode)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="rounded-lg border border-white/20 bg-white/[0.06] px-2 py-0.5 text-xs font-semibold text-white transition hover:border-white/30"
+                      >
+                        פתח בשופרסל
+                      </a>
                     </p>
                     <p><span className="text-ink-muted">שם:</span> {selectedCandidate.name}</p>
                     {selectedCandidate.brand && <p><span className="text-ink-muted">מותג:</span> {selectedCandidate.brand}</p>}
                     {selectedCandidate.weightG && <p><span className="text-ink-muted">משקל:</span> {selectedCandidate.weightG}g</p>}
                     {selectedCandidate.volumeMl && <p><span className="text-ink-muted">נפח:</span> {selectedCandidate.volumeMl}ml</p>}
                     <p className="text-ink-muted">ציון: {selectedCandidate.score}</p>
+                    {previewBarcode === selectedCandidate.barcode && (
+                      <div className="pt-2">
+                        {previewLoading ? (
+                          <p className="text-xs text-ink-muted">טוען תמונת מוצר…</p>
+                        ) : previewImage ? (
+                          <img
+                            src={previewImage}
+                            alt={selectedCandidate.name}
+                            className="max-h-44 rounded-xl border border-white/15 bg-white object-contain"
+                          />
+                        ) : (
+                          <p className="text-xs text-ink-muted">
+                            אין תמונת מוצר זמינה — אפשר לבדוק ב«פתח בשופרסל».
+                          </p>
+                        )}
+                      </div>
+                    )}
                   </div>
                 )}
               </section>
@@ -751,6 +859,43 @@ export function BarcodeMatch() {
                   <div key={v.id} className="rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2">
                     <p className="text-sm text-white">{v.name}</p>
                     {v.brand && <p className="text-sm text-ink-muted">{v.brand}</p>}
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
+      {/* Skipped section */}
+      {activeSection === "skipped" && (
+        <div className="space-y-3">
+          {displaySkipped.length === 0 ? (
+            <div className="rounded-2xl border border-white/15 bg-white/[0.04] px-4 py-6 text-center">
+              <p className="text-sm text-ink-muted">לא דילגת על מוצרים.</p>
+            </div>
+          ) : (
+            <>
+              <p className="text-sm text-ink-muted">
+                {displaySkipped.length} מוצרים שדילגת עליהם. «החזר לתור» כדי לבדוק שוב.
+              </p>
+              <div className="max-h-[50vh] overflow-y-auto space-y-2 rounded-2xl border border-white/10 bg-white/[0.02] p-3">
+                {displaySkipped.map((v) => (
+                  <div
+                    key={v.id}
+                    className="flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2"
+                  >
+                    <div className="min-w-0">
+                      <p className="truncate text-sm text-white">{v.name}</p>
+                      {v.brand && <p className="truncate text-sm text-ink-muted">{v.brand}</p>}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleUnskip(v.id)}
+                      className="shrink-0 rounded-lg border border-emerald-400/35 bg-emerald-500/10 px-3 py-1.5 text-xs font-semibold text-emerald-100 transition hover:bg-emerald-500/20"
+                    >
+                      החזר לתור
+                    </button>
                   </div>
                 ))}
               </div>
