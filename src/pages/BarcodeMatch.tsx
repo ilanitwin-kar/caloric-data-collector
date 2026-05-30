@@ -5,7 +5,7 @@ import { useVerified100 } from "../context/Verified100Context";
 import { useToast } from "../context/ToastContext";
 import type { Verified100Item } from "../context/Verified100Context";
 import { normalizeText } from "../utils/verifiedTsv";
-import { fetchOpenFoodFactsProduct } from "../utils/openFoodFacts";
+import { fetchOpenFoodFactsProduct, normalizeBarcode } from "../utils/openFoodFacts";
 
 type ChainProduct = {
   barcode: string;
@@ -113,6 +113,10 @@ function scoreChainMatch(chain: ChainProduct, verified: Verified100Item): number
 }
 
 const MIN_MATCH_SCORE = 35;
+// Auto-confirm only matches we're very confident about: a high top score and a
+// clear margin over the runner-up (or no runner-up at all).
+const AUTO_CONFIRM_MIN_SCORE = 95;
+const AUTO_CONFIRM_MARGIN = 20;
 
 // Module-level caches: survive component unmount (navigating between screens)
 // so we don't re-fetch the chain file or recompute matches every visit.
@@ -122,24 +126,149 @@ type MatchResults = {
   unmatched: Verified100Item[];
 };
 let cachedResults: { signature: string; data: MatchResults } | null = null;
-// Confirmed pairs in this session: verified item ids and the chain barcodes used.
-// Persist across navigations so confirmed items/barcodes stay hidden.
+// Confirmed/skipped state — module-level so it survives navigation, and mirrored
+// to localStorage (below) so it AND the heavy scan results survive a full page
+// reload / reopening the PWA. We only recompute when the input data changes.
 const sessionConfirmedItemIds = new Set<string>();
 const sessionConfirmedBarcodes = new Set<string>();
-// Skipped verified item ids in this session. Module-level so they survive
-// navigating between screens (otherwise skipped items reappear in the queue).
 const sessionSkippedIds = new Set<string>();
+// Undo history of confirmed pairs (newest last) so the last confirm can be reverted.
+const sessionConfirmHistory: Array<{ itemId: string; barcode: string }> = [];
 // Cache OFF product image lookups by barcode (null = looked up, none found).
 const offImageCache = new Map<string, string | null>();
+
+// --- Persistence (keyed by the data signature). The heavy scan results are
+// written once (after computing); the small progress blob (skip/confirm) is
+// written on every action. Both share the signature so they stay consistent —
+// when the signature changes the scan is redone and progress is cleared.
+const LS_RESULTS_KEY = "bcm:results:v1";
+const LS_PROGRESS_KEY = "bcm:progress:v1";
+
+function persistResults() {
+  if (!cachedResults) return;
+  try {
+    localStorage.setItem(
+      LS_RESULTS_KEY,
+      JSON.stringify({
+        signature: cachedResults.signature,
+        matched: cachedResults.data.matched,
+        unmatched: cachedResults.data.unmatched,
+      }),
+    );
+  } catch {
+    // Quota exceeded / storage unavailable — keep the in-memory cache only.
+  }
+}
+
+function persistProgress() {
+  if (!cachedResults) return;
+  try {
+    localStorage.setItem(
+      LS_PROGRESS_KEY,
+      JSON.stringify({
+        signature: cachedResults.signature,
+        skipped: [...sessionSkippedIds],
+        confirmedItems: [...sessionConfirmedItemIds],
+        confirmedBarcodes: [...sessionConfirmedBarcodes],
+        history: sessionConfirmHistory,
+      }),
+    );
+  } catch {
+    /* ignore */
+  }
+}
+
+function clearSessionProgress() {
+  sessionConfirmedItemIds.clear();
+  sessionConfirmedBarcodes.clear();
+  sessionSkippedIds.clear();
+  sessionConfirmHistory.length = 0;
+}
+
+// Hydrate caches from localStorage once, at module load (best-effort).
+(function hydrateFromStorage() {
+  try {
+    const rawResults = localStorage.getItem(LS_RESULTS_KEY);
+    if (!rawResults) return;
+    const r = JSON.parse(rawResults) as {
+      signature?: string;
+      matched?: MatchResults["matched"];
+      unmatched?: MatchResults["unmatched"];
+    };
+    if (!r?.signature || !r.matched || !r.unmatched) return;
+    cachedResults = {
+      signature: r.signature,
+      data: { matched: r.matched, unmatched: r.unmatched },
+    };
+
+    const rawProgress = localStorage.getItem(LS_PROGRESS_KEY);
+    if (!rawProgress) return;
+    const p = JSON.parse(rawProgress) as {
+      signature?: string;
+      skipped?: string[];
+      confirmedItems?: string[];
+      confirmedBarcodes?: string[];
+      history?: Array<{ itemId: string; barcode: string }>;
+    };
+    // Only restore progress that belongs to the cached scan.
+    if (p?.signature !== r.signature) return;
+    p.skipped?.forEach((id) => sessionSkippedIds.add(id));
+    p.confirmedItems?.forEach((id) => sessionConfirmedItemIds.add(id));
+    p.confirmedBarcodes?.forEach((b) => sessionConfirmedBarcodes.add(b));
+    if (Array.isArray(p.history)) sessionConfirmHistory.push(...p.history);
+  } catch {
+    // Corrupt/unavailable storage — ignore and start fresh.
+  }
+})();
 
 // Shufersal online search URL for a given barcode (opens in a new tab).
 function shufersalSearchUrl(barcode: string): string {
   return `https://www.shufersal.co.il/online/he/search?text=${encodeURIComponent(barcode)}`;
 }
 
+// Small lazy-loaded Open Food Facts thumbnail (cached) for search result rows.
+function OffThumb({ barcode }: { barcode: string }) {
+  const [src, setSrc] = useState<string | null>(() => offImageCache.get(barcode) ?? null);
+  const [done, setDone] = useState<boolean>(() => offImageCache.has(barcode));
+  useEffect(() => {
+    if (offImageCache.has(barcode)) {
+      setSrc(offImageCache.get(barcode) ?? null);
+      setDone(true);
+      return;
+    }
+    let cancelled = false;
+    setDone(false);
+    void (async () => {
+      const res = await fetchOpenFoodFactsProduct(barcode);
+      const url = res.ok && res.found ? res.data.imageFrontUrl ?? null : null;
+      offImageCache.set(barcode, url);
+      if (cancelled) return;
+      setSrc(url);
+      setDone(true);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [barcode]);
+  if (src) {
+    return (
+      <img
+        src={src}
+        alt=""
+        className="h-10 w-10 shrink-0 rounded-md border border-white/10 bg-white object-contain"
+      />
+    );
+  }
+  return (
+    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md border border-white/10 bg-white/[0.04] text-[10px] text-ink-muted">
+      {done ? "—" : "…"}
+    </div>
+  );
+}
+
 export function BarcodeMatch() {
   const navigate = useNavigate();
-  const { catalog, upsertByBarcode } = useCatalog();
+  const { catalog, upsertByBarcode, deleteProduct } = useCatalog();
   const { items: verifiedItems, loading: verifiedLoading } = useVerified100();
   const { showToast } = useToast();
 
@@ -169,6 +298,7 @@ export function BarcodeMatch() {
   const [previewBarcode, setPreviewBarcode] = useState<string | null>(null);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
+  const [undoDepth, setUndoDepth] = useState(() => sessionConfirmHistory.length);
 
   // Load chain products once and cache across navigations (cache: no-store bypasses SW cache)
   useEffect(() => {
@@ -295,11 +425,12 @@ export function BarcodeMatch() {
     function runCompute() {
       if (cancelled) return;
 
-      // Data changed (new signature) → previous confirmations no longer apply.
-      sessionConfirmedItemIds.clear();
-      sessionConfirmedBarcodes.clear();
+      // Data changed (new signature) → previous progress no longer applies.
+      clearSessionProgress();
       setConfirmedItemIds(new Set());
       setConfirmedBarcodes(new Set());
+      setSkippedIds(new Set());
+      setUndoDepth(0);
 
       setComputing(true);
       setProgress({ scanned: 0, matched: 0 });
@@ -368,6 +499,8 @@ export function BarcodeMatch() {
               signature,
               data: { matched: matchedList, unmatched: unmatchedList },
             };
+            persistResults();
+            persistProgress();
             setMatched(matchedList);
             setUnmatched(unmatchedList);
             setComputing(false);
@@ -394,7 +527,9 @@ export function BarcodeMatch() {
           item: m.item,
           candidates: m.candidates.filter((c) => !confirmedBarcodes.has(c.barcode)),
         }))
-        .filter((m) => m.candidates.length > 0),
+        .filter((m) => m.candidates.length > 0)
+        // Highest-confidence matches first so the easy, obvious ones come up early.
+        .sort((a, b) => (b.candidates[0]?.score ?? 0) - (a.candidates[0]?.score ?? 0)),
     [matched, skippedIds, confirmedItemIds, confirmedBarcodes],
   );
   const displayUnmatched = useMemo(
@@ -509,39 +644,104 @@ export function BarcodeMatch() {
     if (!current) return;
     sessionSkippedIds.add(current.item.id);
     setSkippedIds(new Set(sessionSkippedIds));
+    persistProgress();
     setCurrentIdx(0);
   }, [current]);
 
   const handleUnskip = useCallback((id: string) => {
     sessionSkippedIds.delete(id);
     setSkippedIds(new Set(sessionSkippedIds));
+    persistProgress();
   }, []);
+
+  // Write a verified↔chain pair to the catalog and record it as confirmed.
+  const confirmPair = useCallback(
+    async (v: Verified100Item, cand: ChainCandidate) => {
+      await upsertByBarcode({
+        barcode: cand.barcode,
+        name: v.name,
+        brand: v.brand,
+        per100: {
+          calories: v.calories100,
+          proteinG: v.protein100,
+          carbsG: v.carbs100,
+          fatG: v.fat100,
+        },
+        totalWeightG: cand.weightG ?? v.packWeightG,
+        unitsPerPack: cand.qtyInPack ?? v.unitsPerPack,
+        sourceType: "verified100",
+      });
+      sessionConfirmedItemIds.add(v.id);
+      sessionConfirmedBarcodes.add(cand.barcode);
+      sessionConfirmHistory.push({ itemId: v.id, barcode: cand.barcode });
+    },
+    [upsertByBarcode],
+  );
 
   const handleConfirm = useCallback(async () => {
     if (!current || !selectedCandidate) return;
     const v = current.item;
-    await upsertByBarcode({
-      barcode: selectedCandidate.barcode,
-      name: v.name,
-      brand: v.brand,
-      per100: {
-        calories: v.calories100,
-        proteinG: v.protein100,
-        carbsG: v.carbs100,
-        fatG: v.fat100,
-      },
-      totalWeightG: selectedCandidate.weightG ?? v.packWeightG,
-      unitsPerPack: selectedCandidate.qtyInPack ?? v.unitsPerPack,
-      sourceType: "verified100",
-    });
-    sessionConfirmedItemIds.add(v.id);
-    sessionConfirmedBarcodes.add(selectedCandidate.barcode);
+    await confirmPair(v, selectedCandidate);
     setConfirmedItemIds(new Set(sessionConfirmedItemIds));
     setConfirmedBarcodes(new Set(sessionConfirmedBarcodes));
     setConfirmedCount((c) => c + 1);
+    setUndoDepth(sessionConfirmHistory.length);
+    persistProgress();
     setCurrentIdx(0);
     showToast(`${v.name} → ${selectedCandidate.barcode}`, "success");
-  }, [current, selectedCandidate, upsertByBarcode, showToast]);
+  }, [current, selectedCandidate, confirmPair, showToast]);
+
+  // Undo the most recent confirmation: remove it from the catalog and unhide it.
+  const handleUndo = useCallback(async () => {
+    const last = sessionConfirmHistory.pop();
+    if (!last) return;
+    sessionConfirmedItemIds.delete(last.itemId);
+    sessionConfirmedBarcodes.delete(last.barcode);
+    setConfirmedItemIds(new Set(sessionConfirmedItemIds));
+    setConfirmedBarcodes(new Set(sessionConfirmedBarcodes));
+    setConfirmedCount((c) => Math.max(0, c - 1));
+    setUndoDepth(sessionConfirmHistory.length);
+    persistProgress();
+    try {
+      await deleteProduct(normalizeBarcode(last.barcode));
+      showToast("האישור האחרון בוטל", "success");
+    } catch {
+      showToast("האישור בוטל מהרשימה (מחיקה מהקטלוג נכשלה)", "error");
+    }
+  }, [deleteProduct, showToast]);
+
+  // Auto-confirm every matched item whose top candidate is clearly the winner.
+  const autoConfirmable = useMemo(
+    () =>
+      displayMatched.filter((m) => {
+        const top = m.candidates[0];
+        if (!top || top.score < AUTO_CONFIRM_MIN_SCORE) return false;
+        const second = m.candidates[1];
+        return !second || top.score - second.score >= AUTO_CONFIRM_MARGIN;
+      }),
+    [displayMatched],
+  );
+
+  const handleAutoConfirm = useCallback(async () => {
+    if (autoConfirmable.length === 0) return;
+    if (
+      !window.confirm(
+        `לאשר אוטומטית ${autoConfirmable.length} התאמות בעלות ביטחון גבוה?`,
+      )
+    ) {
+      return;
+    }
+    for (const m of autoConfirmable) {
+      await confirmPair(m.item, m.candidates[0]);
+    }
+    setConfirmedItemIds(new Set(sessionConfirmedItemIds));
+    setConfirmedBarcodes(new Set(sessionConfirmedBarcodes));
+    setConfirmedCount((c) => c + autoConfirmable.length);
+    setUndoDepth(sessionConfirmHistory.length);
+    persistProgress();
+    setCurrentIdx(0);
+    showToast(`${autoConfirmable.length} התאמות אושרו אוטומטית`, "success");
+  }, [autoConfirmable, confirmPair, showToast]);
 
   const handlePickSearch = useCallback(
     (cp: ChainProduct & { score: number }) => {
@@ -585,6 +785,20 @@ export function BarcodeMatch() {
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
   }, [activeSection, current, selectedCandidate, handleConfirm, handleSkip, currentCandidates.length]);
+
+  // Ctrl+Z to undo the last confirmation (works regardless of the active item).
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") {
+        const tag = (e.target as HTMLElement)?.tagName;
+        if (tag === "INPUT" || tag === "TEXTAREA") return;
+        e.preventDefault();
+        void handleUndo();
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [handleUndo]);
 
   if (loadingChain) {
     return <p className="text-sm text-ink-muted">טוען נתוני רשת…</p>;
@@ -635,15 +849,24 @@ export function BarcodeMatch() {
             חזרה
           </button>
         </div>
-        <div className="flex flex-wrap gap-3 text-sm text-ink-muted">
+        <div className="flex flex-wrap items-center gap-3 text-sm text-ink-muted">
           <span>מאומת: {verifiedLoading ? "טוען…" : tsvVerifiedItems.length}</span>
           <span>רשת: {chainProducts.length}</span>
           <span>יש התאמה: {displayMatched.length}</span>
           <span>ללא התאמה: {displayUnmatched.length}</span>
           <span className="text-emerald-400">שויכו: {confirmedCount}</span>
+          {undoDepth > 0 && (
+            <button
+              type="button"
+              onClick={() => void handleUndo()}
+              className="rounded-lg border border-white/20 bg-white/[0.06] px-2 py-0.5 text-xs font-semibold text-white transition hover:border-white/30"
+            >
+              ↩ בטל אישור אחרון
+            </button>
+          )}
         </div>
         <p className="text-sm text-ink-dim">
-          קיצורים: Enter=אשר · Esc=דלג · ←→=candidates · /=חיפוש
+          קיצורים: Enter=אשר · Esc=דלג · ←→=candidates · /=חיפוש · Ctrl+Z=בטל
         </p>
       </header>
 
@@ -687,6 +910,15 @@ export function BarcodeMatch() {
       {/* Matched section */}
       {activeSection === "matched" && (
         <>
+          {autoConfirmable.length > 0 && (
+            <button
+              type="button"
+              onClick={() => void handleAutoConfirm()}
+              className="w-full rounded-2xl border border-emerald-400/35 bg-emerald-500/10 px-4 py-3 text-sm font-semibold text-emerald-100 transition hover:bg-emerald-500/20"
+            >
+              ⚡ אשר אוטומטית {autoConfirmable.length} התאמות ודאיות
+            </button>
+          )}
           {!current ? (
             <div className="rounded-2xl border border-emerald-400/30 bg-emerald-500/10 px-4 py-6 text-center">
               <p className="text-sm font-semibold text-emerald-50">
@@ -701,7 +933,25 @@ export function BarcodeMatch() {
             <div className="space-y-4">
               {/* Verified item (source) */}
               <section className="rounded-2xl border border-emerald-400/25 bg-emerald-500/[0.07] p-4 space-y-2">
-                <p className="text-sm font-semibold text-emerald-50">המוצר שלך (מאומת)</p>
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-sm font-semibold text-emerald-50">המוצר שלך (מאומת)</p>
+                  {(() => {
+                    const top = current.candidates[0]?.score ?? 0;
+                    const label =
+                      top >= AUTO_CONFIRM_MIN_SCORE ? "ביטחון גבוה"
+                      : top >= 65 ? "ביטחון בינוני"
+                      : "ביטחון נמוך";
+                    const cls =
+                      top >= AUTO_CONFIRM_MIN_SCORE ? "border-emerald-400/40 bg-emerald-500/15 text-emerald-100"
+                      : top >= 65 ? "border-amber-400/40 bg-amber-500/15 text-amber-100"
+                      : "border-white/20 bg-white/[0.06] text-ink-muted";
+                    return (
+                      <span className={`rounded-lg border px-2 py-0.5 text-xs font-semibold ${cls}`}>
+                        {label}
+                      </span>
+                    );
+                  })()}
+                </div>
                 <div className="space-y-1 text-sm text-emerald-100/90">
                   <p><span className="text-ink-muted">שם:</span> {current.item.name}</p>
                   {current.item.brand && <p><span className="text-ink-muted">מותג:</span> {current.item.brand}</p>}
@@ -806,12 +1056,15 @@ export function BarcodeMatch() {
                         key={cp.barcode}
                         type="button"
                         onClick={() => handlePickSearch(cp)}
-                        className="w-full rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-right text-sm text-white hover:bg-white/[0.08]"
+                        className="flex w-full items-center gap-2 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-right text-sm text-white hover:bg-white/[0.08]"
                       >
-                        <span className="text-ink-muted" dir="ltr">{cp.barcode}</span>{" "}
-                        {cp.name}
-                        {cp.brand ? ` · ${cp.brand}` : ""}
-                        {cp.weightG ? ` · ${cp.weightG}g` : ""}
+                        <OffThumb barcode={cp.barcode} />
+                        <span className="min-w-0 flex-1">
+                          <span className="text-ink-muted" dir="ltr">{cp.barcode}</span>{" "}
+                          {cp.name}
+                          {cp.brand ? ` · ${cp.brand}` : ""}
+                          {cp.weightG ? ` · ${cp.weightG}g` : ""}
+                        </span>
                       </button>
                     ))}
                   </div>
